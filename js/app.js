@@ -1,0 +1,1649 @@
+/* Automotora DyP — Modelo Borrador · Arttmize SpA
+   Router y render de las vistas. Sin framework, sin build, sin CDN.
+
+   NINGUNA VISTA LEE UN ARREGLO CRUDO. Todo sale de `Modelo`, que es el
+   repositorio: guarda las tablas normalizadas y arma las vistas al leer.
+   Toda escritura pasa por un procedimiento de `Modelo` que consulta `Reglas`.
+   Ver modelo.js y reglas.js. */
+
+// El repositorio se levanta antes que nada: los catálogos de abajo salen de él.
+Modelo.iniciar();
+
+/* ───────────────── Catálogos ─────────────────
+   Vienen del repositorio, no están escritos acá.
+
+   Y desde que Configuración los edita de verdad, NO pueden ser una copia
+   tomada al cargar la página: quedarían viejos en cuanto alguien agregue una
+   etapa. Van como propiedades de solo lectura que consultan el repositorio
+   cada vez, así el resto del código las sigue usando como si fueran arreglos. */
+
+['ETAPAS', 'TIPOS_DANO', 'ZONAS_DANO', 'INVENTARIO_ITEMS', 'COMPANIAS', 'META_DIAS_REPARACION']
+  .forEach((nombre, i) => Object.defineProperty(window, nombre, {
+    get: [() => Modelo.etapas(), () => Modelo.tiposDano(), () => Modelo.zonasDano(),
+          () => Modelo.inventarioItems(), () => Modelo.companias(),
+          () => Modelo.metricas().metaDias][i]
+  }));
+
+const etapaPorCodigo = (c) => ETAPAS.find((e) => e.codigo === c) || ETAPAS[0];
+const totalOT = (o) => Modelo.totalOT(o);
+const tieneRepuestoPendiente = (o) => Modelo.tieneRepuestoPendiente(o);
+
+/* ───────────────── Utilidades ───────────────── */
+
+// Todo texto libre se escapa antes de pintarlo. Regla de la casa, también en el borrador.
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const fFecha = (d) => (d ? d.getDate() + ' ' + MESES[d.getMonth()] + ' ' + d.getFullYear() : '—');
+const fCorta = (d) => (d ? String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') : '—');
+const fMonto = (n) => '$' + Math.round(n).toLocaleString('es-CL');
+const nDias = (d) => Math.max(0, Math.round((HOY - d) / 86400000));
+const plural = (n, s, p) => n + ' ' + (n === 1 ? s : p);
+// Tolerantes a nulo: una OT recien creada desde el calendario todavia no tiene
+// kilometraje ni combustible, porque el evento de la aseguradora no los trae.
+const fKm = (n) => (n === null || n === undefined || n === '' ? 'Sin registrar' : Number(n).toLocaleString('es-CL') + ' km');
+const fComb = (n) => (n === null || n === undefined || n === '' ? 'Sin registrar' : n + '/8');
+
+const ESTADO_REPUESTO = {
+  por_pedir:     { txt: 'Por pedir',     clase: 'gris' },
+  pedido:        { txt: 'Pedido',        clase: 'ambar' },
+  en_transito:   { txt: 'En tránsito',   clase: 'azul' },
+  recibido:      { txt: 'Recibido',      clase: 'verde' },
+  no_disponible: { txt: 'No disponible', clase: 'roja' }
+};
+const ESTADO_PRESUPUESTO = {
+  borrador:  { txt: 'Borrador',  clase: 'gris' },
+  enviado:   { txt: 'Enviado',   clase: 'azul' },
+  aprobado:  { txt: 'Aprobado',  clase: 'verde' },
+  rechazado: { txt: 'Rechazado', clase: 'roja' }
+};
+
+/* ───────────────── Estado de la interfaz ───────────────── */
+
+const ui = {
+  vista: 'torre',
+  torre: { pagina: 1, porPagina: 35, busqueda: '', compania: 'todas', situacion: 'piso', etapa: 'todas', abierta: null },
+  historico: { pagina: 1, porPagina: 35, busqueda: '' },
+  // Las vistas grandes arman su propio estado la primera vez que se pintan, y
+  // lo restauran del borrador si hay uno. Ver recepcion.js y configuracion.js.
+  recepcion: null,
+  config: null,
+  ficha: null,
+  registroOT: null
+};
+
+/* ───────────────── Navegación ───────────────── */
+
+// La "Agenda del día" salió del menú: el agendamiento automático NO existe en
+// ninguna de las 39 pantallas del sistema actual. Está modelado y documentado
+// en DECISIONES-REPLICA, y se cotiza aparte. No se muestra como si existiera.
+const MENU = [
+  { grupo: 'Operación diaria' },
+  // Primero lo propio: el que entra con su nombre abre el sistema en lo suyo.
+  { id: 'mitrabajo', nombre: 'Mi trabajo',    icono: 'taller',
+    cuenta: () => (Modelo.personaActual() ? Modelo.miTrabajo(Modelo.personaActual().id).mias.length : null) },
+  { id: 'recepcion', nombre: 'Recepción',      icono: 'recepcion' },
+  { id: 'torre',     nombre: 'Torre de control', icono: 'torre',   cuenta: () => Modelo.torre().length },
+  { id: 'taller',    nombre: 'Taller',         icono: 'taller' },
+  { id: 'entrega',   nombre: 'Entrega',        icono: 'check' },
+  { grupo: 'Seguimiento' },
+  { id: 'repuestos',   nombre: 'Repuestos',   icono: 'repuesto',    cuenta: () => Modelo.metricas().repuestosPendientes },
+  { id: 'detenidos',   nombre: 'Esperas',     icono: 'espera',      cuenta: () => Modelo.metricas().conRepuestoPendiente },
+  { id: 'presupuesto', nombre: 'Presupuesto', icono: 'presupuesto' },
+  { id: 'bodega',      nombre: 'Bodega',      icono: 'bodega' },
+  { id: 'documentos',  nombre: 'Documentos',  icono: 'documento' },
+  // El Histórico es un BUSCADOR, no un listado: sin filtro no muestra nada.
+  // Por eso no lleva contador — mostrarlo sugeriría que hay una tabla detrás.
+  { id: 'historico',   nombre: 'Histórico',   icono: 'historico' },
+  { grupo: 'Administración' },
+  { id: 'personal',      nombre: 'Personal',      icono: 'personal', cuenta: () => Modelo.personal().filter((p) => p.activo).length },
+  { id: 'consolidado',   nombre: 'Consolidado',   icono: 'consolidado' },
+  { id: 'configuracion', nombre: 'Configuración', icono: 'config' }
+];
+
+/* Cada módulo declara su ruta y los botones de su barra de herramientas.
+   Formato: [icono, rótulo, acción, tecla]. **Todos hacen algo.**
+
+   Antes había una fila de botones decorativos "para que se viera como un ERP".
+   Se apretaron en la primera prueba y no pasó nada. Con razón: así no sirve. Un botón
+   que no hace nada enseña a no confiar en la pantalla. Los que no se pueden
+   construir todavía no se dibujan; los que sí, funcionan. */
+const MODULOS = {
+  mitrabajo:   { ruta: ['Operación diaria', 'Mi trabajo'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5']] },
+  recepcion:   { ruta: ['Operación diaria', 'Recepción'],
+                 acciones: [['guardar', 'Guardar recepción', 'guardar', 'F2'],
+                            ['camara', 'Agregar fotos', 'fotos'],
+                            ['refrescar', 'Descartar borrador', 'limpiar']] },
+  torre:       { ruta: ['Operación diaria', 'Torre de control'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['nuevo', 'Nuevo ingreso', 'nuevo'],
+                            ['editar', 'Abrir la orden', 'abrir'],
+                            ['exportar', 'Exportar', 'exportar'],
+                            ['imprimir', 'Imprimir', 'imprimir']] },
+  taller:      { ruta: ['Operación diaria', 'Taller'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar']] },
+  entrega:     { ruta: ['Operación diaria', 'Entrega'],
+                 acciones: [['buscar', 'Buscar patente', 'buscar'],
+                            ['refrescar', 'Actualizar', 'refrescar', 'F5']] },
+  repuestos:   { ruta: ['Seguimiento', 'Repuestos'],
+                 acciones: [['buscar', 'Buscar patente', 'buscar'],
+                            ['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar'],
+                            ['imprimir', 'Imprimir', 'imprimir']] },
+  detenidos:   { ruta: ['Seguimiento', 'Esperas'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar']] },
+  presupuesto: { ruta: ['Seguimiento', 'Presupuesto'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar'],
+                            ['imprimir', 'Imprimir', 'imprimir']] },
+  bodega:      { ruta: ['Seguimiento', 'Bodega'],
+                 acciones: [['buscar', 'Buscar patente', 'buscar'],
+                            ['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar']] },
+  documentos:  { ruta: ['Seguimiento', 'Documentos'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar']] },
+  historico:   { ruta: ['Seguimiento', 'Histórico'],
+                 acciones: [['buscar', 'Buscar', 'buscar'],
+                            ['refrescar', 'Limpiar el filtro', 'limpiar'],
+                            ['exportar', 'Exportar', 'exportar'],
+                            ['imprimir', 'Imprimir', 'imprimir']] },
+  personal:    { ruta: ['Administración', 'Personal'],
+                 acciones: [['nuevo', 'Nuevo trabajador', 'nuevo'],
+                            ['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar']] },
+  consolidado: { ruta: ['Administración', 'Consolidado'],
+                 acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar', 'exportar'],
+                            ['imprimir', 'Imprimir', 'imprimir']] },
+  configuracion: { ruta: ['Administración', 'Configuración'],
+                 acciones: [['deshacer', 'Deshacer', 'deshacer', 'Ctrl+Z'],
+                            ['refrescar', 'Actualizar', 'refrescar', 'F5'],
+                            ['exportar', 'Exportar el catálogo', 'exportar']] }
+};
+
+/* El botón de Deshacer dice QUÉ va a deshacer, no solo "deshacer": tocar los
+   catálogos mueve cosas que no se ven en pantalla, y hay que poder leer la
+   marcha atrás antes de apretarla. Cuando la pila está vacía sigue vivo y lo
+   explica, como todos los demás. */
+function rotuloDeshacer() {
+  const q = Modelo.proximoDeshacer();
+  return q ? 'Deshacer ' + q : 'Deshacer';
+}
+
+function pintarMenu() {
+  const nav = document.getElementById('nav');
+  const visible = (m) => !PERMISO_DE_MODULO[m.id] || Modelo.puede(PERMISO_DE_MODULO[m.id]);
+
+  // Un grupo que se quedó sin módulos visibles tampoco se dibuja: un rótulo
+  // solo, sin nada debajo, se lee como que algo se rompió.
+  const conContenido = MENU.filter((m, i) => {
+    if (!m.grupo) return visible(m);
+    for (let k = i + 1; k < MENU.length && !MENU[k].grupo; k++) if (visible(MENU[k])) return true;
+    return false;
+  });
+
+  nav.innerHTML = conContenido.map((m) => {
+    if (m.grupo) return '<div class="grupo">' + esc(m.grupo) + '</div>';
+    const n = m.cuenta ? m.cuenta() : null;
+    const c = (n === null || n === undefined) ? '' : '<span class="cuenta">' + n + '</span>';
+    return '<a data-vista="' + m.id + '" class="' + (m.pendiente ? 'pendiente' : '') + '" tabindex="0">' +
+           ico(m.icono) + '<span>' + esc(m.nombre) + '</span>' + c + '</a>';
+  }).join('');
+  nav.querySelectorAll('a').forEach((a) => {
+    a.addEventListener('click', () => ir(a.dataset.vista));
+    a.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ir(a.dataset.vista); } });
+  });
+
+  pintarLogo();
+  /* La esquina del usuario la dibuja `montarRol()`, y SOLO ella. Acá había un
+     `innerHTML` que escribía el nombre a secas, y como `pintarMenu()` corre
+     después de `montarRol()` al recargar con la sesión guardada, se comía los
+     botones de «Cambiar mi clave» y «Cerrar sesión». Al entrar por el
+     formulario no se notaba —ahí el orden es al revés— y por eso pasó. */
+  montarRol();
+}
+
+/* Quién está mirando la pantalla. Decía "Administrador" fijo en tres lugares
+   —la esquina, la barra de estado y la ventana de una OT—, y con cuentas de
+   verdad eso es sencillamente falso: el pintor veía su nombre arriba y
+   "Administrador" abajo. */
+function quienMira() {
+  const p = Modelo.personaActual();
+  if (p) return [p.nombres, p.apellidos].filter(Boolean).join(' ');
+  return Modelo.rolActual().nombre || '—';
+}
+
+// Usa el logo del taller si está presente. Si el archivo no existe,
+// cae a texto: nunca se dibuja una imitación del logo.
+function pintarLogo() {
+  const cont = document.getElementById('prod');
+  const texto = () => { cont.innerHTML = ico('auto', 'g') + 'Automotora DyP · Control de Taller'; };
+  texto();
+  const img = new Image();
+  img.onload = () => {
+    cont.innerHTML = '';
+    img.className = 'logo';
+    img.alt = 'Automotora DyP';
+    cont.appendChild(img);
+    const t = document.createElement('span');
+    t.textContent = 'Control de Taller';
+    cont.appendChild(t);
+  };
+  img.onerror = texto;
+  img.src = 'img/logo-dyp.png';
+}
+
+function pintarShell() {
+  const m = MODULOS[ui.vista] || { ruta: [], acciones: [] };
+
+  document.getElementById('ruta').innerHTML =
+    m.ruta.map((r, i) => (i ? ico('chevron') : '') + '<span>' + esc(r) + '</span>').join('');
+
+  // Las pestañas del encabezado se eliminaron: cada módulo pinta las suyas
+  // dentro del contenido, donde sí cambian algo.
+  document.getElementById('tabs').innerHTML = '';
+
+  const h = document.getElementById('herramientas');
+  h.innerHTML = (m.acciones || []).map(([icono, txt, accion, tecla], k) =>
+      '<button class="hbtn' + (k === 0 ? ' primario' : '') + '" type="button" data-hacc="' +
+      esc(accion) + '">' + ico(icono) +
+      esc(accion === 'deshacer' ? rotuloDeshacer() : txt) +
+      (tecla ? '<span class="tecla">' + esc(tecla) + '</span>' : '') + '</button>').join('') +
+    '<span class="der">' + ico('base') +
+    '<span style="font-size:11px;color:var(--gris)">Datos de demostración</span></span>';
+  h.style.display = 'flex';
+
+  h.querySelectorAll('[data-hacc]').forEach((b) =>
+    b.addEventListener('click', () => accionModulo(b.dataset.hacc)));
+}
+
+/* ───────────────── Las acciones de la barra ─────────────────
+   Un despachador único. Cada acción hace algo de verdad en el módulo que está
+   a la vista, o dice por qué no puede. */
+
+function accionModulo(accion) {
+  /* Recibe varios candidatos porque un mismo módulo puede tener distintos
+     buscadores según la sub-pantalla: Bodega busca por patente en el
+     check-list y por texto libre en el seguimiento. Se toma el primero que
+     esté a la vista; si no hay ninguno, se dice en vez de no hacer nada. */
+  const foco = (...ids) => {
+    for (const id of ids) {
+      const e = document.getElementById(id);
+      if (e) { e.focus(); e.select && e.select(); return true; }
+    }
+    return false;
+  };
+
+  switch (accion) {
+    case 'refrescar':
+      render();
+      return avisar({ ok: true, motivo: '' }, 'Pantalla actualizada.');
+
+    case 'nuevo':
+      if (ui.vista === 'personal') { const b = document.getElementById('per-nuevo'); if (b) b.click(); return; }
+      return ir('recepcion');
+
+    case 'abrir': {
+      const id = ui.torre.abierta;
+      const o = id ? Modelo.torre().find((x) => x.id === id) : filtrarTorre()[0];
+      if (!o) return avisar({ ok: false, motivo: 'No hay ninguna orden a la vista para abrir.' });
+      return abrirFicha(o.numeroOT);
+    }
+
+    case 'buscar': {
+      const donde = {
+        historico:   ['h-patente'],
+        bodega:      ['bod-patente', 'bod-q'],
+        entrega:     ['ent-patente'],
+        presupuesto: ['q-presu'],
+        documentos:  ['doc-q'],
+        personal:    ['per-q'],
+        repuestos:   ['rep-q']
+      }[ui.vista] || ['q-torre'];
+      if (foco.apply(null, donde)) return;
+      /* Costos adicionales y Valorizar TOT no tienen buscador. Apretar "Buscar
+         patente" ahí es querer buscar, así que se lleva al check-list, que es
+         donde se busca por patente, en vez de no hacer nada. */
+      if (ui.vista === 'bodega') {
+        bodegaEstado().pantalla = 'checklist';
+        render();
+        foco('bod-patente');
+        return avisar({ ok: true, motivo: '' }, 'La búsqueda por patente está en el check-list de repuestos.');
+      }
+      return avisar({ ok: false, motivo: 'Esta pantalla no tiene buscador.' });
+    }
+
+    case 'limpiar':
+      if (ui.vista === 'historico') { const b = document.getElementById('h-limpiar'); if (b) b.click(); return; }
+      if (ui.vista === 'recepcion') { const b = document.getElementById('rec-limpiar'); if (b) b.click(); return; }
+      return;
+
+    case 'guardar':
+      if (ui.vista === 'recepcion') { const b = document.getElementById('rec-guardar'); if (b) return b.click(); }
+      return avisar({ ok: false, motivo: 'En esta pantalla los cambios se guardan en cada tabla, no con un botón global.' });
+
+    case 'fotos': {
+      const r = rec();
+      if (r.paso !== 'cierre') { r.paso = 'cierre'; guardarBorrador(); render(); }
+      const z = document.getElementById('recfoto-zona');
+      if (z) z.scrollIntoView({ block: 'center' });
+      return;
+    }
+
+    case 'deshacer': {
+      const r = Modelo.deshacer();
+      if (!r.ok) return avisar(r);
+      render();
+      return avisar({ ok: true, motivo: '' }, 'Se deshizo ' + r.rotulo + '.');
+    }
+
+    case 'exportar':  return exportarVistaCSV();
+    case 'imprimir':  return imprimirVista();
+  }
+}
+
+/* ── Exportar de verdad ────────────────────────────────────────────────
+   El original tiene botón Exportar en Torre, Taller, padrón de clientes y
+   nómina, y un clic entrega la tabla completa con los datos personales de
+   todos. Acá es un permiso aparte —requisito B-5— y lo que sale es lo que
+   está a la vista, con lo enmascarado enmascarado. */
+
+function exportarVistaCSV() {
+  if (!Modelo.puede('exportar')) {
+    return avisar({ ok: false, motivo: 'El rol ' + Modelo.rolActual().nombre +
+      ' no tiene permiso para exportar. En el sistema actual cualquiera puede, y un clic entrega ' +
+      'el padrón completo con RUT y domicilio. Acá es un permiso aparte.' });
+  }
+  /* TODAS las tablas de la pantalla, no la primera.
+     El presupuesto tiene tres —líneas, repuestos y totales— y exportaba solo
+     la de arriba: salía la mano de obra sola y parecía que faltaba la mitad
+     del panel. Cada tabla va con el rótulo de su sección delante para que en
+     Excel se entienda dónde empieza cada una. */
+  const tablas = Array.from(document.querySelectorAll('#contenido table.grid'));
+  if (!tablas.length) return avisar({ ok: false, motivo: 'Esta pantalla no tiene una tabla que exportar.' });
+
+  const limpiar = (t) => '"' + String(t).replace(/\s+/g, ' ').trim().replace(/"/g, '""') + '"';
+
+  // El rótulo sale del encabezado del panel o del fieldset que la contiene.
+  const rotuloDe = (tabla) => {
+    const caja = tabla.closest('.panel, fieldset.bloque');
+    if (!caja) return '';
+    const t = caja.querySelector('h2, legend');
+    return t ? t.textContent.replace(/\s+/g, ' ').trim() : '';
+  };
+
+  const filas = [];
+  let datos = 0;
+  tablas.forEach((tabla, i) => {
+    const rot = rotuloDe(tabla);
+    if (tablas.length > 1) {
+      if (i) filas.push('');
+      filas.push(limpiar(rot || 'Tabla ' + (i + 1)));
+    }
+    tabla.querySelectorAll('thead tr').forEach((tr) =>
+      filas.push(Array.from(tr.cells).map((c) => limpiar(c.textContent)).join(';')));
+    tabla.querySelectorAll('tbody tr, tfoot tr').forEach((tr) => {
+      if (tr.classList.contains('detalle') || !tr.cells.length) return;
+      filas.push(Array.from(tr.cells).map((c) => limpiar(c.textContent)).join(';'));
+      datos++;
+    });
+  });
+  if (!datos) return avisar({ ok: false, motivo: 'Las tablas están vacías: no hay nada que exportar.' });
+
+  // BOM para que Excel en español abra las tildes bien.
+  const blob = new Blob(['﻿' + filas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dyp-' + ui.vista + '-' +
+    HOY.getFullYear() + String(HOY.getMonth() + 1).padStart(2, '0') + String(HOY.getDate()).padStart(2, '0') + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  avisar({ ok: true, motivo: '' }, 'Exportadas ' + datos + ' filas' +
+    (tablas.length > 1 ? ' de ' + tablas.length + ' tablas' : '') + ' a ' + a.download +
+    '. Queda en la traza: quién exportó, qué y cuándo.');
+}
+
+/* ── Imprimir de verdad ─────────────────────────────────────────────── */
+
+const CSS_IMPRIMIR_VISTA = `@media print{
+  /* En papel el fondo va blanco: con el tema oscuro puesto, la página salía
+     con la tinta clara sobre negro y gastando tóner en una franja que no dice
+     nada. Mismo criterio que los cuatro documentos. */
+  html,body{background:#fff !important;color:#111 !important}
+  .barra-menu,.sidebar,.herramientas,.barra-estado,.avisos,.tabs{display:none !important}
+  .marco,.principal,.app{display:block !important;overflow:visible !important}
+  .contenido{overflow:visible !important;height:auto !important}
+  .panel{break-inside:avoid;box-shadow:none}
+  table.grid th{position:static !important}
+  @page{size:A4 landscape;margin:10mm}
+}`;
+
+function imprimirVista() {
+  if (!document.getElementById('css-imprimir-vista')) {
+    const s = document.createElement('style');
+    s.id = 'css-imprimir-vista'; s.textContent = CSS_IMPRIMIR_VISTA;
+    document.head.appendChild(s);
+  }
+  const previo = document.title;
+  // TITULOS pasó a ser texto plano: sacarle `[0]` devolvía una sola letra y el
+  // PDF se guardaba como "DyP - N".
+  document.title = 'DyP - ' + (TITULOS[ui.vista] || ui.vista);
+  setTimeout(() => { window.print(); document.title = previo; }, 120);
+}
+
+function pintarBarraEstado(extra) {
+  // El indicador de datos modificados importa: si el estado se movió de la
+  // semilla, antes de una demostración hay que reiniciar.
+  const mod = Modelo.estaModificado()
+    ? '<span class="celda modificado" title="El estado se movió de los datos de demostración. ' +
+      'Archivo → Reiniciar a datos de demostración.">' + ico('alerta') + 'Datos modificados</span>'
+    : '';
+  document.getElementById('estado-barra').innerHTML =
+    '<span class="celda"><span class="luz"></span>Conectado</span>' +
+    '<span class="celda">' + ico('usuario') + esc(quienMira()) + '</span>' +
+    '<span class="celda">Automotora DyP</span>' +
+    (extra ? '<span class="celda">' + extra + '</span>' : '') + mod;
+}
+
+/* ───────────────── Barra de menú ─────────────────
+   Los seis menús hacen algo. Antes cuatro estaban inertes "para que se viera
+   como un ERP", y eso enseña a no confiar en la pantalla. */
+
+const MENUS = {
+  Archivo: [
+    { texto: 'Nuevo ingreso de vehículo', icono: 'recepcion', accion: 'ir:recepcion' },
+    { texto: 'Exportar lo que está a la vista', icono: 'exportar', accion: 'exportar' },
+    { texto: 'Imprimir la pantalla', icono: 'imprimir', accion: 'imprimir' },
+    { texto: 'Reiniciar a datos de demostración', icono: 'refrescar', accion: 'reiniciar' },
+    { texto: 'Volver a la torre de control', icono: 'torre', accion: 'inicio' }
+  ],
+  Edición: [
+    { texto: 'Ir a un módulo', icono: 'buscar', accion: 'ir-modulo' }
+  ],
+  Ver: [
+    { texto: 'Cambiar entre tema claro y oscuro', icono: 'config', accion: 'tema' },
+    { texto: 'Torre de control', icono: 'torre', accion: 'ir:torre' },
+    { texto: 'Taller', icono: 'taller', accion: 'ir:taller' },
+    { texto: 'Configuración', icono: 'config', accion: 'ir:configuracion' }
+  ],
+  Procesos: [
+    { texto: 'Probar reglas de negocio', icono: 'check', accion: 'pruebas' },
+    { texto: 'Comprobar cifras de la demostración', icono: 'consolidado', accion: 'cifras' },
+    { texto: 'Adelantar la fecha del sistema 7 días', icono: 'reloj', accion: 'adelantar' },
+    { texto: 'Volver la fecha a hoy', icono: 'refrescar', accion: 'fecha-hoy' }
+  ],
+  Reportes: [
+    { texto: 'Consolidado', icono: 'consolidado', accion: 'ir:consolidado' },
+    { texto: 'Histórico', icono: 'historico', accion: 'ir:historico' },
+    { texto: 'Venta parada por presupuestos', icono: 'presupuesto', accion: 'ir:presupuesto' },
+    { texto: 'Repuestos pendientes', icono: 'repuesto', accion: 'ir:repuestos' }
+  ],
+  Ayuda: [
+    { texto: 'Qué es este modelo borrador', icono: 'info', accion: 'acerca' },
+    { texto: 'Qué se puede probar acá', icono: 'check', accion: 'guia' }
+  ]
+};
+
+function montarBarraMenu() {
+  document.querySelectorAll('.barra-menu .mnu').forEach((m) => {
+    const items = MENUS[m.textContent.trim()];
+    // Si algún día se agrega un menú sin acciones, se saca del HTML antes que
+    // dejarlo puesto sin hacer nada.
+    if (!items) { m.remove(); return; }
+    m.classList.add('con-menu');
+    m.addEventListener('click', (ev) => { ev.stopPropagation(); abrirMenu(m, items); });
+  });
+  document.addEventListener('click', cerrarMenus);
+}
+
+function cerrarMenus() {
+  document.querySelectorAll('.desplegable').forEach((d) => d.remove());
+  document.querySelectorAll('.barra-menu .mnu.abierto').forEach((m) => m.classList.remove('abierto'));
+}
+
+function abrirMenu(elemento, items) {
+  const yaAbierto = elemento.classList.contains('abierto');
+  cerrarMenus();
+  if (yaAbierto) return;
+  elemento.classList.add('abierto');
+  const caja = document.createElement('div');
+  caja.className = 'desplegable';
+  caja.style.left = Math.round(elemento.getBoundingClientRect().left) + 'px';
+  caja.style.top = Math.round(elemento.getBoundingClientRect().bottom) + 'px';
+  caja.innerHTML = items.map((i) =>
+    '<button type="button" data-accion="' + i.accion + '">' + ico(i.icono) + esc(i.texto) + '</button>').join('');
+  document.body.appendChild(caja);
+  caja.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-accion]');
+    if (!b) return;
+    cerrarMenus();
+    ejecutarAccion(b.dataset.accion);
+  });
+}
+
+function ejecutarAccion(accion) {
+  if (accion === 'inicio') return ir('torre');
+  if (accion.indexOf('ir:') === 0) return ir(accion.slice(3));
+  if (['exportar', 'imprimir', 'buscar', 'refrescar'].includes(accion)) return accionModulo(accion);
+  if (accion === 'tema') return aplicarTema(document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro');
+  if (accion === 'ir-modulo') return dialogoIrAModulo();
+
+  if (accion === 'acerca') {
+    return dialogo('Modelo borrador · Automotora DyP', `
+      <p>Esto <strong>no es el sistema</strong>: es un modelo para probar cómo debería funcionar,
+      con datos inventados y rotulados como tales. Corre entero en este computador, sin internet y
+      sin base de datos.</p>
+      <p>Está construido sobre el levantamiento del sistema actual —<strong>39 pantallas revisadas
+      una por una</strong>— y la auditoría. Cada pantalla dice qué se copió igual, qué se corrigió y
+      qué no se replica.</p>
+      <p class="pie-nota">Arttmize SpA · La documentación completa está en la carpeta del proyecto:
+      el levantamiento, la auditoría y <span class="cod">DECISIONES-REPLICA</span>, que es el
+      documento que responde <em>"¿y por qué esto no es igual?"</em>.</p>`);
+  }
+
+  if (accion === 'guia') {
+    return dialogo('Qué se puede probar acá', `
+      <p class="pie-nota" style="margin:0 0 10px">La guía completa —para qué sirve cada pantalla, qué
+      alimenta y qué probar— está en <span class="cod">Capacitación\Guía de uso y prueba.pdf</span>.
+      Esto es el resumen de lo que vale la pena mostrar.</p>
+      <div class="grid-envoltorio"><table class="grid"><thead><tr>
+        <th>Dónde</th><th>Qué demuestra</th></tr></thead><tbody>
+        <tr><td><strong>Configuración → Etapas</strong></td><td>Agregar una décima etapa sin
+          programador. Es literalmente lo que se pidió al decir "escalable".</td></tr>
+        <tr><td><strong>Recepción</strong></td><td>Un ingreso con <strong>dos siniestros</strong>
+          genera dos OT. Y las fotos se comprimen solas: se ve el peso antes y después.</td></tr>
+        <tr><td><strong>Procesos → Adelantar la fecha</strong></td><td>Los <strong>tres
+          relojes</strong>: el de reparación se detiene cuando el auto sale y se reanuda al volver.</td></tr>
+        <tr><td><strong>Ficha → Acciones</strong></td><td>Regrabar el mismo estado
+          <strong>no mueve ningún contador</strong>. Es el defecto central del sistema actual.</td></tr>
+        <tr><td><strong>Presupuesto</strong></td><td>Cuánta <strong>venta hay parada</strong> en el
+          taller y cuánta espera aprobación de la compañía.</td></tr>
+        <tr><td><strong>Selector de rol</strong> (arriba)</td><td>El operario ve las líneas del
+          presupuesto pero no los valores.</td></tr>
+        <tr><td><strong>Procesos → Probar reglas</strong></td><td>16 pruebas: cada una intenta algo
+          prohibido y falla <em>por la regla</em>, con el motivo explicado.</td></tr>
+      </tbody></table></div>`);
+  }
+
+  /* Adelantar el calendario es lo que hace demostrables los tres relojes: sin
+     esto no se puede ver que la reparación se detiene al salir y se reanuda
+     al volver. Funciona porque NINGÚN contador está guardado — todos se
+     derivan de `ot_estadia`. Es el paso 14 del guion. */
+  if (accion === 'adelantar' || accion === 'fecha-hoy') {
+    HOY = accion === 'adelantar'
+      ? new Date(HOY.getTime() + 7 * 86400000)
+      : new Date(HOY_ORIGINAL.getTime());
+    Modelo.fijar_rol_actual(Modelo.rolActual().id);   // invalida los memos
+    if (ui.registroOT) modoRegistro(ui.registroOT); else render();
+    return avisar({ ok: true, motivo: '' }, 'La fecha del sistema es ahora ' + fFecha(HOY) +
+      '. Los tres relojes se recalcularon solos: ninguno está guardado.');
+  }
+
+  if (accion === 'reiniciar') {
+    if (!confirm('Se van a borrar los cambios y el sistema vuelve a los datos de demostración.\n\n¿Continuar?')) return;
+    Modelo.reiniciar();
+    ir('torre');
+    return dialogo('Datos de demostración restaurados',
+      '<p>El sistema volvió a la semilla: ' + Modelo.metricas().enTorre + ' vehículos en la torre, ' +
+      Modelo.metricas().conRepuestoPendiente + ' con repuesto pendiente.</p>');
+  }
+
+  if (accion === 'pruebas') {
+    const r = Pruebas.correr();
+    const pasaron = r.filter((x) => x.paso).length;
+    return dialogo('Reglas de negocio · ' + pasaron + ' de ' + r.length + ' pruebas pasaron',
+      '<p class="pie-nota" style="margin:0 0 10px">Cada prueba intenta algo que el negocio prohíbe. ' +
+      'Tiene que fallar <strong>por la regla</strong> y con un motivo explicado, no por un botón ' +
+      'deshabilitado. Corren sobre una copia aislada: no tocan tus datos.</p>' +
+      '<div class="grid-envoltorio"><table class="grid"><thead><tr>' +
+      '<th style="width:26px"></th><th>Regla</th><th>Intento</th><th>Resultado</th></tr></thead><tbody>' +
+      r.map((x) => '<tr><td>' + (x.paso ? '<span class="et verde">OK</span>' : '<span class="et roja">Falló</span>') +
+        '</td><td><strong>' + esc(x.nombre) + '</strong></td>' +
+        '<td style="color:var(--gris)">' + esc(x.intento) + '</td>' +
+        '<td>' + esc(x.detalle) + '</td></tr>').join('') +
+      '</tbody></table></div>');
+  }
+
+  if (accion === 'cifras') {
+    const c = Pruebas.comprobarCifras();
+    return dialogo('Cifras de la demostración',
+      '<p class="pie-nota" style="margin:0 0 10px">Control de que los datos de demostración siguen ' +
+      'cuadrando con lo que se declaró en la reunión.</p>' +
+      '<div class="grid-envoltorio"><table class="grid"><thead><tr>' +
+      '<th style="width:26px"></th><th>Cifra</th><th class="num">En el sistema</th>' +
+      '<th class="num">Declarado</th></tr></thead><tbody>' +
+      c.map((x) => '<tr><td>' + (x.paso ? '<span class="et verde">OK</span>' : '<span class="et roja">≠</span>') +
+        '</td><td>' + esc(x.nombre) + '</td><td class="num">' + x.real + '</td>' +
+        '<td class="num">' + x.referencia + '</td></tr>').join('') +
+      '</tbody></table></div>');
+  }
+}
+
+/* ───────────────── Aviso de resultado ─────────────────
+   Es donde las reglas se vuelven visibles. Cuando una rechaza, el usuario ve
+   POR QUÉ. Nunca deshabilitamos el botón: se aprieta, y si no corresponde se
+   explica. */
+
+function avisar(resultado, textoOk) {
+  const caja = document.getElementById('avisos') || (function () {
+    const c = document.createElement('div');
+    c.id = 'avisos'; c.className = 'avisos';
+    document.body.appendChild(c);
+    return c;
+  })();
+  const a = document.createElement('div');
+  a.className = 'aviso ' + (resultado.ok ? 'ok' : 'rechazo');
+  a.setAttribute('role', 'status');
+  a.innerHTML = ico(resultado.ok ? 'check' : 'alerta') +
+    '<span>' + esc(resultado.ok ? (textoOk || 'Listo.') : resultado.motivo) + '</span>' +
+    '<button class="cerrar" type="button" aria-label="Cerrar">&times;</button>';
+  caja.appendChild(a);
+  const quitar = () => a.remove();
+  a.querySelector('.cerrar').addEventListener('click', quitar);
+  // Los rechazos se quedan más rato: hay que poder leerlos.
+  setTimeout(quitar, resultado.ok ? 3500 : 9000);
+  return resultado.ok;
+}
+
+/* Ejecuta un procedimiento del repositorio y refresca la pantalla actual.
+   Ojo: la ficha de una OT se puede estar mostrando por dirección (`#ot=`) o
+   porque alguien la abrió desde adentro. Hay que refrescar la que está a la
+   vista, no la que dice la dirección. */
+function ejecutar(fn, textoOk, despues) {
+  const r = fn();
+  avisar(r, textoOk);
+  if (r.ok) {
+    if (ui.registroOT) modoRegistro(ui.registroOT); else render();
+    if (despues) despues(r);
+  }
+  return r;
+}
+
+/* Diálogo simple para mostrar resultados. */
+function dialogo(titulo, cuerpoHTML) {
+  document.querySelectorAll('.velo').forEach((v) => v.remove());
+  const velo = document.createElement('div');
+  velo.className = 'velo';
+  velo.innerHTML =
+    '<div class="modal" role="dialog" aria-modal="true">' +
+      '<div class="modal-cab"><h2>' + esc(titulo) + '</h2>' +
+      '<button class="cerrar" type="button" aria-label="Cerrar">&times;</button></div>' +
+      '<div class="modal-cuerpo">' + cuerpoHTML + '</div>' +
+    '</div>';
+  document.body.appendChild(velo);
+  const cerrar = () => velo.remove();
+  velo.querySelector('.cerrar').addEventListener('click', cerrar);
+  velo.addEventListener('click', (ev) => { if (ev.target === velo) cerrar(); });
+  document.addEventListener('keydown', function esc_(ev) {
+    if (ev.key === 'Escape') { cerrar(); document.removeEventListener('keydown', esc_); }
+  });
+}
+
+/* ───────────────── Ir a un módulo ─────────────────
+   Se escribe el nombre y lleva ahí. Con trece paneles repartidos en tres
+   grupos, buscar por nombre es más rápido que recorrer el menú con el mouse,
+   y sirve igual cuando se está en la ficha de una OT, que no tiene menú.
+
+   Busca también por el grupo y por como se le dice de verdad a cada pantalla:
+   nadie pregunta por "Detenciones", pregunta por los autos parados. */
+const APODOS = {
+  mitrabajo:     'lo mio pendientes tareas que me toca pintar reparar',
+  recepcion:     'ingreso nuevo vehiculo auto recibir entrada',
+  torre:         'ordenes ot listado principal inicio',
+  taller:        'etapas tablero piso boxes',
+  entrega:       'entregar salida cierre devolver',
+  repuestos:     'piezas pedidos proveedor',
+  detenidos:     'esperas detenidos parados atrasados fuera de taller',
+  presupuesto:   'or venta cotizacion valorizar',
+  bodega:        'repuestos checklist recepcion de piezas',
+  documentos:    'guias facturas ordenes de compra archivos',
+  historico:     'cerradas entregadas buscar antiguas',
+  personal:      'trabajadores gente maestros nomina',
+  consolidado:   'reporte totales gerencia',
+  configuracion: 'catalogos maestros parametros etapas estados roles'
+};
+
+function dialogoIrAModulo() {
+  // El grupo de cada módulo sale del propio menú lateral, para no repetirlo.
+  const grupos = {};
+  let actual = '';
+  MENU.forEach((m) => { if (m.grupo) actual = m.grupo; else grupos[m.id] = actual; });
+  const modulos = MENU.filter((m) => m.id);
+
+  const sinTildes = (t) => String(t).toLowerCase()
+    .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e').replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
+
+  dialogo('Ir a un módulo', `
+    <div class="campo" style="margin-bottom:10px">
+      <input type="search" id="ir-q" autocomplete="off"
+             placeholder="Escribe el nombre del módulo: torre, repuestos, bodega…">
+    </div>
+    <div class="ir-lista" id="ir-lista"></div>`);
+
+  const caja = document.getElementById('ir-q');
+  const lista = document.getElementById('ir-lista');
+
+  const coinciden = () => {
+    const t = sinTildes(caja.value.trim());
+    if (!t) return modulos;
+    return modulos.filter((m) =>
+      sinTildes(m.nombre + ' ' + grupos[m.id] + ' ' + (APODOS[m.id] || '')).indexOf(t) >= 0);
+  };
+
+  const pintar = () => {
+    const hay = coinciden();
+    lista.innerHTML = hay.length
+      ? hay.map((m, i) => '<button type="button" class="ir-item' + (i === 0 ? ' primero' : '') +
+          '" data-ira="' + esc(m.id) + '">' + ico(m.icono) +
+          '<span class="nom">' + esc(m.nombre) + '</span>' +
+          '<span class="gru">' + esc(grupos[m.id]) + '</span></button>').join('')
+      : '<div class="vacio" style="padding:22px"><div class="texto">Ningún módulo se llama así. ' +
+        'Prueba con <strong>torre</strong>, <strong>repuestos</strong> o <strong>bodega</strong>.</div></div>';
+    lista.querySelectorAll('[data-ira]').forEach((b) => b.addEventListener('click', () => {
+      cerrarDialogos();
+      ir(b.dataset.ira);
+    }));
+  };
+
+  caja.addEventListener('input', pintar);
+  caja.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    const primero = coinciden()[0];
+    if (!primero) return;
+    ev.preventDefault();
+    cerrarDialogos();
+    ir(primero.id);
+  });
+
+  pintar();
+  caja.focus();
+}
+
+const cerrarDialogos = () => document.querySelectorAll('.velo').forEach((v) => v.remove());
+
+function ir(vista) {
+  /* El menú ya esconde lo que la cuenta no puede ver, pero al módulo se llega
+     por más caminos que el menú: la dirección `#vista=historico`, "Ir a un
+     módulo" (Ctrl+G), un botón que salta de una pantalla a otra. Si el permiso
+     solo se revisara al pintar el menú, bastaba con escribir la dirección.
+     Se revisa acá, que es por donde pasan todos. */
+  const pide = PERMISO_DE_MODULO[vista];
+  if (pide && !Modelo.puede(pide)) {
+    avisar({ ok: false, motivo: 'El rol ' + (Modelo.rolActual().nombre || '—') + ' no tiene acceso a «' +
+      (TITULOS[vista] || vista) + '». Se administra en Configuración → Roles y permisos.' });
+    if (!MODULOS[ui.vista]) { ui.vista = 'mitrabajo'; render(); }
+    return;
+  }
+
+  /* Si veníamos de la ventana de una OT hay que devolver el marco completo:
+     esa ventana esconde el menú lateral y nunca lo dibujó. Sin esto, "Ir a un
+     módulo" desde una ficha deja la pantalla sin menú. */
+  if (ui.registroOT) {
+    ui.registroOT = null;
+    document.body.classList.remove('ventana-registro');
+    document.title = 'Automotora DyP · Control de Taller — Modelo Borrador';
+    if (window.location.hash.indexOf('ot=') >= 0) window.location.hash = 'vista=' + vista;
+    pintarMenu();
+    montarRol();
+  }
+  ui.vista = vista;
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === vista));
+  const c = document.getElementById('contenido');
+  if (c) c.scrollTop = 0;
+  render();
+}
+
+/* ───────────────── Render principal ───────────────── */
+
+/* Solo el nombre del módulo. La bajada que explicaba qué hacía cada pantalla
+   se sacó (decisión del 13-08-2026): quien opera el sistema ya lo sabe, y
+   ocupaba la franja más visible con texto que nadie vuelve a leer. Lo que
+   había ahí vive ahora en el manual de la carpeta Capacitación. */
+const TITULOS = {
+  mitrabajo:     'Mi trabajo',
+  recepcion:     'Nuevo ingreso',
+  torre:         'Torre de control',
+  taller:        'Taller',
+  repuestos:     'Repuestos',
+  detenidos:     'Detenciones',
+  presupuesto:   'Presupuesto',
+  historico:     'Histórico',
+  configuracion: 'Configuración',
+  entrega:       'Entrega',
+  bodega:        'Bodega',
+  documentos:    'Documentos',
+  personal:      'Personal',
+  consolidado:   'Consolidado'
+};
+
+// Qué muestra la barra de estado en cada módulo. Un ERP siempre dice cuántos
+// registros tiene a la vista: es lo primero que mira el que opera.
+const ESTADO_BARRA = {
+  torre:     () => '<strong>' + filtrarTorre().length + '</strong> de ' + Modelo.torre().length + ' órdenes',
+  taller:    () => '<strong>' + Modelo.metricas().enTaller + '</strong> vehículos en taller',
+  repuestos: () => '<strong>' + Modelo.metricas().repuestosPendientes + '</strong> repuestos pendientes',
+  detenidos: () => '<strong>' + Modelo.metricas().conRepuestoPendiente + '</strong> vehículos esperando',
+  historico: () => '<strong>' + Modelo.historico({ todo: true }).length + '</strong> vehículos entregados',
+  recepcion: () => {
+    const r = rec();
+    const inv = Object.values(r.inventario).filter(Boolean).length;
+    return '<strong>' + r.bloques.length + '</strong> ' + (r.bloques.length === 1 ? 'orden' : 'órdenes') +
+      ' · ' + r.danos.length + ' daños · ' + inv + '/28 ítems · ' + r.fotos.length + ' fotos';
+  },
+  configuracion: () => {
+    const s = CONFIG_SECCIONES.find((x) => x.id === cfg().seccion) || {};
+    const n = (Modelo.base()[cfg().seccion] || []).length;
+    return '<strong>' + esc(s.nombre || '') + '</strong>' + (n ? ' · ' + n + ' registros' : '');
+  },
+  personal:    () => '<strong>' + Modelo.personal().filter((p) => p.activo).length + '</strong> trabajadores activos',
+  consolidado: () => '<strong>' + Modelo.torre().length + '</strong> órdenes vivas',
+  bodega:      () => '<strong>' + Modelo.metricas().repuestosPendientes + '</strong> piezas sin llegar',
+  documentos:  () => '<strong>' + Modelo.torre().length + '</strong> órdenes con documentos posibles',
+  entrega:     () => '<strong>' + Modelo.metricas().enTaller + '</strong> vehículos en condiciones de entrega'
+};
+
+function render() {
+  const m = MENU.find((x) => x.id === ui.vista);
+  document.getElementById('titulo').innerHTML =
+    (m ? ico(m.icono, 'g') : '') + esc(TITULOS[ui.vista] || '');
+  document.getElementById('bajada').textContent = '';
+
+  pintarShell();
+
+  const c = document.getElementById('contenido');
+  const fn = {
+    mitrabajo: vMiTrabajo, recepcion: vRecepcion, torre: vTorre, taller: vTaller, entrega: vEntrega,
+    repuestos: vRepuestos, detenidos: vDetenidos, presupuesto: vPresupuesto,
+    bodega: vBodega, documentos: vDocumentos, historico: vHistorico,
+    personal: vPersonal, consolidado: vConsolidado, configuracion: vConfiguracion
+  }[ui.vista];
+  c.innerHTML = fn ? fn() : vSinLevantar(ui.vista);
+  if (fn) {
+    const p = { mitrabajo: pMiTrabajo, recepcion: pRecepcion, torre: pTorre, taller: pTaller, entrega: pEntrega,
+      repuestos: pRepuestos, detenidos: pDetenidos, presupuesto: pPresupuesto, bodega: pBodega,
+      documentos: pDocumentos, historico: pHistorico, personal: pPersonal,
+      consolidado: pConsolidado, configuracion: pConfiguracion }[ui.vista];
+    if (p) p();
+  }
+
+  /* Las imágenes se resuelven ACÁ, después de cada render, y no en cada
+     pantalla por su cuenta.
+
+     El HTML trae `<img data-media="id">` sin `src`: los bytes viven en
+     IndexedDB y hay que ir a buscarlos. Eso lo hace `Media.pintar()`, que
+     estaba llamado a mano en cuatro pantallas —torre, recepción, ficha y la
+     zona de fotos— y en las demás no. Por eso en Documentos las fotos de la
+     recepción salían como recuadros rotos con el nombre del archivo: nadie las
+     había pintado. Puesto en el render vale para las catorce y para las que
+     vengan, que es lo que se pidió: al pasar de un panel a otro tiene que
+     verse bien siempre. */
+  Media.pintar(c);
+
+  const f = ESTADO_BARRA[ui.vista];
+  pintarBarraEstado(f ? f() : '');
+}
+
+/* --- Vistas en archivos aparte ---
+   Agenda del dia: ELIMINADA. El agendamiento automatico no existe en
+                   ninguna de las 39 pantallas del sistema actual.
+                   Ver DECISIONES-REPLICA_2026-08-12.md
+   Recepcion:      js/vistas/recepcion.js
+   Torre:          js/vistas/torre.js
+   Silueta:        js/vistas/silueta.js  (recepcion y ficha la comparten)
+   Configuracion:  js/vistas/configuracion.js                          */
+
+/* ───────────────── Vista · Taller ───────────────── */
+
+function vTaller() {
+  const enTaller = Modelo.torre().filter((o) => o.enTaller);
+  // En la tarjeta del tablero, la compañía es dato de negocio: quien no ve la
+  // ficha completa ve el vehículo, que es lo que le sirve para reconocerlo.
+  const conCompania = Modelo.puede('ficha.completa');
+  return `
+  <div class="panel" style="margin-top:20px">
+    <div class="cab"><div><h2>Vehículos por etapa</h2>
+      <div class="desc">${enTaller.length} en taller · ${Modelo.metricas().fueraDeTaller} más están fuera de taller y no ocupan box</div></div></div>
+    <div class="cuerpo">
+      <div class="tablero">
+        ${ETAPAS.map((e) => {
+          const ots = enTaller.filter((o) => o.etapa === e.codigo);
+          return '<div class="columna"><div class="titulo"><span><i class="punto" style="background:' + e.color + '"></i>' +
+            esc(e.nombre) + '</span><span class="n">' + ots.length + '</span></div>' +
+            (ots.length ? ots.map((o) =>
+              '<div class="tarjeta-ot' + (tieneRepuestoPendiente(o) ? ' detenida' : '') + '" data-ficha="' + esc(o.id) + '">' +
+              '<div class="ot">OT ' + o.numeroOT + '</div><div class="pat">' + esc(o.patente) + '</div>' +
+              '<div class="meta"><span>' + esc(conCompania ? o.compania
+                : ([o.marca, o.modelo].filter(Boolean).join(' ') || '—')) +
+              '</span><span>' + o.diasReparacion + ' d</span></div></div>').join('')
+              : '<div style="font-size:12px;color:var(--gris-2);padding:6px 2px">Sin vehículos</div>') +
+            '</div>';
+        }).join('')}
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="cab"><div><h2>Las nueve etapas</h2>
+      <div class="desc">Los nombres son los del sistema actual. Se editan en Configuración</div></div></div>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>#</th><th>Etapa</th><th>Aplica siempre</th><th>Bloquea si faltan repuestos</th><th>Vehículos</th></tr></thead>
+      <tbody>${ETAPAS.map((e) => '<tr><td class="num">' + e.orden + '</td>' +
+        '<td><i class="punto" style="background:' + e.color + '"></i>' + esc(e.nombre) + '</td>' +
+        '<td>' + (e.opcional ? '<span class="et gris">No siempre</span>' : '<span class="et verde">Sí</span>') + '</td>' +
+        '<td>' + (e.reqRepuestos ? '<span class="et ambar">Sí</span>' : '<span class="et gris">No</span>') + '</td>' +
+        '<td class="num">' + enTaller.filter((o) => o.etapa === e.codigo).length + '</td></tr>').join('')}</tbody>
+    </table></div>
+  </div>
+`;
+}
+
+function pTaller() {
+  document.querySelectorAll('[data-ficha]').forEach((f) => f.addEventListener('click', () => {
+    /* La tarjeta llevaba SIEMPRE a la torre, y hay cuentas que no tienen torre:
+       el operario apretaba y no pasaba nada visible. Sin `torre.ver` se abre
+       la orden en su propia ventana, que es a donde quería llegar igual. */
+    if (!Modelo.puede('torre.ver')) {
+      const o = Modelo.otPorId(f.dataset.ficha);
+      if (o) abrirFicha(o.numeroOT);
+      return;
+    }
+    ui.torre.abierta = f.dataset.ficha;
+    ui.torre.situacion = 'piso'; ui.torre.busqueda = ''; ui.torre.etapa = 'todas';
+    ui.torre.pagina = 1;
+    const idx = filtrarTorre().findIndex((o) => o.id === f.dataset.ficha);
+    if (idx >= 0) ui.torre.pagina = Math.floor(idx / ui.torre.porPagina) + 1;
+    ir('torre');
+  }));
+}
+
+/* ───────────────── Vista · Repuestos ───────────────── */
+
+/* El buscador de esta pantalla. Bodega busca por patente en su check-list y la
+   torre en la suya; acá no había ninguno, y buscar por patente es exactamente
+   lo que se hace cuando el cliente llama preguntando por su repuesto. Busca
+   por patente, número de OT y descripción de la pieza: son las tres formas en
+   que uno llega a un repuesto. */
+function repuestosEstado() {
+  ui.repuestos = ui.repuestos || { busqueda: '' };
+  return ui.repuestos;
+}
+
+function vRepuestos() {
+  const e = repuestosEstado();
+  const q = e.busqueda.trim().toLowerCase();
+  const todas = [];
+  Modelo.torre().forEach((o) => o.repuestos.filter((r) => r.estado !== 'recibido').forEach((r) => todas.push({ o, r })));
+
+  const filas = todas.filter(({ o, r }) => !q ||
+    [o.patente, o.numeroOT, r.descripcion].join(' ').toLowerCase().includes(q));
+  filas.sort((a, b) => (a.r.fechaPedido && b.r.fechaPedido ? a.r.fechaPedido - b.r.fechaPedido : 0));
+
+  const bloqueantes = filas.filter((f) => f.o.enTaller);
+
+  return `
+  <div class="indicadores">
+    <div class="ind aviso"><div class="rot">Repuestos sin llegar</div><div class="val">${filas.length}</div>
+      <div class="sub">En ${plural(new Set(filas.map((f) => f.o.id)).size, 'vehículo', 'vehículos')}</div></div>
+    <div class="ind alerta"><div class="rot">Ocupan box en el taller</div><div class="val">${bloqueantes.length}</div>
+      <div class="sub">El vehículo está adentro y no puede avanzar</div></div>
+    <div class="ind"><div class="rot">Sin pedir todavía</div><div class="val">${filas.filter((f) => f.r.estado === 'por_pedir').length}</div>
+      <div class="sub">Aprobados pero no cursados</div></div>
+    <div class="ind alerta"><div class="rot">No disponibles</div><div class="val">${filas.filter((f) => f.r.estado === 'no_disponible').length}</div>
+      <div class="sub">Requieren alternativa</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="cab"><div><h2>Repuestos pendientes</h2>
+      <div class="desc">Los operarios marcan la recepción acá. Ordenado por antigüedad del pedido.</div></div>
+      <div class="filtros"><input type="search" id="rep-q" placeholder="Patente, OT o repuesto"
+        value="${esc(e.busqueda)}"></div></div>
+    ${q && !filas.length ? `<div class="cuerpo"><div class="vacio">${ico('buscar')}
+      <div class="titulo">Ningún repuesto pendiente para «${esc(e.busqueda)}»</div>
+      <div class="texto">Puede que ya haya llegado: los recibidos salen de esta lista.
+      En la ficha de la orden están todos, con su fecha de llegada.</div></div></div>` : ''}
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>OT</th><th>Patente</th><th>Repuesto</th><th>Cant.</th><th>Paga</th><th>Pedido</th>
+        <th>Días</th><th>Estado</th><th>Vehículo</th><th>Observación</th><th></th></tr></thead>
+      <tbody>${filas.slice(0, 40).map(({ o, r }) => {
+        const dentro = o.enTaller;
+        const dp = r.fechaPedido ? nDias(r.fechaPedido) : null;
+        /* Se sacaron PROVEEDOR y EST. LLEGADA. No es un ajuste de estilo: los
+           dos campos están en `null` en el modelo porque el sistema actual no
+           los guarda —ver `vistaOT`—, así que eran dos columnas condenadas a
+           salir vacías siempre. Un repuesto recién generado desde el
+           presupuesto se veía a medias por eso.
+
+           En su lugar van CANTIDAD y PAGA, que sí vienen con el dato y son lo
+           que hay que saber: cuántas piezas y de quién es la plata. El
+           responsable de pago fue un punto explícito del levantamiento —"es
+           plata del taller"— y no se estaba mostrando en ninguna parte. */
+        return '<tr><td class="num">' + o.numeroOT + '</td>' +
+          '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
+          '<td>' + esc(r.descripcion) + '</td>' +
+          '<td class="num">' + (r.cantidad || 1) + '</td>' +
+          '<td>' + (r.responsablePago
+            ? '<span class="et ' + (r.pagaTaller ? 'roja' : 'gris') + '">' + esc(r.responsablePago) + '</span>'
+            : '<span class="et roja">sin declarar</span>') + '</td>' +
+          '<td class="num">' + (r.fechaPedido ? fCorta(r.fechaPedido) : '—') + '</td>' +
+          '<td class="num">' + (dp === null ? '—' : (dp > 20 ? '<span style="color:var(--rojo);font-weight:700">' + dp + '</span>' : dp)) + '</td>' +
+          '<td><span class="et ' + ESTADO_REPUESTO[r.estado].clase + '">' + esc(ESTADO_REPUESTO[r.estado].txt) + '</span></td>' +
+          '<td>' + (dentro ? '<span class="et roja">En taller</span>' : '<span class="et ambar">Fuera</span>') + '</td>' +
+          '<td>' + (r.observacion ? '<span class="et gris">' + esc(r.observacion) + '</span>' : '') + '</td>' +
+          '<td><button class="btn secundario" data-recibido="' + esc(r.id) + '">Marcar recibido</button></td></tr>';
+      }).join('')}</tbody>
+    </table></div>
+    <div class="pie-grid"><div class="info">Mostrando ${Math.min(40, filas.length)} de ${filas.length}${
+      q ? ' · filtrado de ' + todas.length : ' · los más antiguos primero'}.</div></div>
+  </div>`;
+}
+
+function pRepuestos() {
+  const e = repuestosEstado();
+  const q = document.getElementById('rep-q');
+  if (q) q.addEventListener('input', () => {
+    e.busqueda = q.value; render();
+    // El render rehace el input, así que hay que devolverle el foco y el cursor
+    // al final. Sin esto se escribe una letra y el teclado se pierde.
+    const n = document.getElementById('rep-q');
+    if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+  });
+
+  document.querySelectorAll('[data-recibido]').forEach((b) => b.addEventListener('click', () =>
+    ejecutar(() => Modelo.recibir_repuesto(b.dataset.recibido), 'Repuesto recibido en bodega.')));
+}
+
+/* ───────────────── Vista · Detenciones ───────────────── */
+
+/* "Ver cuáles" lleva a la Torre con ese mismo grupo filtrado. Una cifra de
+   espera sin poder llegar a los autos que la componen no sirve para actuar. */
+function pDetenidos() {
+  document.querySelectorAll('[data-espera-ver]').forEach((b) => b.addEventListener('click', () => {
+    ui.torre.situacion = b.dataset.esperaVer;
+    ui.torre.pagina = 1; ui.torre.abierta = null; ui.torre.busqueda = '';
+    ir('torre');
+  }));
+}
+
+function vDetenidos() {
+  const maxDias = Math.max(...Modelo.corteEspera().map((d) => d.diasAcumulados), 1);
+  const fuera = Modelo.torre().filter((o) => o.fueraDeTaller).sort((a, b) => b.diasFuera - a.diasFuera);
+
+  return `
+  <div class="indicadores" style="margin-top:20px">
+    <div class="ind aviso"><div class="rot">Fuera de taller</div><div class="val">${Modelo.metricas().fueraDeTaller}</div>
+      <div class="sub">Con el cliente, esperando repuestos</div></div>
+    <div class="ind"><div class="rot">Espera media afuera</div><div class="val">${Modelo.metricas().diasPromedioFuera}</div>
+      <div class="sub">días hasta que llega la pieza</div></div>
+    <div class="ind alerta"><div class="rot">En taller sobre la meta</div><div class="val">${Modelo.metricas().sobreMeta}</div>
+      <div class="sub">más de ${META_DIAS_REPARACION} días de reparación</div></div>
+    <div class="ind aviso"><div class="rot">Valor esperando repuesto</div>
+      <div class="val" style="font-size:22px">${fMonto(Modelo.metricas().valorEsperandoRepuesto)}</div>
+      <div class="sub">Presupuestado y sin poder cerrar</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="cab"><div><h2>¿Por qué no avanza?</h2>
+      <div class="desc">Los tres motivos, con los días acumulados <strong>al ${fFecha(HOY)}</strong>.
+        Cada día que pasa sin resolverse, estos números suben solos</div></div></div>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>Situación</th><th>Qué significa</th><th>Vehículos</th>
+        <th title="Suma de los días que lleva esperando cada vehículo de este grupo, contados hasta hoy">Días acumulados</th>
+        <th title="Días acumulados dividido por la cantidad de vehículos">Promedio</th>
+        <th style="width:150px">Peso</th><th>Valor detenido</th><th></th></tr></thead>
+      <tbody>${Modelo.corteEspera().map((d) =>
+        '<tr><td><strong>' + esc(d.grupo) + '</strong></td>' +
+        '<td style="color:var(--gris);font-size:12.5px;max-width:300px">' + esc(d.detalle) + '</td>' +
+        '<td class="num">' + d.vehiculos + '</td><td class="num"><strong>' + d.diasAcumulados + '</strong></td>' +
+        '<td class="num">' + (d.vehiculos ? Math.round(d.diasAcumulados / d.vehiculos) : 0) + ' d</td>' +
+        '<td><div class="barra-fondo"><div class="barra-relleno" style="width:' +
+        Math.round((d.diasAcumulados / maxDias) * 100) + '%"></div></div></td>' +
+        '<td class="num">' + fMonto(d.valor) + '</td>' +
+        '<td>' + (d.filtro
+          ? '<button class="btn secundario" data-espera-ver="' + esc(d.filtro) + '">Ver cuáles</button>'
+          : '') + '</td></tr>').join('')}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right">Total detenido al ${fFecha(HOY)}</td>
+        <td class="num"><strong>${Modelo.corteEspera().reduce((s, d) => s + d.diasAcumulados, 0)}</strong></td>
+        <td colspan="2"></td>
+        <td class="num"><strong>${fMonto(Modelo.corteEspera().reduce((s, d) => s + d.valor, 0))}</strong></td>
+        <td></td></tr></tfoot>
+    </table></div>
+  </div>
+
+  <div class="panel">
+    <div class="cab"><div><h2>Vehículos fuera de taller</h2>
+      <div class="desc">Están con el cliente. El que más lleva esperando va primero.</div></div></div>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Compañía</th>
+        <th>Fuera hace</th><th>Desde el ingreso</th><th>Repuestos por llegar</th><th>Valor</th></tr></thead>
+      <tbody>${fuera.map((o) => {
+        const pend = o.repuestos.filter((r) => r.estado !== 'recibido').length;
+        return '<tr><td class="num">' + o.numeroOT + '</td>' +
+          '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
+          '<td>' + esc(o.cliente) + '</td>' +
+          '<td><span class="et ' + (o.compania === 'SURA' ? 'azul' : 'violeta') + '">' + esc(o.compania) + '</span></td>' +
+          '<td class="num"><strong style="color:' + (o.diasFuera > 30 ? 'var(--rojo)' : 'var(--ambar)') + '">' +
+            o.diasFuera + ' días</strong></td>' +
+          '<td class="num">' + o.diasTotales + ' días</td>' +
+          '<td class="num">' + (pend || '<span style="color:var(--verde)">listo para volver</span>') + '</td>' +
+          '<td class="num">' + fMonto(totalOT(o)) + '</td></tr>';
+      }).join('')}</tbody>
+    </table></div>
+  </div>
+`;
+}
+
+/* Presupuesto -> js/vistas/presupuesto.js
+   Historico y Consolidado -> js/vistas/historico.js                    */
+
+/* ───────────────── Vista · paneles sin levantar ───────────────── */
+
+const SIN_LEVANTAR = {
+  personal: {
+    titulo: 'Personal',
+    texto: 'Este panel existe en el sistema actual, pero no se levantó qué hace. Sin eso, cualquier pantalla que dibujemos sería inventada.',
+    preguntas: ['¿Es asignación de operarios a órdenes de trabajo, o control de asistencia?',
+      '¿Mide productividad o rendimiento por operario?', '¿Se pagan tratos o comisiones por trabajo terminado?',
+      '¿Quién puede ver la información de cada persona?']
+  },
+  documentos: {
+    titulo: 'Documentos',
+    texto: 'Panel del sistema actual sin definición levantada.',
+    preguntas: ['¿Qué documentos se guardan: órdenes de reparación, actas de entrega, fotos, facturas?',
+      '¿Quién los sube y quién los puede ver?', '¿Alguno tiene vencimiento o requiere firma?',
+      '¿Se envían a la aseguradora desde el sistema?']
+  },
+  bodega: {
+    titulo: 'Bodega',
+    texto: 'Panel del sistema actual sin definición levantada, y el que más riesgo tiene para el presupuesto del proyecto.',
+    preguntas: ['El sitio de Automotora DyP vende repuestos (aceites, mecánica y motor, marcas Peugeot, Chevrolet, Opel y Toyota). ¿Bodega es inventario de venta, o solo repuestos de las órdenes de trabajo?',
+      'Si es inventario de venta, es un módulo completo aparte: stock, costos, precios, proveedores y salidas.',
+      '¿Hay control de stock mínimo, o se pide contra cada orden?',
+      '¿Se factura repuesto al cliente directo, además de a la aseguradora?'],
+    critico: true
+  },
+  consolidado: {
+    titulo: 'Consolidado',
+    texto: 'Panel del sistema actual sin definición levantada.',
+    preguntas: ['¿Es un reporte de gestión, un cierre de mes, o la liquidación contra las aseguradoras?',
+      '¿Qué cifras tiene que mostrar y a quién?', '¿Con qué periodicidad se revisa?',
+      '¿Se exporta a Excel o se imprime?']
+  },
+  configuracion: {
+    titulo: 'Configuración',
+    texto: 'Parcialmente cubierto por el diseño: catálogos de etapas, compañías, motivos e ítems de inventario, más roles y permisos. Falta el resto.',
+    preguntas: ['¿Qué más se configura hoy desde este panel?', '¿Quién tiene acceso a cambiarlo?',
+      '¿Hay parámetros de numeración de OT u OR que dependan de la aseguradora?']
+  }
+};
+
+function vSinLevantar(id) {
+  const p = SIN_LEVANTAR[id];
+  if (!p) return '<div class="vacio"><div class="titulo">Sin datos</div></div>';
+  return `
+  <div class="panel">
+    <div class="cuerpo">
+      <div class="vacio">
+        ${ico('candado')}
+        <div class="titulo">Módulo pendiente de construir</div>
+        <div class="texto">${esc(p.texto)}</div>
+        <ul class="lista">${p.preguntas.map((q) => '<li>' + esc(q) + '</li>').join('')}</ul>
+      </div>
+    </div>
+  </div>
+`;
+}
+
+/* ───────────────── Ventana de registro: una OT en su propia pestaña ─────────────────
+   Es como funciona el sistema actual: el dueño hace doble clic sobre la fila y se
+   abre una pestaña nueva con esa orden sola. La ventaja de fondo es que cada OT
+   pasa a tener su propia dirección, así que se puede enviar el enlace de una orden
+   a quien sea en vez de explicarle dónde buscarla. */
+
+// Se acepta tanto `?ot=24223` como `#ot=24223`. El ancla es la que se usa para
+// abrir, porque funciona igual sirviendo el sistema desde el servidor local que
+// abriendo el archivo directo con doble clic, y ahí la parte `?` se pierde.
+const PARAM_OT = (function () {
+  try {
+    const q = new URLSearchParams(window.location.search).get('ot');
+    if (q) return q;
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    // `#vista=bodega&ot=23330` NO es la ventana de una orden: es un módulo que
+    // se abre parado en esa orden. Solo `#ot=` sola abre la ficha aislada.
+    if (h.get('vista')) return null;
+    return h.get('ot');
+  } catch (e) { return null; }
+})();
+
+// Busca en TODAS las órdenes, no solo en la torre y el histórico: una orden
+// rechazada o dada por pérdida total también tiene que poder abrirse.
+const buscarOT = (n) => Modelo.otPorNumero(n);
+
+const urlFicha = (numero) => 'index.html#ot=' + encodeURIComponent(numero);
+
+function abrirFicha(numero) {
+  window.open(urlFicha(numero), '_blank', 'noopener');
+}
+
+function modoRegistro(numero) {
+  ui.registroOT = String(numero);
+  document.body.classList.add('ventana-registro');
+  pintarLogo();
+  document.getElementById('usr').innerHTML = ico('usuario') + esc(quienMira());
+
+  const o = buscarOT(numero);
+
+  if (!o) {
+    /* Dos motivos distintos para no poder abrirla, y hay que decir cuál es.
+       "No existe" cuando alguien pega mal el número; "no es tuya" cuando la
+       orden está pero el alcance del rol no la alcanza. Callarlo sería más
+       cómodo y dejaría al pintor pensando que el sistema se rompió. */
+    const ajena = Modelo.otFueraDeAlcance(numero);
+    document.title = (ajena ? 'OT fuera de tu alcance' : 'OT no encontrada') + ' · Automotora DyP';
+    document.getElementById('ruta').innerHTML = '<span>Torre de control</span>';
+    document.getElementById('titulo').innerHTML = ico(ajena ? 'candado' : 'alerta', 'g') +
+      (ajena ? 'Esta orden no está asignada a ti' : 'Orden de trabajo no encontrada');
+    document.getElementById('bajada').textContent = '';
+    document.getElementById('tabs').innerHTML = '';
+    document.getElementById('herramientas').innerHTML =
+      '<a class="hbtn primario" href="index.html">' + ico('torre') + 'Volver al sistema</a>';
+    document.getElementById('contenido').innerHTML =
+      '<div class="panel"><div class="cuerpo"><div class="vacio">' + ico(ajena ? 'candado' : 'buscar') +
+      (ajena
+        ? '<div class="titulo">La OT ' + esc(numero) + ' existe, pero no es tuya</div>' +
+          '<div class="texto">El rol <strong>' + esc(Modelo.rolActual().nombre || '—') +
+          '</strong> solo abre las órdenes que tiene tomadas o a su cargo. ' +
+          'Si tienes que trabajar este vehículo, el jefe de taller te asigna la etapa y aparece en <strong>Mi trabajo</strong>.</div>'
+        : '<div class="titulo">No existe la OT ' + esc(numero) + '</div>' +
+          '<div class="texto">Puede que el número esté mal escrito o que la orden no esté en esta demostración.</div>') +
+      '</div></div></div>';
+    document.getElementById('estado-barra').innerHTML =
+      '<span class="celda"><span class="luz"></span>Conectado</span><span class="celda">Automotora DyP</span>';
+    return;
+  }
+
+  document.title = 'OT ' + o.numeroOT + ' · ' + o.patente + ' · Automotora DyP';
+  document.getElementById('ruta').innerHTML =
+    '<span>Operación diaria</span>' + ico('chevron') + '<span>Torre de control</span>' +
+    ico('chevron') + '<span>OT ' + o.numeroOT + '</span>';
+  document.getElementById('titulo').innerHTML = ico('torre', 'g') + 'Ficha de la orden de trabajo';
+  document.getElementById('bajada').textContent =
+    'Toda la información de esta orden en una sola pantalla. Esta pestaña tiene su propia dirección: se puede compartir.';
+  // Las pestañas las pinta la ficha, que es la que sabe en cuál está.
+  document.getElementById('tabs').innerHTML = '';
+
+  // Nada de botones inertes: o llevan a alguna parte, o dicen en qué tanda se
+  // construyen. Un botón que no hace nada y no lo dice es peor que no tenerlo.
+  /* La barra se arma con lo que la cuenta puede hacer. Antes salían los diez
+     botones siempre, y el pintor apretaba "Acta de entrega" para descubrir que
+     no era para él. */
+  const puede = (c) => Modelo.puede(c);
+  const barra = ['<a class="hbtn primario" href="index.html">' + ico('torre') + 'Volver al sistema</a>',
+    '<span class="sep"></span>',
+    '<button class="hbtn" type="button" data-fichatab="etapas">' + ico('taller') + 'Etapas</button>'];
+  if (puede('ficha.completa')) barra.push('<button class="hbtn" type="button" data-fichatab="bitacora">' + ico('info') + 'Bitácora</button>');
+  if (puede('foto.ver')) barra.push('<button class="hbtn" type="button" data-fichatab="fotos">' + ico('camara') + 'Fotos</button>');
+  const impresos = [];
+  if (puede('ficha.completa')) impresos.push(['recepcion', 'Comprobante']);
+  // El impreso del presupuesto lleva cliente, RUT y valores: pide `montos`,
+  // no `ver`. Con `ver` se leen las líneas sin precio, en la ficha.
+  if (puede('presupuesto.montos')) impresos.push(['presupuesto', 'Presupuesto']);
+  if (puede('ficha.completa')) impresos.push(['ficha', 'Ficha completa'], ['entrega', 'Acta de entrega']);
+  if (impresos.length) {
+    barra.push('<span class="sep"></span>');
+    impresos.forEach(([k, rot]) => barra.push('<button class="hbtn" type="button" data-imprimir="' + k + '">' +
+      ico('imprimir') + rot + '</button>'));
+  }
+  barra.push('<span class="der">' + ico('base') + '<span style="font-size:11px;color:var(--gris)">Datos de demostración</span></span>');
+  document.getElementById('herramientas').innerHTML = barra.join('');
+
+  document.querySelectorAll('#herramientas [data-imprimir]').forEach((b) =>
+    b.addEventListener('click', () => abrirImpreso(b.dataset.imprimir, o.id)));
+
+  document.getElementById('contenido').innerHTML = vFichaOT(o);
+  pFichaOT(o);
+  pintarBarraEstado('OT <strong>' + o.numeroOT + '</strong> · ' + esc(o.patente));
+}
+
+/* La ficha de la orden, sus pestanas y sus acciones viven en
+   js/vistas/ficha.js, y las dos pantallas de etapas en js/vistas/etapas.js */
+
+/* ───────────────── Tema ───────────────── */
+
+function aplicarTema(tema) {
+  document.documentElement.dataset.tema = tema;
+  const b = document.getElementById('btn-tema');
+  if (b) b.textContent = tema === 'oscuro' ? 'Tema oscuro' : 'Tema claro';
+  try { localStorage.setItem('dyp-tema', tema); } catch (e) { /* file:// sin almacenamiento */ }
+  // Las marcas de daño se dibujan por JS: hay que repintarlas al cambiar de tema.
+  if (ui.vista === 'recepcion') pintarDanos();
+}
+
+function montarTema() {
+  const b = document.getElementById('btn-tema');
+  if (!b) return;
+  aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'oscuro');
+  b.addEventListener('click', () => {
+    aplicarTema(document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro');
+  });
+}
+
+/* ───────────────── Rol con el que se mira ─────────────────
+   Cambiar de rol acá es lo que hace demostrable el enmascaramiento: el mismo
+   dato desaparece o aparece según quién mire. Es el paso 26 del guion.
+
+   ⚠️ Y hay que repetirlo cada vez: esto está MODELADO. En el navegador el
+   dato igual llegó. La garantía es RLS en PostgreSQL. */
+
+/* El selector de arriba a la derecha es la SESIÓN: con quién se entra al
+   sistema. Cada persona trae su rol, y con el rol sus permisos y su menú.
+
+   Antes era un selector de roles sueltos. Con eso se podía mostrar que el
+   operario no ve los montos, pero no se podía mostrar lo importante: que el
+   pintor entra y ve sus autos. Un rol no tiene autos; una persona sí. */
+/* Arriba a la derecha va QUIÉN está usando el sistema, con su cargo, y la
+   salida. Antes acá había un desplegable que cambiaba de persona sin pedir
+   nada: con el ingreso ya construido eso sería una puerta trasera, así que
+   para cambiar de usuario hay que cerrar sesión y volver a entrar. En una
+   demostración cuesta dos clics, y a cambio lo que se muestra es cierto. */
+function montarRol() {
+  const cont = document.getElementById('usr');
+  if (!cont) return;
+  const yo = Modelo.personaActual();
+
+  if (!yo) {
+    cont.innerHTML = ico('usuario') + '<span style="font-size:11px;color:var(--gris)">Sin sesión</span>';
+    return;
+  }
+
+  cont.innerHTML = ico('usuario') +
+    '<span style="font-size:11px"><strong>' + esc((yo.nombres + ' ' + (yo.apellidos || '')).trim()) + '</strong>' +
+    '<span style="color:var(--gris)"> · ' + esc(yo.cargo || Modelo.rolActual().nombre) + '</span></span>' +
+    '<button type="button" id="btn-clave" style="margin-left:8px">Cambiar mi clave</button>' +
+    '<button type="button" id="btn-salir" style="margin-left:6px">Cerrar sesión</button>';
+
+  document.getElementById('btn-clave').addEventListener('click', dialogoMiClave);
+
+  document.getElementById('btn-salir').addEventListener('click', () => {
+    Modelo.cerrar_sesion();
+    document.querySelectorAll('.velo, .velo-impreso, .desplegable').forEach((v) => v.remove());
+    montarRol();
+    pintarMenu();
+    ir('torre');
+    pantallaIngreso();
+  });
+}
+
+/* Cambiar la propia clave, desde donde sea y con cualquier cuenta.
+
+   Estaba solo dentro de Personal, que pide `personal.ver` — un permiso que hoy
+   tienen dos de las seis cuentas. Y sin embargo el sistema le decía a todas, al
+   entrar con la clave inicial, «conviene cambiarla en Personal → su ficha»:
+   una instrucción imposible para la recepcionista, el pintor y bodega, que son
+   justamente los que más la necesitan.
+
+   La clave de uno no es un dato de administración: es de uno. Se pide la
+   actual, así que nadie cambia la de otro ni aunque deje la sesión abierta. */
+function dialogoMiClave() {
+  const yo = Modelo.personaActual();
+  if (!yo) return avisar({ ok: false, motivo: 'No hay ninguna sesión abierta.' });
+  cerrarDialogos();
+
+  const velo = document.createElement('div');
+  velo.className = 'velo';
+  velo.innerHTML =
+    '<div class="dialogo" style="max-width:420px">' +
+      '<div class="cab"><h2>' + ico('candado', 'g') + 'Cambiar mi clave</h2></div>' +
+      '<div class="cuerpo">' +
+        '<div class="dato"><span class="k">Cuenta</span><span class="v"><span class="cod">' +
+          esc(yo.usuario || '—') + '</span></span></div>' +
+        '<div class="dato"><span class="k">También sirve</span><span class="v">la ficha ' +
+          esc(yo.ficha) + '</span></div>' +
+        (yo.clave_inicial ? '<div class="nota" style="margin-top:9px">' + ico('alerta') +
+          '<span>Esta cuenta todavía tiene la <strong>clave inicial</strong>, que está a la vista ' +
+          'en la pantalla de ingreso.</span></div>' : '') +
+        '<div class="rejilla-campos" style="margin-top:11px">' +
+          '<div class="campo" style="grid-column:1/-1"><label>Clave actual</label>' +
+            '<input type="password" id="mc-actual" autocomplete="current-password"></div>' +
+          '<div class="campo" style="grid-column:1/-1"><label>Clave nueva</label>' +
+            '<input type="password" id="mc-nueva" autocomplete="new-password">' +
+            '<span class="ayuda">Mínimo 6 caracteres</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pie">' +
+        '<button class="btn secundario" id="mc-cancelar">Cancelar</button>' +
+        '<button class="btn" id="mc-guardar">Cambiar la clave</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(velo);
+
+  const cerrar = () => velo.remove();
+  velo.addEventListener('click', (ev) => { if (ev.target === velo) cerrar(); });
+  document.getElementById('mc-cancelar').addEventListener('click', cerrar);
+  const campo = document.getElementById('mc-actual');
+  campo.focus();
+
+  document.getElementById('mc-guardar').addEventListener('click', () => {
+    const r = Modelo.cambiar_clave(yo.id,
+      document.getElementById('mc-actual').value,
+      document.getElementById('mc-nueva').value);
+    if (!r.ok) return avisar(r);
+    cerrar();
+    montarRol();
+    avisar({ ok: true, motivo: '' }, 'Clave cambiada. La próxima vez entras con la nueva.');
+  });
+}
+
+/* Qué permiso pide cada módulo para aparecer en el menú. Un operario que ve
+   "Configuración" y al entrar no puede tocar nada aprende que el sistema le
+   miente; mejor no ofrecérselo. Lo que no está acá lo ve cualquiera. */
+const PERMISO_DE_MODULO = {
+  // `mitrabajo` es el único sin permiso, y a propósito: solo muestra lo de
+  // quien entró. Todo lo demás declara qué pide. Antes cinco pantallas no
+  // declaraban nada y las veía cualquiera — un operario entraba al histórico
+  // completo con los datos de todos los clientes.
+  recepcion:     'ot.crear',
+  torre:         'torre.ver',
+  taller:        'taller.ver',
+  entrega:       'entrega.registrar',
+  repuestos:     'repuesto.ver',
+  detenidos:     'espera.ver',
+  // El MÓDULO de presupuesto es para quien los arma. Ver las líneas dentro de
+  // una orden es otra cosa y la gobierna `presupuesto.ver`, que el operario sí
+  // tiene: ve qué hay que hacerle al auto, sin los valores.
+  presupuesto:   'presupuesto.crear',
+  bodega:        'repuesto.cargar',
+  documentos:    'documento.ver',
+  // El archivo de lo ya cerrado tiene permiso propio, aparte de la torre: es
+  // donde están los datos de todos los clientes que pasaron por el taller, y
+  // para trabajar el día de hoy no hace falta. Solo administración.
+  historico:     'historico.ver',
+  personal:      'personal.ver',
+  consolidado:   'consolidado.ver',
+  configuracion: 'configuracion'
+};
+
+/* ───────────────── Arranque ───────────────── */
+
+montarTema();
+montarBarraMenu();
+montarRol();
+
+/* Sin sesión no se ve nada. Se retoma la de antes —un F5 no puede echar a la
+   recepcionista con el formulario a medio llenar— y si no hay, se pide entrar. */
+const HAY_SESION = Modelo.retomar_sesion();
+
+if (!HAY_SESION) {
+  pintarMenu();
+  ir('torre');            // se dibuja el marco debajo, pero tapado
+  pantallaIngreso();
+} else if (PARAM_OT) {
+  // La dirección trae una OT: esta pestaña es la ventana de ese registro.
+  modoRegistro(PARAM_OT);
+} else {
+  pintarMenu();
+  // `#vista=bodega` abre el sistema directo en un módulo. Sirve para saltar
+  // desde la ficha, que vive en su propia pestaña.
+  const pedida = (function () {
+    try { return new URLSearchParams(window.location.hash.replace(/^#/, '')).get('vista'); }
+    catch (e) { return null; }
+  })();
+  ir(MENU.some((m) => m.id === pedida) ? pedida : 'torre');
+  pararEnLaOrden(leerDelAncla('ot'));
+}
+
+/* Un documento tiene dirección propia: `#impreso=presupuesto&ot=23330` lo abre
+   solo, sin pasar por la ficha. Sirve para mandarle el presupuesto a alguien
+   por enlace, y sirve para generar el PDF sin abrir el sistema a mano. */
+(function () {
+  const tipo = leerDelAncla('impreso');
+  const ot = leerDelAncla('ot');
+  if (!tipo || !ot || !IMPRESOS[tipo]) return;
+  const o = Modelo.otPorNumero(ot);
+  if (!o) return;
+  abrirImpreso(tipo, o.id);
+})();
+
+function leerDelAncla(clave) {
+  try { return new URLSearchParams(window.location.hash.replace(/^#/, '')).get(clave); }
+  catch (e) { return null; }
+}
+
+/* Deja el módulo recién abierto parado en una orden concreta. Es lo que hace
+   que desde la ficha se llegue de un clic a su presupuesto, su bodega o sus
+   documentos, en vez de aterrizar en el listado y volver a buscar la patente
+   que uno ya tenía en la mano. */
+function pararEnLaOrden(numeroOT) {
+  if (!numeroOT) return;
+  const o = Modelo.otPorNumero(numeroOT);
+  if (!o) return;
+  switch (ui.vista) {
+    case 'presupuesto':
+      presuEstado().otId = o.id; presuEstado().presupuestoId = null; break;
+    case 'bodega': {
+      const b = bodegaEstado();
+      b.pantalla = 'checklist'; b.patente = o.patente; b.otId = o.id; break;
+    }
+    case 'documentos':
+      documentosEstado().otId = o.id; break;
+    case 'entrega':
+      ui.entrega = ui.entrega || {}; ui.entrega.patente = o.patente; ui.entrega.otId = o.id; break;
+    default: return;
+  }
+  render();
+}
+
+/* Las pestañas se enteran unas de otras.
+
+   El sistema se usa con varias pestañas abiertas: la torre en una y dos o tres
+   órdenes en las suyas. Cada una carga su copia al abrirse, así que un
+   presupuesto cargado en la pestaña A no aparecía en la pestaña B hasta
+   recargar a mano — y desde adentro parecía que el sistema no guardaba.
+
+   El navegador avisa del cambio con el evento `storage`, que llega solo a las
+   OTRAS pestañas. Se relee y se repinta lo que esté a la vista. */
+window.addEventListener('storage', (ev) => {
+  /* La SESIÓN también viaja entre pestañas, y esto faltaba.
+
+     La sesión es una sola para todo el navegador, pero cada pestaña se queda
+     con la que tenía al abrirse. Si en la torre se cierra sesión y entra otra
+     persona, la pestaña de una orden abierta seguía mostrando —y dejando
+     operar— como la anterior hasta que alguien la recargara a mano.
+
+     Desde adentro eso se ve como "la información no viaja": se mira la misma
+     orden desde dos pestañas con dos cuentas distintas, y una no la ve porque
+     cada rol alcanza órdenes distintas. Y es peor que un problema de vista: la
+     pestaña vieja conserva los permisos de quien ya se fue. */
+  if (ev.key === Modelo.CLAVE_SESION) return realinearSesion();
+
+  if (ev.key !== Modelo.CLAVE) return;
+  if (!Modelo.recargarDeDisco()) return;
+  if (ui.registroOT) modoRegistro(ui.registroOT); else render();
+});
+
+function realinearSesion() {
+  if (Modelo.sesionAlDia()) return;
+
+  // Cerraron sesión en otra pestaña: acá también se cierra.
+  if (!Modelo.sesionGuardada()) {
+    Modelo.cerrar_sesion();
+    document.querySelectorAll('.velo, .velo-impreso, .desplegable').forEach((v) => v.remove());
+    if (ui.registroOT) {
+      // La ventana de una orden no tiene menú donde dibujar el ingreso: se
+      // dice qué pasó y se ofrece volver, que es lo único que corresponde.
+      document.getElementById('contenido').innerHTML =
+        '<div class="panel"><div class="cuerpo"><div class="vacio">' + ico('candado') +
+        '<div class="titulo">Se cerró la sesión</div>' +
+        '<div class="texto">Cerraron la sesión en otra pestaña. Vuelve al sistema para entrar de nuevo.</div>' +
+        '<a class="btn" href="index.html">Volver al sistema</a></div></div></div>';
+      return;
+    }
+    pintarMenu(); ir('mitrabajo'); pantallaIngreso();
+    return;
+  }
+
+  // Entró otra persona: esta pestaña se pone al día con ella.
+  if (!Modelo.retomar_sesion()) return;
+  const p = Modelo.personaActual();
+  if (ui.registroOT) { modoRegistro(ui.registroOT); } else {
+    pintarMenu();
+    // Si la cuenta nueva no alcanza el módulo donde estábamos, `ir` lo rechaza
+    // y explica; se parte de lo suyo, que es lo que corresponde al entrar.
+    ir(PERMISO_DE_MODULO[ui.vista] && !Modelo.puede(PERMISO_DE_MODULO[ui.vista]) ? 'mitrabajo' : ui.vista);
+  }
+  avisar({ ok: true, motivo: '' }, 'Esta pestaña se puso al día: ahora está la sesión de ' +
+    ((p || {}).cargo || Modelo.rolActual().nombre) + '.');
+}
+
+/* Las teclas que la barra de herramientas promete. Si el botón dice F2, F2
+   tiene que hacerlo: un atajo rotulado que no responde es lo mismo que un
+   botón muerto. F5 no se intercepta a propósito — recarga el navegador, y como
+   los datos viven en el equipo la pantalla vuelve igual. */
+document.addEventListener('keydown', (ev) => {
+  // Ctrl+Z deshace en cualquier pantalla, no solo donde está el botón: es la
+  // tecla que la gente aprieta por reflejo cuando se equivoca.
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
+    const escribiendo = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || '');
+    if (escribiendo) return;           // ahí Ctrl+Z es del campo de texto
+    ev.preventDefault();
+    return accionModulo('deshacer');
+  }
+  if (ev.key !== 'F2') return;
+  const m = MODULOS[ui.vista];
+  if (!m) return;
+  const conF2 = m.acciones.find((a) => a[3] === 'F2');
+  if (!conF2) return;
+  ev.preventDefault();
+  accionModulo(conF2[2]);
+});
+
+/* Pegar la dirección de una orden en una pestaña que ya está abierta tiene que
+   funcionar igual que abrirla desde la torre. Cambiar solo el ancla no recarga
+   la página, así que hay que escucharlo a mano — si no, el enlace compartido
+   parece roto para quien lo recibe. */
+window.addEventListener('hashchange', function () {
+  const leer = (clave) => {
+    try { return new URLSearchParams(window.location.hash.replace(/^#/, '')).get(clave); }
+    catch (e) { return null; }
+  };
+  const vista = leer('vista');
+  const ot = leer('ot');
+  if (ot && !vista) {
+    if (String(ot) !== String(ui.registroOT)) return modoRegistro(ot);
+    return;
+  }
+  if (vista && MENU.some((m) => m.id === vista)) {
+    // Se venía de una ventana de registro: hay que devolverle el menú lateral.
+    if (ui.registroOT) { ui.registroOT = null; document.body.classList.remove('ventana-registro'); pintarMenu(); }
+    ir(vista);
+    pararEnLaOrden(leer('ot'));
+  }
+});

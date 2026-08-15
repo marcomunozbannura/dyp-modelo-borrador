@@ -1,0 +1,221 @@
+/* Automotora DyP — Modelo Borrador · Arttmize SpA
+   ────────────────────────────────────────────────────────────────────────
+   DOCUMENTOS — guías de despacho, facturas y órdenes de compra.
+
+   Existe por una obligación regulatoria, no por comodidad: desde 2023 la
+   Superintendencia obliga a tener **un año de trazabilidad de los datos**, y
+   sin eso el taller no puede trabajar con las aseguradoras. Es condición del
+   negocio, no una preferencia.
+
+   Como en el original, **solo muestra vehículos que están en la torre**.
+
+   🔴 B-4 · Lo que se corrige: los botones `Enviar Fotografías por Email` y
+      `Enviar Documentos por Email` del sistema actual mandan a cualquier
+      dirección **sin registro visible del destinatario**. Acá todo envío
+      queda registrado —quién, a quién, qué y cuándo— y los destinatarios
+      salen de un catálogo, no de un campo libre.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function documentosEstado() {
+  ui.documentos = ui.documentos || { otId: null, busqueda: '' };
+  return ui.documentos;
+}
+
+function vDocumentos() {
+  const d = documentosEstado();
+  return d.otId ? documentosDeOT(Modelo.otPorId(d.otId)) : documentosListado();
+}
+
+function documentosListado() {
+  const d = documentosEstado();
+  const q = d.busqueda.trim().toLowerCase();
+  const filas = Modelo.torre().filter((o) => !q ||
+    [o.numeroOT, o.patente, o.cliente].join(' ').toLowerCase().includes(q));
+
+  return `
+  <div class="panel">
+    <div class="cab"><div><h2>${ico('documento', 'g')}Documentos</h2>
+      <div class="desc">Solo vehículos en la torre, igual que el original</div></div>
+      <div class="filtros"><input type="search" id="doc-q" placeholder="OT, patente o cliente" value="${esc(d.busqueda)}"></div></div>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>OT</th><th>Patente</th><th>Marca</th><th>Modelo</th><th>Ingreso</th>
+        <th>Estado</th><th>Etapa</th><th>Adjuntos</th><th></th></tr></thead>
+      <tbody>${filas.slice(0, 60).map((o) => {
+        const n = Modelo.mediaDe(o.id).filter((m) => m.momento === 'documento').length;
+        return '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+          '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
+          '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
+          '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+          '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +
+          '<td>' + esc(o.etapaNombre) + '</td>' +
+          '<td class="num">' + (n || '<span style="color:var(--gris-2)">—</span>') + '</td>' +
+          '<td><button class="btn secundario" data-doc-ot="' + esc(o.id) + '">Ver / subir</button></td></tr>';
+      }).join('')}</tbody>
+    </table></div>
+    <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
+  </div>`;
+}
+
+/* Los momentos en que el sistema guarda una imagen, con el nombre que el
+   taller les da. Sin esto, las fotos de la recepción quedaban invisibles acá:
+   la pantalla solo miraba las cargadas como "documento", así que uno subía
+   diez fotos al recibir el auto y en Documentos no aparecía ninguna. */
+const MOMENTOS_MEDIA = [
+  { id: 'ingreso',   rot: 'Fotografías de la recepción', pie: 'Cómo llegó el vehículo' },
+  { id: 'proceso',   rot: 'Fotografías del avance',      pie: 'Por etapa, cargadas al cerrar cada una' },
+  { id: 'salida',    rot: 'Fotografías de la entrega',   pie: 'Cómo salió el vehículo' },
+  { id: 'documento', rot: 'Documentos cargados',         pie: 'Guías, facturas y órdenes de compra' }
+];
+
+function documentosDeOT(o) {
+  const media = Modelo.mediaDe(o.id);
+  const docs = media.filter((m) => m.momento === 'documento');
+  /* Ver y cargar son permisos distintos. Bodega necesita subir la guía de
+     despacho que llega con la pieza; el jefe de taller mira el expediente y no
+     lo toca. Antes bastaba con `documento.ver` para las dos cosas. */
+  const cargaDocs = Modelo.puede('documento.cargar');
+  const destinatarios = Modelo.destinatarios();
+  const presus = o.presupuestos || [];
+  const pedidos = (o.repuestos || []).filter((r) => r.fechaSolicitud);
+
+  /* El expediente de la orden: todo lo que se emitió o se mandó, en un solo
+     lugar y en el orden en que ocurre. Es lo que se busca cuando la compañía
+     pregunta "¿qué le mandaron y cuándo?". */
+  const expediente = [
+    { rot: 'Comprobante de recepción', cuando: o.fechaIngreso, hay: true, imprimir: 'recepcion',
+      detalle: media.filter((m) => m.momento === 'ingreso').length + ' fotos de ingreso' },
+    { rot: 'Presupuesto / OR', cuando: presus.length ? presus[presus.length - 1].enviadoAt : null,
+      hay: !!presus.length, imprimir: 'presupuesto',
+      detalle: presus.length
+        ? presus.map((p) => p.numeroOR + ' · v' + p.version + ' · ' + p.estado).join(' — ')
+        : 'todavía no se genera' },
+    { rot: 'Pedido a bodega', cuando: pedidos.length ? pedidos[0].fechaSolicitud : null,
+      hay: !!pedidos.length, vista: 'bodega',
+      detalle: pedidos.length
+        ? plural(pedidos.length, 'repuesto pedido', 'repuestos pedidos') + ' · ' +
+          pedidos.filter((r) => r.fechaBodega).length + ' ya llegaron'
+        : 'no se ha pedido nada' },
+    { rot: 'Ficha completa de la orden', cuando: null, hay: true, imprimir: 'ficha',
+      detalle: 'Historial, etapas, repuestos y fotos' },
+    { rot: 'Acta de entrega', cuando: o.fechaEntrega, hay: !!o.fechaEntrega, imprimir: 'entrega',
+      detalle: o.fechaEntrega ? 'Entregado' : 'la orden todavía no se entrega' }
+  ];
+
+  const bloqueFotos = (m) => {
+    const fotos = media.filter((x) => x.momento === m.id);
+    if (!fotos.length) return '';
+    return '<fieldset class="bloque" style="margin-top:11px"><legend>' + esc(m.rot) +
+      ' <span class="et gris">' + fotos.length + '</span></legend>' +
+      '<div class="fotos-rejilla">' + fotos.map((f) =>
+        '<figure class="foto-tarjeta"><img data-media="' + esc(f.id) + '" alt="' + esc(f.nombre) + '">' +
+        '<figcaption class="pie-foto"><b>' + esc(f.nombre) + '</b>' +
+        '<span class="cod">' + fCorta(f.creado_at) + ' · ' + Media.fPeso(f.bytes) + '</span>' +
+        (f.etapa_nombre ? '<br>' + esc(f.etapa_nombre) : '') + '</figcaption></figure>').join('') +
+      '</div><div class="pie-nota">' + esc(m.pie) + '</div></fieldset>';
+  };
+
+  return `
+  <div class="panel">
+    <div class="cab"><div><h2>${ico('documento', 'g')}Expediente de la orden N° ${o.numeroOT}</h2>
+      <div class="desc">${esc(o.patente)} · ${esc(o.cliente)} · ${esc(o.compania)}</div></div>
+      <button class="btn secundario" id="doc-volver">Volver</button></div>
+    <div class="cuerpo">
+      <div class="grid-envoltorio"><table class="grid">
+        <thead><tr><th style="width:26%">Documento</th><th>Qué tiene</th><th>Fecha</th><th>Acción</th></tr></thead>
+        <tbody>${expediente.map((e) =>
+          '<tr class="fila"><td><strong>' + esc(e.rot) + '</strong></td>' +
+          '<td>' + esc(e.detalle) + '</td>' +
+          '<td class="num">' + (e.cuando ? fCorta(e.cuando) : '—') + '</td>' +
+          '<td>' + (!e.hay ? '<span class="et gris">todavía no</span>'
+            : e.imprimir
+              ? '<button class="btn secundario" data-doc-imprimir="' + esc(e.imprimir) + '">Ver documento</button>'
+              : '<button class="btn secundario" data-doc-ir="' + esc(e.vista) + '">Ir a bodega</button>') +
+          '</td></tr>').join('')}</tbody>
+      </table></div>
+
+      ${MOMENTOS_MEDIA.map(bloqueFotos).join('')}
+
+      ${media.length ? '' : '<div class="pie-nota" style="margin-top:11px">' +
+        'Esta orden todavía no tiene ninguna imagen cargada.</div>'}
+
+      ${cargaDocs ? `<fieldset class="bloque" style="margin-top:11px"><legend>Cargar documentos</legend>
+        ${zonaFotos({ id: 'docfoto', fotos: [], titulo: 'Soltar guías, facturas u órdenes de compra' })}
+      </fieldset>` : ''}
+
+      ${docs.length ? `
+      <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
+        <thead><tr><th>Archivo</th><th>Fecha</th><th>Peso</th>${cargaDocs ? '<th>Acción</th>' : ''}</tr></thead>
+        <tbody>${docs.map((m) =>
+          '<tr><td>' + esc(m.nombre) + '</td>' +
+          '<td class="num">' + fCorta(m.creado_at) + '</td>' +
+          '<td class="num">' + Media.fPeso(m.bytes) + '</td>' +
+          (cargaDocs ? '<td><button class="btn secundario" data-doc-quitar="' + esc(m.id) + '">Quitar</button></td>' : '') +
+          '</tr>').join('')}
+        </tbody></table></div>` : ''}
+
+      <fieldset class="bloque" style="margin-top:11px"><legend>Enviar por correo</legend>
+        <div class="rejilla-campos">
+          <div class="campo"><label>Para</label>
+            <select id="doc-dest">${destinatarios.map((p) => '<option value="' + esc(p.id) + '">' +
+              esc(p.nombre) + '</option>').join('')}</select>
+            <span class="ayuda">Catálogo cerrado, no un campo libre</span></div>
+          <div class="campo"><label>&nbsp;</label><button class="btn" id="doc-enviar">Enviar y registrar</button></div>
+        </div>
+      </fieldset>
+    </div>
+  </div>`;
+}
+
+function pDocumentos() {
+  const d = documentosEstado();
+
+  const q = document.getElementById('doc-q');
+  if (q) q.addEventListener('input', () => {
+    d.busqueda = q.value; render();
+    const n = document.getElementById('doc-q');
+    n.focus(); n.setSelectionRange(n.value.length, n.value.length);
+  });
+
+  // Los documentos del expediente se abren acá mismo, sin ir a la ficha.
+  document.querySelectorAll('[data-doc-imprimir]').forEach((b) => b.addEventListener('click', () =>
+    abrirImpreso(b.dataset.docImprimir, d.otId)));
+
+  document.querySelectorAll('[data-doc-ir]').forEach((b) => b.addEventListener('click', () => {
+    const o = Modelo.otPorId(d.otId);
+    const bod = bodegaEstado();
+    bod.pantalla = 'checklist'; bod.patente = o.patente; bod.otId = o.id;
+    ir('bodega');
+  }));
+
+  document.querySelectorAll('[data-doc-ot]').forEach((b) => b.addEventListener('click', () => {
+    d.otId = b.dataset.docOt; render();
+  }));
+  const volver = document.getElementById('doc-volver');
+  if (volver) volver.addEventListener('click', () => { d.otId = null; render(); });
+
+  if (d.otId && Modelo.puede('documento.cargar')) montarZonaFotos({
+    id: 'docfoto', momento: 'documento', ot_id: d.otId,
+    alSubir: (fichas) => {
+      Modelo.adjuntar_media(null, [d.otId],
+        fichas.map((x) => Object.assign(x, { ot_id: d.otId, momento: 'documento' })));
+      render();
+    }
+  });
+
+  document.querySelectorAll('[data-doc-quitar]').forEach((b) => b.addEventListener('click', () => {
+    Media.eliminar(b.dataset.docQuitar).catch(() => null)
+      .then(() => ejecutar(() => Modelo.eliminar_media(b.dataset.docQuitar), 'Documento quitado.'));
+  }));
+
+  const enviar = document.getElementById('doc-enviar');
+  if (enviar) enviar.addEventListener('click', () => {
+    const dest = document.getElementById('doc-dest').value;
+    const n = Modelo.mediaDe(d.otId).filter((m) => m.momento === 'documento').length;
+    if (!n) return avisar({ ok: false, motivo: 'No hay documentos que enviar.' });
+    // El envío queda como mensaje de bitácora: quién, a quién, qué y cuándo.
+    ejecutar(() => Modelo.escribir_bitacora(d.otId, {
+      asunto_id: 'as-1', destinatario_id: dest,
+      mensaje: 'Envío de ' + plural(n, 'documento', 'documentos') + ' por correo.'
+    }), 'Envío registrado en la bitácora. En producción, acá sale el correo.');
+  });
+}

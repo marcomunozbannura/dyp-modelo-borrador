@@ -543,6 +543,86 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 24 · Toda operación que escribe deja su hecho ───────────────────
+         La razón de esta prueba es que el agujero anterior era invisible: 15
+         de las 41 operaciones registraban, y no había forma de notar cuáles
+         faltaban hasta que el expediente aparecía incompleto — justo cuando
+         se necesita para responderle a una compañía.
+
+         Se prueban tres operaciones que ANTES no dejaban ningún rastro, y se
+         comprueba además que el hecho queda con el autor correcto y que lo
+         rechazado no ensucia el registro. */
+      (function () {
+        const o = Modelo.torre().find((x) => !x.fueraDeTaller) || Modelo.torre()[0];
+        const antes = Modelo.expedienteDe(o.numeroOT).hechos.length;
+
+        /* Con sesión abierta, que es la única forma en que el sistema se usa:
+           la pantalla de ingreso no deja entrar sin ella. Sin fijarla, esta
+           misma prueba destapó que el autor quedaba disparejo —el evento caía
+           al usuario administrador por defecto y la marca del repuesto quedaba
+           nula—, que es exactamente lo que no puede pasar en un registro que
+           sirve para responderle a una compañía.
+
+           Va con una cuenta de rol total: las dos operaciones piden permisos
+           distintos —la fecha es del jefe de taller y el repuesto es de
+           bodega— y acá se está probando el registro, no el reparto. */
+        const totales = Modelo.roles().filter((x) => x.total === true).map((x) => x.id);
+        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') ||
+                       db.persona.find((p) => totales.indexOf(p.rol) >= 0) || {}).id;
+        Modelo.fijar_persona_actual(quien);
+
+        const fecha = Modelo.fijar_fecha_compromiso(o.id, new Date(2026, 8, 30));
+        const rep = Modelo.cargar_repuesto(o.id, { descripcion: 'Repuesto de prueba', cantidad: 1 });
+        // Rechazada por una regla: no cambió nada, así que no puede dejar hecho.
+        const mala = Modelo.escribir_bitacora(o.id, { asunto_id: 'no-existe', mensaje: 'x' });
+
+        const ex = Modelo.expedienteDe(o.numeroOT);
+        const nuevos = ex.hechos.slice(antes);
+        const conAutor = nuevos.filter((h) => h.quien).length;
+
+        push({
+          nombre: '🔴 Toda operación que escribe deja su hecho, con autor',
+          intento: 'En la OT ' + o.numeroOT + ': fijar la fecha de entrega y cargar un repuesto ' +
+                   '—dos operaciones que antes no registraban nada— más una bitácora que la regla rechaza',
+          esperado: 'Dos hechos nuevos, los dos con autor. La rechazada no deja ninguno',
+          paso: fecha.ok && rep.ok && !mala.ok && nuevos.length === 2 && conAutor === 2,
+          detalle: 'Hechos: ' + antes + ' → ' + ex.hechos.length + ' (' + nuevos.length + ' nuevos, ' +
+                   conAutor + ' con autor) · ' +
+                   nuevos.map((h) => h.titulo + ' por ' + (h.quien || 'SIN AUTOR')).join(' · ') +
+                   ' · Rechazada: ' + (mala.ok ? 'PASÓ, no debería' : 'rebotó sin registrar')
+        });
+      })();
+
+      /* ── 25 · El registro no se edita ────────────────────────────────────
+         "Un registro que se puede corregir después no sirve para lo que él lo
+         quiere usar." Se comprueba en la superficie del motor: si mañana
+         alguien agrega una operación que toque la tabla `evento`, esta prueba
+         se cae y hay que discutirlo, que es justamente lo que se busca. */
+      (function () {
+        const escriben = Object.keys(Modelo).filter((k) =>
+          /evento/i.test(k) && /^(editar|eliminar|borrar|actualizar|guardar|fijar|corregir)/.test(k));
+
+        const o = Modelo.torre()[0];
+        const ex = Modelo.expedienteDe(o.numeroOT);
+        // El expediente entrega copias: tocar lo que devuelve no altera la base.
+        const original = ex.hechos.length ? ex.hechos[0].titulo : '';
+        if (ex.hechos.length) ex.hechos[0].titulo = 'ADULTERADO';
+        const relectura = Modelo.expedienteDe(o.numeroOT);
+        const aguanta = !relectura.hechos.length || relectura.hechos[0].titulo === original;
+
+        push({
+          nombre: '🔴 El registro de hechos no se puede editar',
+          intento: 'Buscar en el motor alguna operación que edite o borre un hecho, y ' +
+                   'modificar a mano lo que devuelve el expediente',
+          esperado: 'Ninguna operación de escritura sobre el registro, y la base intacta',
+          paso: escriben.length === 0 && aguanta,
+          detalle: escriben.length
+            ? 'APARECIERON operaciones que escriben el registro: ' + escriben.join(', ')
+            : 'Ninguna operación edita ni borra hechos · el expediente releído sigue diciendo «' +
+              original + '»'
+        });
+      })();
+
       return res;
     });
   }

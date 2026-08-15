@@ -54,7 +54,7 @@ function vEntrega() {
         <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Estado</th><th>Etapa</th>
           <th>Días</th><th>Repuestos</th><th></th></tr></thead>
         <tbody>${coincidencias.map((x) =>
-          '<tr class="fila' + (o && o.id === x.id ? ' abierta' : '') + '">' +
+          '<tr class="fila' + (o && o.id === x.id ? ' abierta' : '') + '" data-ot="' + esc(x.numeroOT) + '">' +
           '<td class="num"><strong>' + x.numeroOT + '</strong></td>' +
           '<td><span class="patente">' + esc(x.patente) + '</span></td>' +
           '<td>' + esc(x.cliente) + '</td>' +
@@ -123,6 +123,8 @@ function vEntregaFicha(o) {
 }
 
 function pEntrega() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   const e = entregaEstado();
   const campo = document.getElementById('ent-patente');
   const buscar = () => { e.patente = campo.value.trim().toUpperCase(); e.otId = null; render(); };

@@ -25,9 +25,60 @@
      cuatro vocabularios distintos para lo mismo.
    ──────────────────────────────────────────────────────────────────────── */
 
+/* ───────────────── Orden de la torre ─────────────────
+   El cliente pidió el 15-08-2026 que la torre esté SIEMPRE ordenada por
+   correlativo. Antes el orden era fijo por fecha de ingreso descendente y no
+   se podía cambiar; ahora el correlativo es el que manda al entrar y las demás
+   columnas quedan disponibles para reordenar.
+
+   Cada columna declara de dónde sale su valor. Las que no tienen sentido
+   ordenar —la lupa, la alerta— simplemente no entran a este mapa y su
+   encabezado no se vuelve clicable. */
+const ORDEN_TORRE = {
+  ot:         (o) => Number(o.numeroOT) || 0,
+  or:         (o) => (o.presupuestos[0] || {}).numeroOR || '',
+  patente:    (o) => o.patente || '',
+  siniestro:  (o) => o.siniestro || '',
+  cliente:    (o) => o.cliente || '',
+  compania:   (o) => (o.compania === '—' ? '' : o.compania || ''),
+  marca:      (o) => o.marca || '',
+  modelo:     (o) => o.modelo || '',
+  color:      (o) => o.color || '',
+  ingreso:    (o) => +o.fechaIngreso || 0,
+  tipo:       (o) => o.origenIngresoNombre || '',
+  dias:       (o) => (o.fueraDeTaller ? 0 : Number(o.diasKpi) || 0),
+  diastot:    (o) => Number(o.diasTotales) || 0,
+  estado:     (o) => o.estadoNombre || '',
+  etapa:      (o) => (o.etapa ? (etapaPorCodigo(o.etapa) || {}).nombre || '' : ''),
+  encargado:  (o) => o.asignado || '',
+  entrega:    (o) => +o.fechaCompromiso || 0
+};
+
+/* Compara sin importar si el valor es número, fecha o texto. El texto va con
+   localeCompare en es-CL para que las tildes y la ñ queden donde corresponde:
+   con un `<` a secas, "Ñuñoa" cae después de "Zapata". */
+function compararOrden(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'es-CL', { numeric: true, sensitivity: 'base' });
+}
+
+/* Encabezado clicable. La flecha usa las mismas entidades que el expandible de
+   la fila (&#9656;), no un emoji. La columna activa se marca en el propio
+   encabezado: si no se ve cuál manda, el usuario no sabe qué está mirando. */
+function thOrden(clave, rotulo, titulo) {
+  const f = ui.torre;
+  const activa = f.orden === clave;
+  const flecha = activa ? '<span class="flechita">' + (f.desc ? '&#9662;' : '&#9652;') + '</span>' : '';
+  const ayuda = (titulo ? titulo + ' · ' : '') +
+    (activa ? 'Ordenando por acá. Clic para invertir' : 'Clic para ordenar por esta columna');
+  return '<th class="orden' + (activa ? ' activa' : '') + '" data-orden="' + esc(clave) +
+    '" title="' + esc(ayuda) + '">' + esc(rotulo) + flecha + '</th>';
+}
+
 function filtrarTorre() {
   const f = ui.torre;
   const q = f.busqueda.trim().toLowerCase();
+  const sacar = ORDEN_TORRE[f.orden] || ORDEN_TORRE.ot;
   return Modelo.torre().filter((o) => {
     if (f.compania !== 'todas' && o.compania !== f.compania) return false;
     if (f.etapa !== 'todas' && o.etapa !== f.etapa) return false;
@@ -42,7 +93,14 @@ function filtrarTorre() {
       if (!heno.includes(q)) return false;
     }
     return true;
-  }).sort((a, b) => b.fechaIngreso - a.fechaIngreso);
+  }).sort((a, b) => {
+    const c = compararOrden(sacar(a), sacar(b));
+    // Empate: se desempata por correlativo, para que el orden no baile entre
+    // repintados. Sin esto, dos órdenes con el mismo estado cambian de lugar
+    // cada vez que se refresca la pantalla.
+    if (c === 0) return Number(b.numeroOT) - Number(a.numeroOT);
+    return f.desc ? -c : c;
+  });
 }
 
 function vTorre() {
@@ -94,11 +152,14 @@ function vTorre() {
       <table class="grid">
         <thead><tr>
           <th style="width:26px"></th>
-          <th>OT</th><th>OR</th><th>Patente</th><th>N° Siniestro</th><th>Cliente</th>
-          <th>Compañia</th><th>Marca</th><th>Modelo</th><th>Color</th><th>Ingreso</th><th>Tipo</th>
-          <th title="El reloj elegido en Configuración: ${esc(kpiNombre)}. En el original hay uno solo y se reinicia al regrabar el estado.">Días</th>
-          <th title="Días desde el ingreso. Nunca se reinicia.">Días tot.</th>
-          <th>Estado</th><th>Etapa</th><th>Encargado</th><th>Fecha Entrega</th>
+          ${thOrden('ot', 'OT')}${thOrden('or', 'OR')}${thOrden('patente', 'Patente')}
+          ${thOrden('siniestro', 'N° Siniestro')}${thOrden('cliente', 'Cliente')}
+          ${thOrden('compania', 'Compañia')}${thOrden('marca', 'Marca')}${thOrden('modelo', 'Modelo')}
+          ${thOrden('color', 'Color')}${thOrden('ingreso', 'Ingreso')}${thOrden('tipo', 'Tipo')}
+          ${thOrden('dias', 'Días', 'El reloj elegido en Configuración: ' + kpiNombre + '. En el original hay uno solo y se reinicia al regrabar el estado.')}
+          ${thOrden('diastot', 'Días tot.', 'Días desde el ingreso. Nunca se reinicia.')}
+          ${thOrden('estado', 'Estado')}${thOrden('etapa', 'Etapa')}${thOrden('encargado', 'Encargado')}
+          ${thOrden('entrega', 'Fecha Entrega')}
           <th title="La inicial del asunto de cada mensaje de bitácora">Alerta</th>
         </tr></thead>
         <tbody>${pagina.length ? pagina.map(filaTorre).join('') :
@@ -144,8 +205,13 @@ function filaTorre(o) {
   let html = '<tr class="fila' + (abierta ? ' abierta' : '') + '" data-ot="' + esc(o.id) + '">' +
     '<td><span class="flecha">&#9656;</span></td>' +
     '<td class="num"><strong>' + o.numeroOT + '</strong></td>' +
-    '<td class="num" title="' + esc(ors.join(' · ')) + '">' + esc(ors[0] || '—') +
-      (ors.length > 1 ? ' <span class="et gris">+' + (ors.length - 1) + '</span>' : '') + '</td>' +
+    // El mouse sobre la OR muestra el detalle de ese presupuesto sin abrir la
+    // orden: es lo que pidió el cliente el 15-08-2026.
+    '<td class="num">' + (ors[0]
+      ? '<span data-or="' + esc(ors[0]) + '">' + esc(ors[0]) + '</span>'
+      : '—') +
+      (ors.length > 1 ? ' <span class="et gris" title="' + esc(ors.join(' · ')) +
+        '">+' + (ors.length - 1) + '</span>' : '') + '</td>' +
     '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
     '<td class="num">' + (o.siniestro ? esc(o.siniestro) : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
     '<td>' + esc(o.cliente) +
@@ -275,37 +341,39 @@ function pTorre() {
   document.querySelectorAll('[data-sit]').forEach((b) => b.addEventListener('click', () => {
     ui.torre.situacion = b.dataset.sit; ui.torre.pagina = 1; ui.torre.abierta = null; render();
   }));
+
+  /* Reordenar por columna. Clic en otra columna: se ordena por ella, y arranca
+     descendente porque en esta pantalla lo que interesa es lo más reciente y lo
+     más alto. Clic en la que ya está activa: invierte. */
+  document.querySelectorAll('[data-orden]').forEach((th) => th.addEventListener('click', () => {
+    const clave = th.dataset.orden;
+    if (ui.torre.orden === clave) ui.torre.desc = !ui.torre.desc;
+    else { ui.torre.orden = clave; ui.torre.desc = true; }
+    ui.torre.pagina = 1; ui.torre.abierta = null;
+    render();
+  }));
   /* Un clic despliega la fila; DOBLE clic abre la OT en una pestaña nueva, que
-     es como se trabaja hoy.
+     es como se trabaja hoy. El mecanismo —y la trampa del redibujo que lo tenía
+     roto— vive en `conDobleClic`, en app.js: desde el 15-08-2026 lo usan todos
+     los paneles, así que no puede estar escrito acá.
 
-     El detalle que lo tenía roto: el primer clic vuelve a dibujar la tabla, y
-     al reemplazarse la fila el navegador ya no puede emitir `dblclick` — los
-     dos clics caen sobre elementos distintos. Por eso el doble clic se cuenta
-     acá, con la hora del clic anterior, y el despliegue no pierde velocidad.
-     El `dblclick` nativo queda igual por si el redibujo no alcanza a ocurrir. */
-  const VENTANA_DOBLE_CLIC = 450;
-  ui.torre.ultimoClic = ui.torre.ultimoClic || { ot: null, t: 0 };
-
+     Ojo: en esta pantalla `data-ot` trae el ID de la orden, no su número,
+     porque el expandible se abre por ID. Por eso no sirve `dobleClicPorFilas`
+     y se resuelve el número antes de abrir. */
   const abrirPorFila = (tr) => {
     const o = Modelo.torre().find((x) => x.id === tr.dataset.ot);
-    if (o) { abrirFicha(o.numeroOT); return true; }
-    return false;
+    if (!o) return false;
+    abrirFicha(o.numeroOT);
+    return true;
   };
 
   document.querySelectorAll('tr.fila').forEach((tr) => {
-    tr.addEventListener('click', () => {
-      const ahora = new Date().getTime();
-      const previo = ui.torre.ultimoClic;
-      if (previo.ot === tr.dataset.ot && ahora - previo.t < VENTANA_DOBLE_CLIC) {
-        ui.torre.ultimoClic = { ot: null, t: 0 };
-        if (abrirPorFila(tr)) return;
-      }
-      ui.torre.ultimoClic = { ot: tr.dataset.ot, t: ahora };
-      ui.torre.abierta = ui.torre.abierta === tr.dataset.ot ? null : tr.dataset.ot;
-      render();
-    });
-    tr.addEventListener('dblclick', (ev) => { ev.preventDefault(); abrirPorFila(tr); });
-    tr.title = 'Un clic despliega la orden · doble clic la abre en una pestaña nueva';
+    conDobleClic(tr, 'torre-' + tr.dataset.ot,
+      () => abrirPorFila(tr),
+      () => {
+        ui.torre.abierta = ui.torre.abierta === tr.dataset.ot ? null : tr.dataset.ot;
+        render();
+      });
   });
   document.querySelectorAll('[data-ver]').forEach((b) => b.addEventListener('click', (ev) => {
     ev.stopPropagation(); ir(b.dataset.ver);

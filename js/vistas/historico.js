@@ -116,7 +116,7 @@ function vHistorico() {
       </tr></thead>
       <tbody>${pagina.length ? pagina.map((o) => {
         const z = plataDe(o);
-        return '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td class="num">' + o.repuestos.length + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.cliente) + '</td>' +
@@ -177,13 +177,10 @@ function pHistorico() {
   if (ant) ant.addEventListener('click', () => { h.pagina--; render(); });
   if (sig) sig.addEventListener('click', () => { h.pagina++; render(); });
 
-  document.querySelectorAll('tbody tr.fila').forEach((tr, i) => {
-    tr.addEventListener('dblclick', () => {
-      const n = tr.querySelector('td strong');
-      if (n) abrirFicha(n.textContent.trim());
-    });
-    tr.title = 'Doble clic para abrir la orden';
-  });
+  // Antes esto leía el número desde el texto de la celda. Salía del DOM y no
+  // del modelo: bastaba mover una columna para romperlo. Ahora va por `data-ot`
+  // y usa el mismo mecanismo que el resto de los paneles.
+  dobleClicPorFilas();
 }
 
 /* ── Consolidado ───────────────────────────────────────────────────────── */
@@ -221,7 +218,7 @@ function vConsolidado() {
         <th>Venta</th><th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const z = plataDe(o);
-        return '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td class="num">' + esc(o.presupuestos.length ? o.presupuestos[0].numeroOR : '—') + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td class="num">' + esc(o.siniestro || '—') + '</td>' +
@@ -248,10 +245,5 @@ function pConsolidado() {
     const [rot, tanda, nota] = b.dataset.pendiente.split('|');
     avisar({ ok: false, motivo: '"' + rot + '" se construye en la tanda ' + tanda + (nota ? ' — ' + nota : '') + '.' });
   }));
-  document.querySelectorAll('tbody tr.fila').forEach((tr) => {
-    tr.addEventListener('dblclick', () => {
-      const n = tr.querySelector('td strong');
-      if (n) abrirFicha(n.textContent.trim());
-    });
-  });
+  dobleClicPorFilas();
 }

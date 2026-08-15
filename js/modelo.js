@@ -103,7 +103,7 @@ const Modelo = (function () {
     }
   }
 
-  function sembrar() { db = Semilla.generar(); modificado = false; version++; limpiarMemo(); guardar(); }
+  function sembrar() { db = Semilla.generar(); modificado = false; version++; limpiarMemo(); alinearSeqEvento(); guardar(); }
 
   /* ¿La base guardada quedó vieja para este código? Se compara su catálogo de
      permisos con el que trae la semilla. Si falta alguno, ese navegador tiene
@@ -134,7 +134,7 @@ const Modelo = (function () {
         '(le faltan: ' + faltan.join(', ') + '). Se vuelve a sembrar.');
       return sembrar();
     }
-    db = g.db; modificado = !!g.modificado; version++; limpiarMemo();
+    db = g.db; modificado = !!g.modificado; version++; limpiarMemo(); alinearSeqEvento();
   }
 
   /* Vuelve a leer lo que hay guardado, descartando la copia en memoria.
@@ -149,7 +149,7 @@ const Modelo = (function () {
     const g = cargar();
     if (!g) return false;
     db = g.db; modificado = !!g.modificado;
-    version++; limpiarMemo();
+    version++; limpiarMemo(); alinearSeqEvento();
     pila.length = 0;   // la pila de deshacer es de esta pestaña y ya no aplica
     return true;
   }
@@ -307,6 +307,8 @@ const Modelo = (function () {
         pagaTaller: !!(ix.respPago.get(r.responsable_pago_id) || {}).es_taller,
         fechaSolicitud: r.fecha_solicitud, fechaBodega: r.fecha_bodega,
         fechaEntregaArea: r.fecha_entrega_area, observacion: r.observacion,
+        solicitadoPor: r.solicitado_por || null, recibidoPor: r.recibido_por || null,
+        entregadoPor: r.entregado_por || null,
         // Compatibilidad con las vistas de las tandas anteriores.
         estado: r.fecha_bodega ? 'recibido' : 'por_pedir',
         fechaPedido: r.fecha_solicitud, fechaEstimada: null, proveedor: null,
@@ -474,6 +476,136 @@ const Modelo = (function () {
       }));
   }
 
+  /* ── El expediente ────────────────────────────────────────────────────
+     Todo lo que le pasó a un vehículo, en una sola línea de tiempo. Es lo que
+     el cliente declaró como lo más importante del sistema, y para qué lo
+     quiere: "tener el registro histórico le permite tener transparencia de
+     cara a las compañías de seguro, pero también a los que van con el auto
+     particular". No es un reporte: es con lo que le responde a una aseguradora.
+
+     Junta seis fuentes que hasta ahora había que mirar en seis pantallas
+     distintas —el registro de hechos, la recepción con sus daños, los
+     presupuestos con sus versiones, los repuestos con sus marcas, la bitácora
+     y los archivos— y las ordena por cuándo pasaron.
+
+     No hay ninguna operación que edite o borre un hecho, y eso es a propósito:
+     "un registro que se puede corregir después no sirve para lo que él lo
+     quiere usar". Se agregan hechos, no se cambian. */
+  function expedienteDe(clave) {
+    const o = otPorNumero(clave) || otPorId(clave);
+    if (!o) return null;
+    const ix = indices();
+    const hechos = [];
+
+    const sumar = (fecha, seq, grupo, titulo, detalle, quien) => {
+      if (!fecha) return;
+      hechos.push({ fecha, seq: seq || 0, grupo, titulo, detalle: detalle || '', quien: quien || null });
+    };
+    const nombre = (persona_id) => {
+      const p = ix.persona.get(persona_id);
+      return p ? nombreDe(p) : null;
+    };
+
+    // 1 · La recepción abre el expediente.
+    // Correlativos NEGATIVOS a propósito: la recepción y lo que se levantó
+    // en ella abren el expediente. Los eventos que vienen de la semilla no
+    // traen correlativo —valen 0— y sin esto los daños del vehículo salían
+    // DESPUÉS de la primera etapa cerrada, que es imposible.
+    sumar(o.fechaIngreso, -3, 'recepcion', 'Ingreso del vehículo',
+      [o.marca, o.modelo, o.color].filter(Boolean).join(' · ') +
+      (o.compania && o.compania !== '—' ? ' — ' + o.compania : ''), null);
+
+    if (o.danos.length) {
+      sumar(o.fechaIngreso, -2, 'recepcion', 'Daños registrados en la recepción',
+        o.danos.map((d) => d.zonaNombre + ': ' + d.tipoNombre +
+          (d.severidad ? ' (' + d.severidad + ')' : '')).join(' · '), null);
+    }
+    const faltantes = o.inventario.filter((i) => !i.presente);
+    if (o.inventario.length) {
+      sumar(o.fechaIngreso, -1, 'recepcion', 'Inventario de recepción',
+        faltantes.length
+          ? o.inventario.length + ' ítems revisados, falta: ' + faltantes.map((i) => i.item).join(', ')
+          : 'Los ' + o.inventario.length + ' ítems presentes', null);
+    }
+
+    // 2 · El registro de hechos: etapas, estados, salidas, reingresos.
+    (ix.eventosDeOT.get(o.id) || []).forEach((e) => {
+      sumar(e.fecha, e.seq, e.tipo, rotuloEvento(e.tipo),
+        e.detalle + ((ix.etapa.get(e.etapa_id) || {}).nombre
+          ? ' — ' + ix.etapa.get(e.etapa_id).nombre : ''),
+        nombre(e.persona_id));
+    });
+
+    // 3 · Presupuestos: cada versión es un hecho, y el envío y la respuesta
+    //     también. Es la discusión con la compañía, y es lo que la hace
+    //     auditable.
+    o.presupuestos.forEach((p) => {
+      sumar(o.fechaIngreso, 3, 'presupuesto', 'Presupuesto ' + p.numeroOR + ' · versión ' + p.version,
+        p.lineas.length + (p.lineas.length === 1 ? ' línea' : ' líneas') +
+        ' · ' + fPlata(p.neto) + ' neto · ' + fPlata(p.total) + ' total', null);
+      if (p.enviadoAt) sumar(p.enviadoAt, 4, 'presupuesto', 'Presupuesto ' + p.numeroOR + ' enviado', '', null);
+      if (p.resueltoAt) sumar(p.resueltoAt, 5, 'presupuesto',
+        'Presupuesto ' + p.numeroOR + ': ' + p.estado, '', null);
+    });
+
+    // 4 · Repuestos, con sus marcas separadas: pedido, llegada a bodega y
+    //     entrega al área son tres hechos distintos y con fechas distintas.
+    o.repuestos.forEach((r) => {
+      sumar(r.fechaSolicitud, 6, 'repuesto', 'Repuesto pedido',
+        r.descripcion + (r.cantidad > 1 ? ' (' + r.cantidad + ')' : '') +
+        (r.responsablePago ? ' — paga ' + r.responsablePago : ''), nombre(r.solicitadoPor));
+      if (r.fechaBodega) sumar(r.fechaBodega, 7, 'repuesto', 'Repuesto recibido en bodega',
+        r.descripcion + (r.diasEnLlegar != null ? ' — tardó ' + r.diasEnLlegar + ' días' : ''),
+        nombre(r.recibidoPor));
+      if (r.fechaEntregaArea) sumar(r.fechaEntregaArea, 8, 'repuesto', 'Repuesto entregado al área',
+        r.descripcion, nombre(r.entregadoPor));
+    });
+
+    // 5 · Bitácora: las comunicaciones al cliente y a la compañía.
+    bitacoraDe(o.id).forEach((b) => {
+      sumar(b.fecha, 9, 'bitacora', 'Bitácora · ' + (b.asunto || 'mensaje'),
+        b.mensaje, b.usuario);
+    });
+
+    // 6 · Archivos. Van con quién los subió: una foto sin autor ni fecha no
+    //     sirve para respaldar nada frente a una compañía.
+    mediaDe(o.id).forEach((m) => {
+      sumar(m.subido_at || o.fechaIngreso, 10,
+        m.momento === 'documento' ? 'documento' : 'foto',
+        m.momento === 'documento' ? 'Documento adjunto' : 'Foto adjunta',
+        (m.nombre || m.id) + (m.momento ? ' — ' + m.momento : ''),
+        nombre(m.subido_por));
+    });
+
+    hechos.sort((a, b) => (+a.fecha - +b.fecha) || (a.seq - b.seq));
+
+    return {
+      orden: o,
+      hechos,
+      resumen: {
+        hechos: hechos.length,
+        presupuestos: o.presupuestos.length,
+        repuestos: o.repuestos.length,
+        archivos: mediaDe(o.id).length,
+        etapasCerradas: o.etapasAsignadas.filter((e) => e.finalizada).length,
+        etapas: o.etapasAsignadas.length,
+        desde: hechos.length ? hechos[0].fecha : o.fechaIngreso,
+        hasta: hechos.length ? hechos[hechos.length - 1].fecha : o.fechaIngreso
+      }
+    };
+  }
+
+  const ROTULO_EVENTO = {
+    estado: 'Cambio de estado', etapa: 'Etapa', salida: 'Salida del taller',
+    reingreso: 'Reingreso al taller', modificacion: 'Modificación',
+    documento: 'Archivos', entrega: 'Entrega'
+  };
+  const rotuloEvento = (t) => ROTULO_EVENTO[t] || 'Movimiento';
+
+  // El formato de plata vive en las vistas; acá se necesita para el detalle de
+  // un hecho, que es texto y no se vuelve a formatear después.
+  const fPlata = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
+
   function bitacoraDe(ot_id) {
     const ix = indices();
     return (ix.bitacoraDeOT.get(ot_id) || [])
@@ -522,11 +654,40 @@ const Modelo = (function () {
     return r;
   }
 
+  /* ── El registro de hechos ────────────────────────────────────────────
+     Es la base del expediente del vehículo, que el cliente declaró el
+     15-08-2026 como lo más importante del sistema: "todo movimiento, todo lo
+     que se le haga al vehículo... absolutamente todo lo que tuvo detrás el
+     proceso operacional del vehículo debiese quedar en el registro histórico".
+     Lo usa para responderle a una aseguradora, así que tiene que ser completo
+     y no tiene que poder editarse.
+
+     Dos cosas que estaban mal y se arreglaron para poder armarlo:
+
+     · `fecha: HOY` es la fecha de demostración, sin hora, e igual para todo lo
+       que pase el mismo día. Ordenar el expediente por fecha dejaba los hechos
+       del día en cualquier orden. Por eso cada evento lleva además un
+       correlativo que sólo sube: la fecha dice el día y el correlativo dice
+       qué pasó primero.
+
+     · `persona_id || 'pe-u-admin'` le atribuía a administración lo que hacía
+       cualquiera. En un registro que sirve para responderle a la compañía, eso
+       no es un detalle: por defecto queda quien tiene la sesión abierta. */
+  let seqEvento = 0;
+
   function registrarEvento(ot_id, tipo, detalle, etapa_id, persona_id) {
+    if (!ot_id) return;
     db.evento.push({
-      id: nuevoId('ev'), ot_id, fecha: HOY, tipo, detalle,
-      etapa_id: etapa_id || null, persona_id: persona_id || 'pe-u-admin'
+      id: nuevoId('ev'), ot_id, fecha: HOY, seq: ++seqEvento, tipo, detalle,
+      etapa_id: etapa_id || null,
+      persona_id: persona_id || persona_actual || 'pe-u-admin'
     });
+  }
+
+  /* El correlativo arranca por encima de lo que ya haya en la base, para que un
+     evento nuevo nunca quede antes de uno viejo al recargar de localStorage. */
+  function alinearSeqEvento() {
+    seqEvento = (db.evento || []).reduce((m, e) => Math.max(m, Number(e.seq) || 0), 0);
   }
 
   /* Una recepción puede generar VARIAS órdenes (A-8). Por eso recibe un
@@ -935,7 +1096,10 @@ const Modelo = (function () {
       id, ot_id, presupuesto_linea_id: null, descripcion: String(descripcion).trim(),
       cantidad: cantidad || 1, responsable_pago_id: responsable_pago_id || 'rp-1',
       fecha_solicitud: HOY, fecha_bodega: null, fecha_entrega_area: null,
-      observacion: '', recibido_por: null
+      observacion: '',
+      // Las tres marcas del repuesto guardan QUIÉN, no sólo cuándo: el
+      // expediente las muestra y un hecho sin autor no respalda nada.
+      solicitado_por: persona_actual || null, recibido_por: null, entregado_por: null
     });
     tocado();
     return { ok: true, motivo: '', id };
@@ -951,7 +1115,9 @@ const Modelo = (function () {
     const permiso = Reglas.puedeCargarRepuesto(db, { ot_id: r.ot_id });
     if (!permiso.ok) return permiso;
     r.fecha_bodega = fecha || HOY;
-    r.recibido_por = 'pe-u-bodega';
+    // Estaba fijo en bodega. En un registro que sirve para responderle a una
+    // compañía, atribuirle a un puesto lo que hizo otra persona es un dato falso.
+    r.recibido_por = persona_actual || 'pe-u-bodega';
     tocado();
     return { ok: true, motivo: '' };
   }
@@ -961,6 +1127,7 @@ const Modelo = (function () {
     if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
     if (!r.fecha_bodega) return { ok: false, motivo: 'No se puede entregar al área un repuesto que todavía no llegó a bodega.' };
     r.fecha_entrega_area = fecha || HOY;
+    r.entregado_por = persona_actual || null;
     tocado();
     return { ok: true, motivo: '' };
   }
@@ -1310,10 +1477,30 @@ const Modelo = (function () {
     // Una recepción puede haber generado varias órdenes: las fotos de ingreso
     // y la firma son del vehículo, así que quedan colgando de la recepción y
     // se ven desde todas sus órdenes.
+    //
+    // `subido_por` y `subido_at` son del 15-08-2026: el cliente pidió que los
+    // documentos y las fotos sean parte del expediente y no un adjunto suelto.
+    // Una foto sin autor ni fecha no sirve para responderle a una compañía.
     fichas.forEach((f) => db.media.push(Object.assign({}, f, {
       recepcion_id: recepcion_id || f.recepcion_id || null,
-      ot_id: f.ot_id || ((ot_ids && ot_ids.length === 1) ? ot_ids[0] : null)
+      ot_id: f.ot_id || ((ot_ids && ot_ids.length === 1) ? ot_ids[0] : null),
+      subido_por: f.subido_por || persona_actual || null,
+      subido_at: f.subido_at || HOY
     })));
+
+    // Registra en todas las órdenes alcanzadas, no en una: por eso lo hace por
+    // su cuenta y no lo deja en manos del decorador, que resuelve una sola.
+    const alcanzadas = {};
+    fichas.forEach((f) => { if (f.ot_id) alcanzadas[f.ot_id] = true; });
+    (ot_ids || []).forEach((id) => { alcanzadas[id] = true; });
+    const cuantas = fichas.length;
+    const docs = fichas.filter((f) => f.momento === 'documento').length;
+    const que = docs === cuantas ? (cuantas === 1 ? 'documento' : 'documentos')
+              : docs === 0 ? (cuantas === 1 ? 'foto' : 'fotos')
+              : 'archivos';
+    Object.keys(alcanzadas).forEach((ot_id) =>
+      registrarEvento(ot_id, 'documento', 'Se adjuntaron ' + cuantas + ' ' + que));
+
     tocado();
     return { ok: true, motivo: '', adjuntadas: fichas.length };
   }
@@ -1859,7 +2046,15 @@ const Modelo = (function () {
     fijar_habilidad: 'el cambio de habilidades',
     escribir_bitacora: 'el mensaje de bitácora',
     apagar_alerta: 'apagar la alerta',
-    eliminar_media: 'eliminar una foto'
+    eliminar_media: 'eliminar una foto',
+    /* Estas cuatro escriben y no estaban declaradas: no se podían deshacer y,
+       desde el 15-08-2026, tampoco habrían dejado registro. Es exactamente el
+       agujero que `conRegistro` viene a cerrar — una operación que escribe sin
+       estar en esta lista es invisible para el expediente. */
+    adjuntar_media: 'adjuntar archivos',
+    generar_repuestos_desde_presupuesto: 'generar los repuestos del presupuesto',
+    abrir_detencion: 'abrir la detención',
+    cerrar_detencion: 'cerrar la detención'
   };
 
   /* Envuelve las operaciones que escriben para que apilen su foto antes de
@@ -1962,14 +2157,100 @@ const Modelo = (function () {
     return api;
   }
 
-  return conPermiso(conDeshacer({
+  /* ── conRegistro ──────────────────────────────────────────────────────
+     "Toda operación que cambie algo deja su evento, con quién, cuándo y qué.
+     Sin excepciones."
+
+     Escribir la llamada a mano en cada operación era lo que había: 15 de las
+     41 que escriben lo hacían, y no había forma de notar las que faltaban. Una
+     operación nueva nacía sin registro y nadie se daba cuenta hasta que el
+     expediente aparecía incompleto — justo cuando se necesita.
+
+     Por eso el registro es un decorador y no una llamada: se envuelve el mismo
+     conjunto `ESCRIBEN` que ya usa `conDeshacer`, así que una operación nueva
+     entra al registro por el mismo acto de declararla. Va POR DENTRO de
+     `conPermiso`, para que lo rechazado por permiso no deje rastro de algo que
+     no pasó, y por dentro de `conDeshacer`, para que deshacer se lleve el
+     evento junto con el cambio.
+
+     Si la operación ya dejó su propio evento —hay quince que lo hacen y dicen
+     bastante más que un rótulo genérico— no se agrega otro. */
+
+  // De dónde sale la orden afectada, según qué recibe cada operación. Las que
+  // no tocan una orden —catálogos, parámetros, personas— no aparecen acá: son
+  // del sistema, no del vehículo, y no tienen por qué ensuciar su expediente.
+  const OT_DEL_PRIMER_ARGUMENTO = [
+    'asignar_etapas', 'asignar_responsable_ot', 'tomar_etapa', 'soltar_etapa',
+    'finalizar_etapa', 'finalizar_etapas', 'quitar_etapa', 'fijar_fecha_compromiso',
+    'registrar_salida', 'registrar_reingreso', 'cambiar_estado_ot', 'registrar_entrega',
+    'cargar_repuesto', 'crear_presupuesto', 'agregar_costo_adicional', 'escribir_bitacora',
+    'abrir_detencion', 'cerrar_detencion'
+  ];
+  // Reciben el id de otra cosa y hay que subir hasta la orden.
+  const OT_POR_TABLA = {
+    recibir_repuesto: 'repuesto', entregar_repuesto_area: 'repuesto',
+    fijar_responsable_pago: 'repuesto',
+    eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
+    nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
+    agregar_linea_presupuesto: 'presupuesto',
+    apagar_alerta: 'bitacora', eliminar_media: 'media'
+  };
+
+  function otAfectada(nombre, args) {
+    if (OT_DEL_PRIMER_ARGUMENTO.indexOf(nombre) >= 0) return args[0] || null;
+
+    const tabla = OT_POR_TABLA[nombre];
+    if (tabla) {
+      const f = (db[tabla] || []).find((x) => x.id === args[0]);
+      return f ? f.ot_id || null : null;
+    }
+    // La línea no conoce la orden: conoce su presupuesto, que sí la conoce.
+    if (nombre === 'quitar_linea_presupuesto') {
+      const l = (db.presupuesto_linea || []).find((x) => x.id === args[0]);
+      if (!l) return null;
+      const p = db.presupuesto.find((x) => x.id === l.presupuesto_id);
+      return p ? p.ot_id : null;
+    }
+    return null;
+  }
+
+  const SIN_EVENTO_GENERICO = ['cargar_repuesto', 'recibir_repuesto', 'entregar_repuesto_area'];
+
+  function conRegistro(api) {
+    Object.keys(ESCRIBEN).forEach((nombre) => {
+      const fn = api[nombre];
+      if (typeof fn !== 'function') return;
+      api[nombre] = function () {
+        // `eliminar_media` y compañía borran la fila: hay que mirar a quién
+        // pertenecía ANTES de que desaparezca.
+        const ot_id = otAfectada(nombre, arguments);
+        const antes = db.evento.length;
+        const r = fn.apply(null, arguments);
+        if (!r || r.ok === false) return r;
+        if (db.evento.length > antes) return r;   // ya dejó el suyo, mejor que el genérico
+        // Las marcas del repuesto no pasan por acá: el expediente las arma desde
+        // la propia tabla —pedido, llegada y entrega son tres hechos con fecha y
+        // autor propios— y un evento genérico encima sería la misma línea dos veces.
+        if (SIN_EVENTO_GENERICO.indexOf(nombre) >= 0) return r;
+        if (ot_id) registrarEvento(ot_id, 'modificacion', mayuscula(ESCRIBEN[nombre]));
+        return r;
+      };
+    });
+    return api;
+  }
+
+  const mayuscula = (t) => String(t || '').charAt(0).toUpperCase() + String(t || '').slice(1);
+
+  /* El orden importa: permiso por fuera —lo rechazado ahí no pasó y no se
+     registra—, deshacer en medio, y el registro pegado a la operación. */
+  return conPermiso(conDeshacer(conRegistro({
     iniciar, reiniciar, sembrar, estaModificado, base, sandbox, version: () => version,
     recargarDeDisco, CLAVE,
     deshacer, puedeDeshacer, proximoDeshacer,
     // consultas
     torre, historico, otPorId, otPorNumero, otFueraDeAlcance, vistaOT, metricas, corteEspera,
     alcanceActual, enAlcance,
-    historialDe, bitacoraDe, totalOT, tieneRepuestoPendiente,
+    historialDe, bitacoraDe, expedienteDe, totalOT, tieneRepuestoPendiente,
     // catálogos de lectura
     etapas, estadosOT, companias, tiposDano, zonasDano, inventarioItems, roles,
     motivosDetencion, prerrequisitos, catalogo, CATALOGOS, parametros, permisosDe,
@@ -1997,7 +2278,7 @@ const Modelo = (function () {
     agregar_prerrequisito, quitar_prerrequisito, guardar_parametro, fijar_rol_permiso,
     // fuera de alcance, declarado
     agenda, crear_ot_desde_agendamiento
-  }));
+  })));
 })();
 
 /* Alias de transición: las vistas de las tandas anteriores hablan con

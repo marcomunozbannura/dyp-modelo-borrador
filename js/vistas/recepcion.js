@@ -230,6 +230,29 @@ function recCombo(clave, rotulo, filas, tabla, opciones) {
   const obliga = REC_OBLIGATORIOS.some(([c]) => c === clave);
   const lista = 'dl-' + clave;
 
+  /* Crear un maestro desde acá exige el permiso de configuración, igual que
+     hacerlo en la propia pantalla de Configuración: el motor lo revisa en
+     `guardar_catalogo` y rechaza a quien no lo tenga.
+
+     Pedido del cliente el 15-08-2026: que las marcas las cree sólo
+     administración. El motor ya lo impedía, pero el botón se dibujaba igual y
+     el recepcionista se topaba con un rechazo después de haber escrito. Ahora
+     no se ofrece lo que no se puede hacer, y se dice quién sí puede. */
+  const puedeCrear = Modelo.puede('configuracion');
+  const falta = !o.apagado && limpio && !calza;
+
+  let pie;
+  if (falta && puedeCrear) {
+    pie = '<button class="btn secundario" style="margin-top:5px" data-combo-crear="' + clave +
+      '" data-tabla="' + esc(tabla) + '">Agregar «' + esc(limpio) + '» al catálogo</button>';
+  } else if (falta) {
+    pie = '<span class="ayuda" style="color:var(--ambar)">«' + esc(limpio) +
+      '» no está en el catálogo. Lo agrega administración.</span>';
+  } else {
+    pie = '<span class="ayuda">' +
+      esc(o.ayuda || (calza ? '✓ ' + calza.nombre : 'Escribe y elige de la lista')) + '</span>';
+  }
+
   return '<div class="campo"><label>' + esc(rotulo) +
     (obliga ? ' <span style="color:var(--rojo)">*</span>' : '') + '</label>' +
     '<input type="text" autocomplete="off" list="' + lista + '" data-combo="' + clave +
@@ -238,11 +261,7 @@ function recCombo(clave, rotulo, filas, tabla, opciones) {
       (o.apagado ? ' disabled' : '') + '>' +
     '<datalist id="' + lista + '">' +
       filas.map((f) => '<option value="' + esc(f.nombre) + '">').join('') + '</datalist>' +
-    (!o.apagado && limpio && !calza
-      ? '<button class="btn secundario" style="margin-top:5px" data-combo-crear="' + clave +
-        '" data-tabla="' + esc(tabla) + '">Agregar «' + esc(limpio) + '» al catálogo</button>'
-      : '<span class="ayuda">' + esc(o.ayuda || (calza ? '✓ ' + calza.nombre : 'Escribe y elige de la lista')) + '</span>') +
-    '</div>';
+    pie + '</div>';
 }
 
 /* ── Paso 1 · Vehículo ─────────────────────────────────────────────────── */

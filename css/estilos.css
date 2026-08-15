@@ -414,8 +414,11 @@ table.grid th {
   font-weight: 700; white-space: nowrap; position: sticky; top: 0; z-index: 2;
 }
 table.grid th:last-child { border-right: none; }
-table.grid th.orden { cursor: pointer; }
+table.grid th.orden { cursor: pointer; user-select: none; }
 table.grid th.orden:hover { color: var(--tinta); }
+/* La columna que manda el orden se marca en su propio encabezado: si no se ve
+   cuál es, el usuario no sabe qué está mirando. */
+table.grid th.orden.activa { color: var(--tinta); }
 table.grid th .flechita { color: var(--acento); margin-left: 3px; }
 table.grid td {
   padding: 3px 8px; border-bottom: 1px solid var(--borde);
@@ -643,6 +646,65 @@ fieldset.bloque legend {
   .contenido { padding-left: 10px; padding-right: 10px; }
   .barra-menu .mnu { display: none; }
 }
+
+/* ───────── Expediente del vehículo ─────────
+   La línea de tiempo con todo lo que le pasó a un vehículo. Se imprime y se le
+   entrega a la compañía, así que la jerarquía tiene que leerse en papel: el día
+   manda, y debajo cuelgan los hechos. */
+.aviso-registro {
+  display: flex; gap: 9px; align-items: flex-start;
+  background: var(--superficie-2); border: 1px solid var(--borde);
+  border-left: 3px solid var(--acento); border-radius: 4px;
+  padding: 9px 11px; margin-bottom: 14px; font-size: 12.5px;
+}
+.aviso-registro svg { flex: 0 0 14px; margin-top: 2px; color: var(--acento); }
+
+.linea-tiempo .dia { margin-bottom: 4px; }
+.linea-tiempo .dia-rot {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--gris); font-weight: 700;
+  padding: 9px 0 5px; border-bottom: 1px solid var(--borde); margin-bottom: 6px;
+}
+.linea-tiempo .hecho {
+  display: flex; gap: 10px; padding: 5px 0 5px 4px;
+  border-left: 2px solid var(--borde); margin-left: 7px; padding-left: 12px;
+}
+.linea-tiempo .hecho:hover { background: var(--superficie-2); }
+.linea-tiempo .hito { flex: 0 0 16px; margin-top: 1px; }
+.linea-tiempo .cuerpo-hecho { flex: 1; min-width: 0; }
+.linea-tiempo .tit { font-weight: 600; font-size: 12.5px; }
+.linea-tiempo .det { color: var(--gris); font-size: 12px; margin-top: 1px; word-break: break-word; }
+.linea-tiempo .quien { color: var(--gris-2); font-size: 11px; margin-top: 2px; }
+/* Un hecho sin autor se dice, no se disimula: en un registro que respalda
+   frente a una compañía, "no sabemos quién" es un dato. */
+.linea-tiempo .quien.sin { font-style: italic; }
+
+/* ───────── Etiqueta de datos ─────────
+   La tarjeta que sale al pararse sobre una patente o sobre una OR. Va pegada
+   al body y posicionada a mano: dentro del envoltorio de la tabla, el
+   `overflow` la cortaría en la primera fila. */
+.etiqueta-datos {
+  position: fixed; z-index: 9000; display: none;
+  min-width: 250px; max-width: 340px;
+  background: var(--superficie); border: 1px solid var(--borde-fuerte);
+  border-radius: 5px; box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+  padding: 9px 11px; font-size: 12px; pointer-events: none;
+}
+.etiqueta-datos.visible { display: block; }
+.etiqueta-datos .tit {
+  font-weight: 700; padding-bottom: 6px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--borde); display: flex; align-items: center; gap: 6px;
+}
+.etiqueta-datos .fila { display: flex; justify-content: space-between; gap: 14px; padding: 2px 0; }
+.etiqueta-datos .fila .k { color: var(--gris); white-space: nowrap; }
+.etiqueta-datos .fila .v { text-align: right; }
+.etiqueta-datos .pie {
+  margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--borde);
+  color: var(--acento); font-size: 11px;
+}
+/* Que se note que el dato tiene más detrás, sin gritar. */
+[data-tip] { cursor: help; }
+[data-tip][data-or] { text-decoration: underline dotted var(--gris-2); text-underline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

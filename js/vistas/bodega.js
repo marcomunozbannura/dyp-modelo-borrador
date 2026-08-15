@@ -152,7 +152,7 @@ function bodegaSeguimiento() {
       <th>Marca</th><th>Modelo</th><th>Color</th><th>Ingreso</th><th>Días</th><th>Alerta</th>
       <th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
     <tbody>${filas.slice(0, 60).map((o) =>
-      '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+      '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
       '<td class="num">' + esc(o.presupuestos.length ? o.presupuestos[0].numeroOR : '—') + '</td>' +
       '<td>' + esc(o.cliente) + '</td><td>' + esc(o.compania) + '</td>' +
       '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
@@ -216,7 +216,7 @@ function bodegaCostos() {
     <tbody>${filas.slice(0, 60).map((o2) => {
       const c = Modelo.costosDe(o2.id);
       const taller = c.filter((x) => x.pagaTaller).reduce((s, x) => s + x.monto, 0);
-      return '<tr class="fila"><td class="num"><strong>' + o2.numeroOT + '</strong></td>' +
+      return '<tr class="fila" data-ot="' + esc(o2.numeroOT) + '"><td class="num"><strong>' + o2.numeroOT + '</strong></td>' +
         '<td>' + esc(o2.cliente) + '</td>' +
         '<td><span class="patente">' + esc(o2.patente) + '</span></td>' +
         '<td>' + esc(o2.marca || '—') + '</td><td>' + esc(o2.modelo || '—') + '</td>' +
@@ -258,6 +258,8 @@ function bodegaTot() {
 /* ── Cableado ──────────────────────────────────────────────────────────── */
 
 function pBodega() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   const b = bodegaEstado();
 
   document.querySelectorAll('[data-bod]').forEach((x) => x.addEventListener('click', () => {

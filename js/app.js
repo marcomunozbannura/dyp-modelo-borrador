@@ -65,7 +65,12 @@ const ESTADO_PRESUPUESTO = {
 
 const ui = {
   vista: 'torre',
-  torre: { pagina: 1, porPagina: 35, busqueda: '', compania: 'todas', situacion: 'piso', etapa: 'todas', abierta: null },
+  // `orden`/`desc`: pedido del cliente el 15-08-2026. La torre parte SIEMPRE
+  // por correlativo descendente —lo último que entró, arriba— y desde ahí el
+  // usuario reordena por la columna que quiera. Antes el orden era por fecha de
+  // ingreso y no se podía cambiar.
+  torre: { pagina: 1, porPagina: 35, busqueda: '', compania: 'todas', situacion: 'piso', etapa: 'todas', abierta: null,
+           orden: 'ot', desc: true },
   historico: { pagina: 1, porPagina: 35, busqueda: '' },
   // Las vistas grandes arman su propio estado la primera vez que se pintan, y
   // lo restauran del borrador si hay uno. Ver recepcion.js y configuracion.js.
@@ -98,6 +103,10 @@ const MENU = [
   // El Histórico es un BUSCADOR, no un listado: sin filtro no muestra nada.
   // Por eso no lleva contador — mostrarlo sugeriría que hay una tabla detrás.
   { id: 'historico',   nombre: 'Histórico',   icono: 'historico' },
+  // El expediente es del VEHÍCULO; el Histórico es un buscador de órdenes
+  // cerradas. Van juntos porque se llega a los dos buscando, pero no son lo
+  // mismo y por eso no se fusionaron.
+  { id: 'expediente',  nombre: 'Expediente',  icono: 'historico' },
   { grupo: 'Administración' },
   { id: 'personal',      nombre: 'Personal',      icono: 'personal', cuenta: () => Modelo.personal().filter((p) => p.activo).length },
   { id: 'consolidado',   nombre: 'Consolidado',   icono: 'consolidado' },
@@ -154,6 +163,9 @@ const MODULOS = {
                             ['refrescar', 'Limpiar el filtro', 'limpiar'],
                             ['exportar', 'Exportar', 'exportar'],
                             ['imprimir', 'Imprimir', 'imprimir']] },
+  expediente:  { ruta: ['Seguimiento', 'Expediente del vehículo'],
+                 acciones: [['buscar', 'Buscar', 'buscar'],
+                            ['imprimir', 'Imprimir el expediente', 'imprimir']] },
   personal:    { ruta: ['Administración', 'Personal'],
                  acciones: [['nuevo', 'Nuevo trabajador', 'nuevo'],
                             ['refrescar', 'Actualizar', 'refrescar', 'F5'],
@@ -707,6 +719,7 @@ const APODOS = {
   bodega:        'repuestos checklist recepcion de piezas',
   documentos:    'guias facturas ordenes de compra archivos',
   historico:     'cerradas entregadas buscar antiguas',
+  expediente:    'historia trazabilidad registro completo vehiculo compañia respaldo auditoria',
   personal:      'trabajadores gente maestros nomina',
   consolidado:   'reporte totales gerencia',
   configuracion: 'catalogos maestros parametros etapas estados roles'
@@ -818,6 +831,7 @@ const TITULOS = {
   detenidos:     'Detenciones',
   presupuesto:   'Presupuesto',
   historico:     'Histórico',
+  expediente:    'Expediente del vehículo',
   configuracion: 'Configuración',
   entrega:       'Entrega',
   bodega:        'Bodega',
@@ -865,13 +879,15 @@ function render() {
     mitrabajo: vMiTrabajo, recepcion: vRecepcion, torre: vTorre, taller: vTaller, entrega: vEntrega,
     repuestos: vRepuestos, detenidos: vDetenidos, presupuesto: vPresupuesto,
     bodega: vBodega, documentos: vDocumentos, historico: vHistorico,
+    expediente: vExpediente,
     personal: vPersonal, consolidado: vConsolidado, configuracion: vConfiguracion
   }[ui.vista];
   c.innerHTML = fn ? fn() : vSinLevantar(ui.vista);
   if (fn) {
     const p = { mitrabajo: pMiTrabajo, recepcion: pRecepcion, torre: pTorre, taller: pTaller, entrega: pEntrega,
       repuestos: pRepuestos, detenidos: pDetenidos, presupuesto: pPresupuesto, bodega: pBodega,
-      documentos: pDocumentos, historico: pHistorico, personal: pPersonal,
+      documentos: pDocumentos, historico: pHistorico, expediente: pExpediente,
+      personal: pPersonal,
       consolidado: pConsolidado, configuracion: pConfiguracion }[ui.vista];
     if (p) p();
   }
@@ -888,6 +904,10 @@ function render() {
      vengan, que es lo que se pidió: al pasar de un panel a otro tiene que
      verse bien siempre. */
   Media.pintar(c);
+
+  // Misma razón que Media.pintar: acá vale para todos los paneles y para los
+  // que vengan, en vez de tener que acordarse de llamarlo en cada vista.
+  marcarEtiquetas();
 
   const f = ESTADO_BARRA[ui.vista];
   pintarBarraEstado(f ? f() : '');
@@ -1026,7 +1046,7 @@ function vRepuestos() {
            que hay que saber: cuántas piezas y de quién es la plata. El
            responsable de pago fue un punto explícito del levantamiento —"es
            plata del taller"— y no se estaba mostrando en ninguna parte. */
-        return '<tr><td class="num">' + o.numeroOT + '</td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num">' + o.numeroOT + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(r.descripcion) + '</td>' +
           '<td class="num">' + (r.cantidad || 1) + '</td>' +
@@ -1047,6 +1067,8 @@ function vRepuestos() {
 }
 
 function pRepuestos() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   const e = repuestosEstado();
   const q = document.getElementById('rep-q');
   if (q) q.addEventListener('input', () => {
@@ -1066,6 +1088,8 @@ function pRepuestos() {
 /* "Ver cuáles" lleva a la Torre con ese mismo grupo filtrado. Una cifra de
    espera sin poder llegar a los autos que la componen no sirve para actuar. */
 function pDetenidos() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   document.querySelectorAll('[data-espera-ver]').forEach((b) => b.addEventListener('click', () => {
     ui.torre.situacion = b.dataset.esperaVer;
     ui.torre.pagina = 1; ui.torre.abierta = null; ui.torre.busqueda = '';
@@ -1126,7 +1150,7 @@ function vDetenidos() {
         <th>Fuera hace</th><th>Desde el ingreso</th><th>Repuestos por llegar</th><th>Valor</th></tr></thead>
       <tbody>${fuera.map((o) => {
         const pend = o.repuestos.filter((r) => r.estado !== 'recibido').length;
-        return '<tr><td class="num">' + o.numeroOT + '</td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num">' + o.numeroOT + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.cliente) + '</td>' +
           '<td><span class="et ' + (o.compania === 'SURA' ? 'azul' : 'violeta') + '">' + esc(o.compania) + '</span></td>' +
@@ -1231,6 +1255,222 @@ const urlFicha = (numero) => 'index.html#ot=' + encodeURIComponent(numero);
 
 function abrirFicha(numero) {
   window.open(urlFicha(numero), '_blank', 'noopener');
+}
+
+/* ───────────── Doble clic para abrir la orden ─────────────
+   El cliente pidió el 15-08-2026 que el doble clic abra la orden desde TODOS
+   los paneles, no sólo desde la torre y el histórico.
+
+   Y hay una trampa que costó encontrar la primera vez, así que vive acá una
+   sola vez y no repetida en cada panel: cuando el clic simple vuelve a dibujar
+   la tabla, la fila se reemplaza y el navegador ya no puede emitir `dblclick`
+   —los dos clics caen sobre elementos distintos—. Por eso el doble clic se
+   cuenta a mano, con la hora del clic anterior. El `dblclick` nativo se deja
+   igual, para los paneles que no repintan.
+
+   `alSimple` es opcional: en los paneles que no despliegan nada, la fila sólo
+   responde al doble clic. */
+const VENTANA_DOBLE_CLIC = 450;
+const memoriaClic = { clave: null, t: 0 };
+
+function conDobleClic(el, clave, alDoble, alSimple) {
+  el.addEventListener('click', () => {
+    const ahora = new Date().getTime();
+    if (memoriaClic.clave === clave && ahora - memoriaClic.t < VENTANA_DOBLE_CLIC) {
+      memoriaClic.clave = null; memoriaClic.t = 0;
+      if (alDoble() !== false) return;
+    }
+    memoriaClic.clave = clave; memoriaClic.t = ahora;
+    if (alSimple) alSimple();
+  });
+  el.addEventListener('dblclick', (ev) => { ev.preventDefault(); alDoble(); });
+  el.title = alSimple
+    ? 'Un clic despliega la orden · doble clic la abre en una pestaña nueva'
+    : 'Doble clic abre la orden en una pestaña nueva';
+}
+
+/* Engancha el doble clic en todas las filas de un panel que traigan `data-ot`
+   con el NÚMERO de la orden. Es la forma corta que usan los paneles simples. */
+function dobleClicPorFilas(selector) {
+  document.querySelectorAll(selector || 'tr.fila[data-ot]').forEach((tr) => {
+    const n = tr.dataset.ot;
+    if (!n) return;
+    conDobleClic(tr, 'ot-' + n, () => { abrirFicha(n); return true; });
+  });
+}
+
+/* ───────────── Etiqueta de datos ─────────────
+   Pedido del cliente el 15-08-2026, en dos partes que son la misma cosa:
+   pararse sobre la PATENTE y ver en qué etapa va, cuánto lleva presupuestado y
+   si está o no en el taller; y pararse sobre la OR y ver el detalle de ese
+   presupuesto sin abrir la orden. Su frase: "que el usuario tenga el detalle
+   ahí mismo y no tenga que estar abriendo la OT".
+
+   Por eso hay UNA sola etiqueta y no dos. Y todo lo que muestra sale del
+   modelo, nunca del texto de la fila: si mañana se mueve una columna, la
+   etiqueta sigue diciendo la verdad. */
+
+/* Acepta el NÚMERO de la orden o su ID. No es capricho: la torre necesita el
+   id en `data-ot` porque el expandible se abre por id, y el resto de los
+   paneles usa el número. En vez de obligar a que todos digan lo mismo, se
+   resuelven los dos acá. */
+function ordenPorNumeroOId(clave) {
+  const porNumero = buscarOT(clave);
+  if (porNumero) return porNumero;
+  return Modelo.torre().find((o) => o.id === clave) ||
+         Modelo.historico({ todo: true }).find((o) => o.id === clave) || null;
+}
+
+function tarjetaDeOT(clave) {
+  const o = ordenPorNumeroOId(clave);
+  if (!o) return null;
+  const e = o.etapa ? etapaPorCodigo(o.etapa) : null;
+  const neto = o.presupuestos.reduce((s, p) => s + p.neto, 0);
+  const pend = o.repuestos.filter((r) => !r.fechaBodega).length;
+
+  const donde = o.fueraDeTaller
+    ? '<span class="et ambar">Fuera del taller</span>'
+    : '<span class="et verde">En el taller</span>';
+
+  return {
+    titulo: '<span class="patente">' + esc(o.patente) + '</span> &middot; OT ' + esc(o.numeroOT),
+    filas: [
+      ['Etapa', e ? '<i class="punto" style="background:' + e.color + '"></i>' + esc(e.nombre)
+                  : '<span class="et gris">Pendiente</span>'],
+      ['Dónde está', donde],
+      ['Presupuestado', o.presupuestos.length
+        ? fMonto(neto) + ' <span style="color:var(--gris-2)">neto · ' +
+          o.presupuestos.length + (o.presupuestos.length === 1 ? ' OR' : ' OR') + '</span>'
+        : '<span style="color:var(--gris-2)">Sin presupuesto</span>'],
+      ['Estado', '<span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span>'],
+      ['Cliente', esc(o.cliente)],
+      ['Compañía', o.compania === '—' ? '<span style="color:var(--gris-2)">Particular</span>'
+                                      : esc(o.compania)],
+      ['Días', o.diasKpi + ' de reparación <span style="color:var(--gris-2)">· ' +
+        o.diasTotales + ' totales</span>'],
+      ['Repuestos', pend ? '<span style="color:var(--rojo)">' + pend + ' por llegar</span>'
+        : (o.repuestos.length ? 'Todos recibidos' : 'No requiere')]
+    ]
+  };
+}
+
+function tarjetaDeOR(numeroOR) {
+  let orden = null, presu = null;
+  Modelo.torre().concat(Modelo.historico({ todo: true })).some((o) => {
+    const p = o.presupuestos.find((x) => String(x.numeroOR) === String(numeroOR));
+    if (p) { orden = o; presu = p; return true; }
+    return false;
+  });
+  if (!presu) return null;
+
+  return {
+    titulo: 'OR ' + esc(presu.numeroOR),
+    filas: [
+      ['Vehículo', '<span class="patente">' + esc(orden.patente) + '</span> ' + esc(orden.marca || '')],
+      ['Estado', '<span class="et">' + esc(presu.estado) + '</span> ' +
+        '<span style="color:var(--gris-2)">versión ' + presu.version + '</span>'],
+      ['Neto', fMonto(presu.neto)],
+      ['Total', '<strong>' + fMonto(presu.total) + '</strong>'],
+      ['Líneas', presu.lineas.length + (presu.lineas.length === 1 ? ' línea' : ' líneas')],
+      // "Sin enviar" contradecía al estado cuando la fecha no está grabada.
+      // El rótulo dice de qué se está hablando: es la FECHA la que falta, no
+      // el envío. Es la diferencia entre "no pasó" y "no lo registramos".
+      ['Fecha de envío', presu.enviadoAt ? fFecha(presu.enviadoAt)
+        : '<span style="color:var(--gris-2)">sin registrar</span>'],
+      ['Fecha de respuesta', presu.resueltoAt ? fFecha(presu.resueltoAt)
+        : '<span style="color:var(--gris-2)">sin registrar</span>']
+    ],
+    pie: 'Clic para abrir la OT ' + esc(orden.numeroOT),
+    ot: orden.numeroOT
+  };
+}
+
+/* La etiqueta es una sola y vive pegada al body: si se dibujara dentro de la
+   tabla, el `overflow` del envoltorio la cortaría. */
+function cajaEtiqueta() {
+  let caja = document.getElementById('etiqueta-datos');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'etiqueta-datos';
+    caja.className = 'etiqueta-datos';
+    document.body.appendChild(caja);
+  }
+  return caja;
+}
+
+function mostrarEtiqueta(el) {
+  const dato = el.dataset.tip || '';
+  const corte = dato.indexOf(':');
+  if (corte < 0) return;
+  const tipo = dato.slice(0, corte), clave = dato.slice(corte + 1);
+  const t = tipo === 'or' ? tarjetaDeOR(clave) : tarjetaDeOT(clave);
+  if (!t) return;
+
+  const caja = cajaEtiqueta();
+  caja.innerHTML = '<div class="tit">' + t.titulo + '</div>' +
+    t.filas.map(([k, v]) => '<div class="fila"><span class="k">' + esc(k) +
+      '</span><span class="v">' + v + '</span></div>').join('') +
+    (t.pie ? '<div class="pie">' + esc(t.pie) + '</div>' : '');
+  caja.classList.add('visible');
+
+  // Se ubica al lado del elemento, y se corrige si se sale por el borde: en la
+  // última columna de la tabla, una etiqueta fija se saldría de la pantalla.
+  const r = el.getBoundingClientRect();
+  const ancho = caja.offsetWidth, alto = caja.offsetHeight;
+  let x = r.left, y = r.bottom + 6;
+  if (x + ancho > window.innerWidth - 8) x = window.innerWidth - ancho - 8;
+  if (y + alto > window.innerHeight - 8) y = r.top - alto - 6;
+  caja.style.left = Math.max(8, x) + 'px';
+  caja.style.top = Math.max(8, y) + 'px';
+}
+
+function ocultarEtiqueta() {
+  const caja = document.getElementById('etiqueta-datos');
+  if (caja) caja.classList.remove('visible');
+}
+
+/* Delegación: se engancha UNA vez al documento y sirve para todo lo que se
+   pinte después, sin volver a cablear en cada render. */
+let etiquetasEnchufadas = false;
+function activarEtiquetas() {
+  if (etiquetasEnchufadas) return;
+  etiquetasEnchufadas = true;
+  document.addEventListener('mouseover', (ev) => {
+    const el = ev.target.closest('[data-tip]');
+    if (el) mostrarEtiqueta(el);
+  });
+  document.addEventListener('mouseout', (ev) => {
+    if (ev.target.closest('[data-tip]')) ocultarEtiqueta();
+  });
+  // Al desplazar la tabla la etiqueta quedaría flotando sobre otra fila.
+  document.addEventListener('scroll', ocultarEtiqueta, true);
+}
+
+/* Marca lo que ya está pintado. Las patentes toman el número de OT de su
+   propia fila —que salió del modelo al pintarla, no del texto— y las celdas de
+   OR se marcan donde el panel las haya rotulado con `data-or`. */
+function marcarEtiquetas() {
+  activarEtiquetas();
+  document.querySelectorAll('[data-ot] .patente').forEach((p) => {
+    const fila = p.closest('[data-ot]');
+    if (fila && fila.dataset.ot) p.dataset.tip = 'ot:' + fila.dataset.ot;
+  });
+  document.querySelectorAll('[data-or]').forEach((c) => {
+    if (!c.dataset.or) return;
+    c.dataset.tip = 'or:' + c.dataset.or;
+    /* "Desde ahí se puede pinchar para ir al detalle". El clic va a la orden
+       dueña de esa OR y no propaga: si propagara, la fila de abajo desplegaría
+       su expandible al mismo tiempo. */
+    if (c.dataset.orEnchufada) return;
+    c.dataset.orEnchufada = '1';
+    c.addEventListener('click', (ev) => {
+      const t = tarjetaDeOR(c.dataset.or);
+      if (!t) return;
+      ev.stopPropagation();
+      ocultarEtiqueta();
+      abrirFicha(t.ot);
+    });
+  });
 }
 
 function modoRegistro(numero) {
@@ -1466,6 +1706,11 @@ const PERMISO_DE_MODULO = {
   // donde están los datos de todos los clientes que pasaron por el taller, y
   // para trabajar el día de hoy no hace falta. Solo administración.
   historico:     'historico.ver',
+  // El expediente muestra TODO de una orden: cliente, montos, bitácora y
+  // archivos. Es exactamente lo que describe `ficha.completa`, así que pide ese
+  // permiso y no uno nuevo. El pintor no lo tiene, y con razón: para cerrar su
+  // etapa no necesita el historial de comunicaciones con la compañía.
+  expediente:    'ficha.completa',
   personal:      'personal.ver',
   consolidado:   'consolidado.ver',
   configuracion: 'configuracion'

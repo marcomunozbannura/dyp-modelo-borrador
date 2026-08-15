@@ -42,7 +42,7 @@ function documentosListado() {
         <th>Estado</th><th>Etapa</th><th>Adjuntos</th><th></th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const n = Modelo.mediaDe(o.id).filter((m) => m.momento === 'documento').length;
-        return '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
           '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
@@ -167,6 +167,8 @@ function documentosDeOT(o) {
 }
 
 function pDocumentos() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   const d = documentosEstado();
 
   const q = document.getElementById('doc-q');

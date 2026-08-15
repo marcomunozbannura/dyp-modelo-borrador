@@ -97,14 +97,18 @@ function vPresupuestoListado() {
         <th>Tipo</th><th>Fecha Ingreso</th><th>OR</th><th>Total neto</th><th>Acción</th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const neto = o.presupuestos.reduce((s, x) => s + x.neto, 0);
-        return '<tr class="fila"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
+        return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td>' + esc(o.cliente) + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
           '<td>' + esc(o.origenIngresoNombre || '—') + '</td>' +
           '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+          // El mouse sobre la OR abre la etiqueta con monto, estado y fechas de
+          // ese presupuesto: "que el usuario tenga el detalle ahí mismo y no
+          // tenga que estar abriendo la OT". Textual del cliente, 15-08-2026.
           '<td class="num">' + (o.presupuestos.length
-            ? esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) +
+            ? '<span data-or="' + esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '">' +
+                esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '</span>' +
               (o.presupuestos.length > 1 ? ' <span class="et gris">v' + o.presupuestos.length + '</span>' : '')
             : '<span class="et ambar">sin presupuesto</span>') + '</td>' +
           '<td class="num">' + (neto ? fMonto(neto) : '—') + '</td>' +
@@ -268,6 +272,8 @@ function vPresupuestoDetalle(o, pr) {
 /* ── Cableado ──────────────────────────────────────────────────────────── */
 
 function pPresupuesto() {
+  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
+  dobleClicPorFilas();
   const p = presuEstado();
 
   const q = document.getElementById('q-presu');

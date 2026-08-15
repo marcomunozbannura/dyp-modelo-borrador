@@ -26,7 +26,10 @@ const IMPRESOS = {
   recepcion:  { rot: 'Comprobante de recepción', archivo: (o) => 'recepcion-' + o.patente + '-' + o.numeroOT },
   presupuesto:{ rot: 'Presupuesto / OR',         archivo: (o, p) => 'presupuesto-' + (p ? p.numeroOR : o.numeroOT) },
   ficha:      { rot: 'Ficha completa de la OT',  archivo: (o) => 'ficha-completa-' + o.numeroOT },
-  entrega:    { rot: 'Acta de entrega',          archivo: (o) => 'acta-entrega-' + o.patente + '-' + o.numeroOT }
+  entrega:    { rot: 'Acta de entrega',          archivo: (o) => 'acta-entrega-' + o.patente + '-' + o.numeroOT },
+  // El expediente se imprime porque es lo que se le entrega a la compañía
+  // cuando pide cuenta de un vehículo. Es el documento, no un reporte.
+  expediente: { rot: 'Expediente del vehículo',  archivo: (o) => 'expediente-' + o.patente + '-' + o.numeroOT }
 };
 
 /* El estilo del impreso va acá y no en estilos.css a propósito: es una hoja
@@ -70,6 +73,8 @@ const CSS_IMPRESO = `
 
    Abajo cumple lo mismo —nadie confunde este papel con uno real— y no se cruza
    con nada. Sigue siendo lo último que se lee antes de cerrar la hoja. */
+.impreso .nota-legal{margin-top:8px;font-size:9.5px;color:#555;border-top:1px solid #ddd;
+  padding-top:5px;line-height:1.45}
 .impreso .sello{margin-top:6px;text-align:center;font-size:13px;font-weight:800;
   letter-spacing:7px;color:#9aa;border-top:1px solid #dde;padding-top:6px;pointer-events:none}
 /* El pie en el FLUJO de la hoja, empujado abajo con margin-top:auto. Estaba en
@@ -525,6 +530,72 @@ function impresoFicha(o) {
 
 /* ── 4 · Acta de entrega ───────────────────────────────────────────────── */
 
+/* El expediente impreso. Es el documento que el taller le manda a la compañía
+   cuando le piden cuenta de un vehículo, así que no se resume: van todos los
+   hechos, con su fecha y con quién los hizo. Un expediente recortado no sirve
+   para lo que se usa. */
+function impresoExpediente(o) {
+  const ex = Modelo.expedienteDe(o.numeroOT);
+  if (!ex) return cabeceraImpreso(o, 'Expediente del vehículo') +
+    '<h2>Sin datos</h2><p>No se pudo armar el expediente de esta orden.</p>';
+
+  const r = ex.resumen;
+
+  // Agrupado por día, igual que en pantalla: es como se lee y como se discute.
+  const porDia = [];
+  ex.hechos.forEach((h) => {
+    const clave = fCorta(h.fecha);
+    const ultimo = porDia[porDia.length - 1];
+    if (ultimo && ultimo.clave === clave) ultimo.hechos.push(h);
+    else porDia.push({ clave, fecha: h.fecha, hechos: [h] });
+  });
+
+  return cabeceraImpreso(o, 'Expediente del vehículo') + `
+  <h2>Identificación</h2>
+  <div class="rej">
+    ${campoImpreso('Patente', esc(o.patente))}
+    ${campoImpreso('Orden de trabajo', esc(o.numeroOT))}
+    ${campoImpreso('Vehículo', esc([o.marca, o.modelo, o.color].filter(Boolean).join(' ') || '—'))}
+    ${campoImpreso('VIN', esc(o.vin || '—'))}
+    ${campoImpreso('Cliente', esc(o.cliente))}
+    ${campoImpreso('RUT', esc(o.rut || '—'))}
+    ${campoImpreso('Compañía', esc(o.compania && o.compania !== '—' ? o.compania : 'Particular'))}
+    ${campoImpreso('N° de siniestro', esc(o.siniestro || '—'))}
+    ${campoImpreso('Ingreso', fFecha(o.fechaIngreso))}
+    ${campoImpreso('Estado', esc(o.estadoNombre))}
+  </div>
+
+  <h2>Resumen del expediente</h2>
+  <div class="rej">
+    ${campoImpreso('Hechos registrados', r.hechos)}
+    ${campoImpreso('Período', fCorta(r.desde) + ' al ' + fCorta(r.hasta))}
+    ${campoImpreso('Etapas cerradas', r.etapasCerradas + ' de ' + r.etapas)}
+    ${campoImpreso('Presupuestos', r.presupuestos)}
+    ${campoImpreso('Repuestos', r.repuestos)}
+    ${campoImpreso('Archivos adjuntos', r.archivos)}
+  </div>
+
+  <h2>Historia del vehículo</h2>
+  <table>
+    <thead><tr>
+      <th style="width:20mm">Fecha</th>
+      <th style="width:38mm">Hecho</th>
+      <th>Detalle</th>
+      <th style="width:30mm">Quién</th>
+    </tr></thead>
+    <tbody>${porDia.map((d) => d.hechos.map((h, i) =>
+      '<tr><td class="n">' + (i === 0 ? fCorta(h.fecha) : '') + '</td>' +
+      '<td>' + esc(h.titulo) + '</td>' +
+      '<td>' + esc(h.detalle || '—') + '</td>' +
+      '<td>' + esc(h.quien || 'sin autor registrado') + '</td></tr>').join('')).join('') ||
+      '<tr><td colspan="4">Sin hechos registrados</td></tr>'}</tbody>
+  </table>
+
+  <p class="nota-legal">Este expediente se genera desde el registro de hechos del sistema. Los
+  hechos se agregan y no se editan ni se eliminan: cada línea conserva la fecha en que ocurrió y
+  quién la ejecutó.</p>`;
+}
+
 function impresoEntrega(o) {
   const fotos = Modelo.mediaDe(o.id).filter((m) => m.momento === 'entrega' || m.momento === 'ingreso');
 
@@ -575,11 +646,14 @@ const PERMISO_IMPRESO = {
   recepcion:   'ficha.completa',
   presupuesto: 'presupuesto.montos',
   ficha:       'ficha.completa',
-  entrega:     'ficha.completa'
+  entrega:     'ficha.completa',
+  expediente:  'ficha.completa'
 };
 
 function abrirImpreso(tipo, ot_id, presupuesto_id) {
-  const o = Modelo.otPorId(ot_id);
+  // Acepta el id de la orden o su número: el expediente trabaja con el número
+  // —es lo que el usuario escribe— y el resto de las pantallas con el id.
+  const o = Modelo.otPorId(ot_id) || Modelo.otPorNumero(ot_id);
   if (!o) return avisar({ ok: false, motivo: 'Esa orden no existe o no está asignada a ti.' });
   const pide = PERMISO_IMPRESO[tipo];
   if (pide && !Modelo.puede(pide)) {
@@ -593,7 +667,8 @@ function abrirImpreso(tipo, ot_id, presupuesto_id) {
                             : o.presupuestos[o.presupuestos.length - 1];
 
   const cuerpo = { recepcion: () => impresoRecepcion(o), presupuesto: () => impresoPresupuesto(o, pr),
-                   ficha: () => impresoFicha(o), entrega: () => impresoEntrega(o) }[tipo]();
+                   ficha: () => impresoFicha(o), entrega: () => impresoEntrega(o),
+                   expediente: () => impresoExpediente(o) }[tipo]();
 
   if (!document.getElementById('css-impreso')) {
     const s = document.createElement('style');

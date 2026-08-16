@@ -651,6 +651,30 @@ const Modelo = (function () {
         nombre(r.recibidoPor));
       if (r.fechaEntregaArea) sumar(r.fechaEntregaArea, 8, 'repuesto', 'Repuesto entregado al área',
         r.descripcion, nombre(r.entregadoPor));
+
+      /* 🔴 LAS VUELTAS ANTERIORES DE UNA PIEZA DEVUELTA (16-08-2026, Marco:
+         "eso necesito que quede en el expediente").
+
+         Al devolver, la pieza vuelve a quedar pendiente: `fecha_bodega` y
+         `fecha_entrega_area` se limpian. El dato no se perdía —queda guardado
+         en `devoluciones`— pero el expediente **dejaba de mostrarlo**, y ahí
+         un repuesto que llegó tres veces se leía como uno que nunca llegó.
+
+         Es justo el caso que hay que poder explicar: la compañía pregunta por
+         qué el auto estuvo un mes, y la respuesta es que la pieza llegó mala
+         dos veces. Ahora cada vuelta aparece entera —llegó, se entregó, se
+         devolvió— con su fecha, y rotulada con el número de vuelta para que se
+         lea el orden sin tener que reconstruirlo. */
+      (r.devoluciones || []).forEach((d, i) => {
+        const vuelta = ' · vuelta ' + (i + 1);
+        if (d.fecha_bodega) sumar(d.fecha_bodega, 7, 'repuesto',
+          'Repuesto recibido en bodega' + vuelta, r.descripcion, nombre(d.recibido_por));
+        if (d.fecha_entrega_area) sumar(d.fecha_entrega_area, 8, 'repuesto',
+          'Repuesto entregado al área' + vuelta, r.descripcion, nombre(d.entregado_por));
+        sumar(d.fecha, 8, 'repuesto', 'Repuesto devuelto' + vuelta,
+          r.descripcion + ' — ' + (d.motivo || 'sin motivo registrado') +
+          '. El pedido volvió a correr.', nombre(d.por));
+      });
     });
 
     // 5 · Bitácora: las comunicaciones al cliente y a la compañía.
@@ -1582,8 +1606,11 @@ const Modelo = (function () {
     r.devoluciones = r.devoluciones || [];
     r.devoluciones.push({
       fecha: HOY, motivo: String(motivo).trim(), por: persona_actual || null,
-      // El ciclo que se cierra queda guardado entero: no se pierde nada.
+      /* El ciclo que se cierra queda guardado entero: no se pierde nada. Y con
+         QUIÉN, no sólo cuándo — el expediente muestra estas vueltas y un hecho
+         sin autor no respalda nada, que es la regla de todo el registro. */
       fecha_bodega: r.fecha_bodega, fecha_entrega_area: r.fecha_entrega_area,
+      recibido_por: r.recibido_por || null, entregado_por: r.entregado_por || null,
       vale_media_id: r.vale_media_id || null
     });
     // Y vuelve a estar pendiente: el proceso corre de nuevo desde el pedido.

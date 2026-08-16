@@ -58,11 +58,16 @@ function vEntrega() {
   const e = entregaEstado();
   const o = e.otId ? Modelo.otPorId(e.otId) : null;
   const vivas = Modelo.torre();
+  const listos = vivas.filter(estaListo);
+  /* Sin búsqueda se muestran LAS LISTAS, no una pantalla vacía. Era un
+     `datalist` que sólo aparecía al escribir, y para eso hay que saber de
+     antemano qué patente se busca — el recepcionista muchas veces llega al
+     revés: mira qué hay listo y de ahí elige. La búsqueda queda para filtrar
+     o para llegar a una que no está en la lista. */
   const coincidencias = e.patente
     ? vivas.filter((x) => x.patente.indexOf(e.patente) >= 0 ||
         String(x.numeroOT).indexOf(e.patente) >= 0)
-    : [];
-  const listos = vivas.filter(estaListo);
+    : listos;
 
   return `
   <div class="panel">
@@ -78,8 +83,9 @@ function vEntrega() {
             ${listos.map((x) => '<option value="' + esc(x.patente) + '">OT ' + esc(x.numeroOT) +
               ' · ' + esc(x.cliente) + '</option>').join('')}
           </datalist>
-          <span class="ayuda">La lista propone las ${listos.length} que están listas. Se puede
-            buscar cualquier otra igual: aparece marcada con lo que le falta</span></div>
+          <span class="ayuda">Abajo están las ${listos.length} listas para entregar. Escribe
+            para filtrar, o para llegar a una que todavía no lo está — aparece marcada con lo que
+            le falta</span></div>
         <div class="campo"><label>&nbsp;</label><button class="btn" id="ent-buscar">Buscar patente</button></div>
       </div>
 
@@ -89,8 +95,9 @@ function vEntrega() {
         : ''}
 
       ${coincidencias.length ? `
-      <h3 style="font-size:13px;margin:14px 0 6px">Resultados de la patente
-        &ldquo;${esc(e.patente)}&rdquo;</h3>
+      <h3 style="font-size:13px;margin:14px 0 6px">${e.patente
+        ? 'Resultados de la patente &ldquo;' + esc(e.patente) + '&rdquo;'
+        : 'Vehículos listos para entregar'}</h3>
       <div class="grid-envoltorio"><table class="grid">
         <thead><tr>
           <th>OT</th><th>Patente</th><th style="width:170px">Fecha Entrega</th>

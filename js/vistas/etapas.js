@@ -53,7 +53,19 @@ function vEtapas(o) {
       </div>` : ''}
     </div>
     <div class="cuerpo">${cuerpo}</div>
-  </div>`;
+  </div>
+  ${/* 🔶 LA BITÁCORA VA DEBAJO, como en el sistema actual (15-08-2026).
+
+       En el original la pantalla de asignar etapas termina en `Bitácora de
+       observaciones`, con su destinatario, su asunto y su casilla de mensaje.
+       No es decoración: se reparten las etapas y ahí mismo se le avisa a
+       bodega que faltan repuestos, sin cambiar de pantalla ni perder de vista
+       la orden que se está mirando.
+
+       Es el MISMO panel de la pestaña Bitácora, no una copia: se pinta con
+       `fichaBitacora` y se cablea con `pFichaBitacora`. Dos copias del mismo
+       formulario se despegan sin que nadie lo note. */''}
+  ${Modelo.puede('ficha.completa') ? fichaBitacora(o) : ''}`;
 }
 
 /* ── Asignar ───────────────────────────────────────────────────────────── */
@@ -62,15 +74,49 @@ function vAsignarEtapas(o) {
   const asignadas = o.etapasAsignadas;
   const enc = (c) => asignadas.find((x) => x.codigo === c);
 
+  /* 🔶 LA COLUMNA `RESPONSABLE`, como en el sistema actual (15-08-2026).
+     Pedido del cliente: *"cuando uno asigna una etapa hay que poner quién está
+     asignado a esa etapa"*. En el original el desplegable aparece en la fila
+     que se marca, con `Seleccionar encargado` por delante.
+
+     El desplegable de cada etapa ofrece SOLO a quien la tiene habilitada en su
+     ficha —Pintura no aparece en Mecánica—, que es la regla que ya usaba la
+     pantalla de finalizar y el único modelo de permisos real que tiene el
+     sistema actual.
+
+     Queda opcional a propósito: se puede asignar la etapa sin encargado y que
+     la tome después el que esté libre. Es como funciona el piso del taller
+     —el auto entra a pintura y lo pinta el que esté desocupado— y obligarlo
+     acá trabaría el reparto cuando todavía no se sabe quién va a poder. */
+  const gentePara = (codigo) => {
+    const etapa = Modelo.base().etapa.find((x) => x.codigo === codigo) || {};
+    return Modelo.personasParaEtapa(etapa.id);
+  };
+
   return `
   <div class="grid-envoltorio"><table class="grid">
-    <thead><tr><th style="width:34px"></th><th>Etapa</th><th>Aplica</th><th>Situación</th><th></th></tr></thead>
+    <thead><tr><th style="width:34px">N°</th><th>Etapa</th><th style="width:32%">Responsable</th>
+      <th>Aplica</th><th>Situación</th><th></th></tr></thead>
     <tbody>${ETAPAS.map((e) => {
       const a = enc(e.codigo);
+      const gente = gentePara(e.codigo);
       return '<tr><td style="text-align:center">' +
         '<input type="checkbox" data-asignar="' + esc(e.codigo) + '"' +
           (a ? ' checked' : '') + (a && a.finalizada ? ' disabled' : '') + '></td>' +
         '<td><i class="punto" style="background:' + e.color + '"></i><strong>' + esc(e.nombre) + '</strong></td>' +
+        /* Ya asignada: el encargado es un dato, y cambiarlo es tomar la etapa,
+           que se hace en Finalizar. Acá se muestra quién la tiene. */
+        '<td>' + (a
+          ? (a.responsable
+              ? '<span>' + esc(a.responsable) + '</span>'
+              : '<span style="color:var(--gris-2)">sin tomar todavía</span>')
+          : (gente.length
+              ? '<select data-respasignar="' + esc(e.codigo) + '">' +
+                '<option value="">Seleccionar encargado</option>' +
+                gente.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>').join('') +
+                '</select>'
+              : '<span class="et ambar" title="Se habilita en la ficha de cada persona">' +
+                'Nadie habilitado para esta etapa</span>')) + '</td>' +
         '<td>' + (e.opcional
           ? '<span class="et ambar" title="Un tapabarro o un espejo no pasa por mecánica">no siempre</span>'
           : '<span class="et gris">siempre</span>') + '</td>' +
@@ -78,7 +124,7 @@ function vAsignarEtapas(o) {
           : a.finalizada ? '<span class="et verde">cerrada ' + fCorta(a.finalizadaAt) + '</span>'
           : '<span class="et azul">abierta</span>') + '</td>' +
         '<td>' + (a && !a.finalizada
-          ? '<button class="btn secundario" data-quitaretapa="' + esc(e.codigo) + '">Quitar</button>' : '') +
+          ? '<button class="btn secundario chico" data-quitaretapa="' + esc(e.codigo) + '">Quitar</button>' : '') +
         '</td></tr>';
     }).join('')}</tbody>
   </table></div>
@@ -189,7 +235,18 @@ function pEtapas(o) {
     if (!codigos.length)
       return avisar({ ok: false, motivo: 'No hay ninguna etapa nueva marcada. Las que ya estaban asignadas no se vuelven a asignar.' });
     const ids = codigos.map((c) => (Modelo.base().etapa.find((e) => e.codigo === c) || {}).id);
-    ejecutar(() => Modelo.asignar_etapas(o.id, ids),
+
+    /* El encargado que se eligió en cada fila, por id de etapa. Va junto con
+       la asignación y no en un segundo paso: es un solo gesto en el original
+       —se marca la casilla, se elige la persona, se guarda— y partirlo en dos
+       dejaría etapas asignadas sin dueño esperando que alguien vuelva. */
+    const responsables = {};
+    codigos.forEach((c, i) => {
+      const sel = document.querySelector('[data-respasignar="' + c + '"]');
+      if (sel && sel.value) responsables[ids[i]] = sel.value;
+    });
+
+    ejecutar(() => Modelo.asignar_etapas(o.id, ids, responsables),
       plural(codigos.length, 'etapa asignada', 'etapas asignadas') + '.');
   });
 

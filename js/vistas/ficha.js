@@ -35,22 +35,33 @@ const FICHA_TABS = [
 const tabsVisibles = () => FICHA_TABS.filter((t) => !t.permiso || Modelo.puede(t.permiso));
 
 function fichaEstado() {
-  /* La pestaña de arranque puede venir pedida en la dirección
-     (`#ot=23506&tab=etapas`), que es como el listado de Taller manda a asignar
-     etapas. Solo se respeta la PRIMERA vez: después manda lo que el usuario
-     haya apretado, o volvería a saltar a Etapas en cada repintado. */
   if (!ui.ficha) {
-    const pedida = typeof PARAM_TAB === 'string' ? PARAM_TAB : null;
     ui.ficha = {
-      tab: FICHA_TABS.some((t) => t.id === pedida) ? pedida : 'ficha',
-      modoEtapas: null,
-      bitacora: { asunto: 'as-1', destinatario: null, mensaje: '' }
+      tab: 'ficha', modoEtapas: null,
+      // Los dos arrancan sin elegir, como el original: `Seleccionar`.
+      bitacora: { asunto: null, destinatario: null, mensaje: '' }
     };
   }
   // Si la cuenta no alcanza la pestaña donde quedó —se cambió de sesión en la
   // misma pestaña del navegador— vuelve a la primera que sí puede ver.
   if (!tabsVisibles().some((t) => t.id === ui.ficha.tab)) ui.ficha.tab = 'ficha';
   return ui.ficha;
+}
+
+/* Lo que la DIRECCIÓN pide: en qué pestaña abrir la orden y en qué modo dentro
+   de ella. Es como el listado de Taller manda a asignar etapas —su botón dice
+   `Asignar etapas` y tiene que abrir eso, tenga la orden etapas o no—.
+
+   Se aplica al ABRIR la orden y no en cada repintado: si no, apretar cualquier
+   otra pestaña rebotaría a Etapas para siempre, porque el ancla sigue diciendo
+   lo mismo. */
+function fichaAplicarDireccion() {
+  const f = fichaEstado();
+  const tab = typeof PARAM_TAB === 'function' ? PARAM_TAB() : null;
+  const modo = typeof PARAM_MODO === 'function' ? PARAM_MODO() : null;
+  if (tab && FICHA_TABS.some((t) => t.id === tab)) f.tab = tab;
+  if (modo === 'asignar' || modo === 'finalizar') f.modoEtapas = modo;
+  return f;
 }
 
 function refrescarFicha() {
@@ -352,7 +363,35 @@ function fichaHistorial(o) {
   </div>`;
 }
 
-/* ── Pestaña · Bitácora ────────────────────────────────────────────────── */
+/* ── Pestaña · Bitácora ──────────────────────────────────────────────────
+   Se pinta en su pestaña y también **debajo de la pantalla de etapas**, que es
+   donde la tiene el sistema actual: se asignan las etapas y ahí mismo se le
+   escribe a bodega que faltan repuestos, sin cambiar de pantalla. Es el mismo
+   panel, no una copia. */
+
+function pFichaBitacora(o) {
+  const f = fichaEstado();
+  const enviar = document.getElementById('bit-enviar');
+  if (enviar) enviar.addEventListener('click', () => {
+    const asunto = document.getElementById('bit-asunto').value;
+    const dest = document.getElementById('bit-dest').value;
+    const msg = document.getElementById('bit-mensaje').value;
+
+    /* Los dos desplegables arrancan en `Seleccionar`, así que hay que decir
+       cuál falta. Sin esto el mensaje se iba a quien quedara primero en la
+       lista —y el primero de 24 destinatarios no es una elección de nadie. */
+    if (!dest) return avisar({ ok: false, motivo: 'Falta el destinatario. La bitácora le escribe A alguien: ' +
+      'es lo que enciende la bandera en la pantalla de esa persona.' });
+    if (!asunto) return avisar({ ok: false, motivo: 'Falta el asunto. Es la letra que se enciende en la ' +
+      'columna Alerta de la Torre, así que sin él el mensaje no avisa nada.' });
+
+    f.bitacora.asunto = asunto;
+    ejecutar(() => Modelo.escribir_bitacora(o.id, { asunto_id: asunto, mensaje: msg, destinatario_id: dest }),
+      'Mensaje escrito. La bandera ya está encendida en la Torre.');
+  });
+  document.querySelectorAll('[data-apagar]').forEach((b) => b.addEventListener('click', () =>
+    ejecutar(() => Modelo.apagar_alerta(b.dataset.apagar), 'Alerta apagada.')));
+}
 
 function fichaBitacora(o) {
   const f = fichaEstado();
@@ -369,11 +408,17 @@ function fichaBitacora(o) {
         : '<span class="et gris">sin alertas</span>'}</span></div>
     <div class="cuerpo">
       <div class="rejilla-campos">
-        <div class="campo"><label>De</label><input value="Administrador" disabled></div>
+        ${/* `De` decía «Administrador» a secas, entrara quien entrara. Un
+             mensaje de bitácora queda firmado, y firmarlo con un cargo que no
+             es el tuyo es peor que no mostrarlo. */''}
+        <div class="campo"><label>De</label><input value="${esc(quienMira())}" disabled></div>
         <div class="campo"><label>Para</label>
-          <select id="bit-dest">${gente.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>').join('')}</select></div>
+          <select id="bit-dest"><option value="">Seleccionar</option>${gente.map((p) =>
+            '<option value="' + esc(p.id) + '"' + (f.bitacora.destinatario === p.id ? ' selected' : '') +
+            '>' + esc(p.nombre) + '</option>').join('')}</select></div>
         <div class="campo"><label>Asunto</label>
-          <select id="bit-asunto">${asuntos.map((a) => '<option value="' + esc(a.id) + '"' +
+          <select id="bit-asunto"><option value="">Seleccionar</option>${asuntos.map((a) =>
+            '<option value="' + esc(a.id) + '"' +
             (f.bitacora.asunto === a.id ? ' selected' : '') + '>' + esc(a.nombre) +
             ' (' + esc(a.nombre.charAt(0).toUpperCase()) + ')</option>').join('')}</select>
           <span class="ayuda">Los seis, acá y en la pantalla de etapas</span></div>
@@ -587,19 +632,9 @@ function pFichaOT(o) {
 
   if (f.tab === 'etapas') pEtapas(o);
 
-  if (f.tab === 'bitacora') {
-    const enviar = document.getElementById('bit-enviar');
-    if (enviar) enviar.addEventListener('click', () => {
-      const asunto = document.getElementById('bit-asunto').value;
-      const dest = document.getElementById('bit-dest').value;
-      const msg = document.getElementById('bit-mensaje').value;
-      f.bitacora.asunto = asunto;
-      ejecutar(() => Modelo.escribir_bitacora(o.id, { asunto_id: asunto, mensaje: msg, destinatario_id: dest }),
-        'Mensaje escrito. La bandera ya está encendida en la Torre.');
-    });
-    document.querySelectorAll('[data-apagar]').forEach((b) => b.addEventListener('click', () =>
-      ejecutar(() => Modelo.apagar_alerta(b.dataset.apagar), 'Alerta apagada.')));
-  }
+  // La bitácora se pinta en su pestaña Y debajo de las etapas, igual que en el
+  // sistema actual, así que su cableado vive aparte y lo llaman las dos.
+  if (f.tab === 'bitacora' || f.tab === 'etapas') pFichaBitacora(o);
 
   if (f.tab === 'fotos') {
     if (Modelo.puede('foto.cargar')) montarZonaFotos({

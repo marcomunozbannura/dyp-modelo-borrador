@@ -681,9 +681,9 @@ fieldset.bloque legend {
    dibuja dos veces. */
 table.grid th.flecha-col, table.grid td.flecha-col { width: 26px; padding-right: 0; }
 table.grid td.flecha-col .flecha { color: var(--gris); display: inline-block; transition: transform .12s ease; }
-table.grid tr.fila.desplegable.abierta td.flecha-col .flecha { transform: rotate(90deg); color: var(--acento); }
-table.grid tr.fila.desplegable { cursor: pointer; }
-table.grid tr.fila.desplegable:hover > td { background: var(--seleccion); }
+table.grid tr.fila-desplegable.abierta td.flecha-col .flecha { transform: rotate(90deg); color: var(--acento); }
+table.grid tr.fila-desplegable { cursor: pointer; }
+table.grid tr.fila-desplegable:hover > td { background: var(--seleccion); }
 
 /* ───────── Configuración agrupada ─────────
    Eran doce pestañas en una fila, todas al mismo nivel: lo que se toca una vez

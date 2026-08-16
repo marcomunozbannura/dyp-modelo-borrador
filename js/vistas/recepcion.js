@@ -303,9 +303,6 @@ function vRecepcion() {
     danos: recDanos, verificar: recVerificar
   }[r.paso]();
 
-  const faltanPaso = recFaltantesDe(r.paso);
-  const faltanTodo = recFaltantes();
-
   return `
   <div class="panel">
     <div class="cab">
@@ -321,20 +318,20 @@ function vRecepcion() {
     <div class="cuerpo">${cuerpo}</div>
   </div>
 
+  ${/* La barra de abajo son los botones y nada más.
+
+       Acá vivía un aviso permanente —"Faltan 4 en este paso: el RUT, el
+       nombre…"— y se sacó el 15-08-2026: estaba retando antes de que nadie
+       hiciera nada. El formulario recién abierto está vacío por definición, así
+       que el aviso salía siempre y en rojo, y lo que se lee todo el tiempo se
+       deja de leer.
+
+       Lo que falta se dice cuando se aprieta `Siguiente`, que es cuando la
+       persona declaró que terminó: ahí el rechazo nombra los campos, los marca
+       y pone el cursor en el primero. Es la misma regla de la casa que impide
+       apagar el botón — se avisa al intentar, no antes. */''}
   <div class="panel">
-    <div class="cuerpo" style="display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-      <span class="pie-nota" style="margin:0">
-        ${faltanPaso.length
-          ? '<span style="color:var(--ambar)">Falta' + (faltanPaso.length === 1 ? '' : 'n') + ' ' +
-            faltanPaso.length + ' en este paso: ' +
-            esc(faltanPaso.slice(0, 3).map((f) => f.rot).join(', ')) + (faltanPaso.length > 3 ? '…' : '') + '</span>'
-          : faltanTodo.length
-            ? '<span style="color:var(--ambar)">Este paso está completo · quedan ' + faltanTodo.length +
-              ' en los otros: ' + esc(faltanTodo.slice(0, 2).map((f) => f.rot).join(', ')) +
-              (faltanTodo.length > 2 ? '…' : '') + '</span>'
-            : 'Listo para ingresar. Se van a crear <strong>' + r.bloques.length + '</strong> ' +
-              (r.bloques.length === 1 ? 'orden de trabajo' : 'órdenes de trabajo') + '.'}
-      </span>
+    <div class="cuerpo" style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
       <span style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn secundario" id="rec-limpiar">Descartar borrador</button>
         <button class="btn secundario" id="rec-ant" ${i <= 0 ? 'disabled' : ''}>Anterior</button>
@@ -347,6 +344,38 @@ function vRecepcion() {
       </span>
     </div>
   </div>`;
+}
+
+/* ── El RUT se puntea solo ─────────────────────────────────────────────
+   Se escribe `204296731` y queda `20.429.673-1`. Nadie teclea los puntos ni el
+   guión, y sin esto el padrón termina con el mismo RUT escrito de cuatro formas
+   —con puntos, sin puntos, con guión, sin guión— que es exactamente el
+   problema que le auditamos al sistema actual con las compañías: cuatro
+   escrituras de CARDIF para una sola aseguradora. Un dato que se busca tiene
+   que estar guardado de una sola manera.
+
+   El dígito verificador es el último carácter y puede ser una K. NO se valida
+   que sea el correcto: eso es una regla aparte y hay que confirmarla con el
+   taller antes de rechazar el RUT de un cliente que está parado en el mesón. */
+function formatearRut(texto) {
+  const limpio = String(texto || '').toUpperCase().replace(/[^0-9K]/g, '');
+  if (!limpio) return '';
+
+  /* Cuándo aparece el guión. El cuerpo de un RUT chileno tiene 7 u 8 dígitos,
+     así que hasta el séptimo carácter todavía se está escribiendo el cuerpo y
+     el guión no corresponde: sin esto, teclear `204296731` mostraba `2-0`,
+     `20-4`, `204-2`… y el campo parecía roto mientras se escribía.
+
+     Con una K la cosa es distinta: la K solo puede ser dígito verificador, así
+     que apenas aparece se separa, sin importar el largo. */
+  const conK = limpio.slice(-1) === 'K';
+  const puntear = (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  if (!conK && limpio.length <= 7) return puntear(limpio);
+
+  const cuerpo = limpio.slice(0, -1).replace(/\D/g, '');
+  const dv = limpio.slice(-1);
+  return cuerpo ? puntear(cuerpo) + '-' + dv : dv;
 }
 
 /* Campo de texto amarrado a `campos`. */
@@ -992,6 +1021,22 @@ function pRecepcion() {
   // tecla haría perder el foco y el cursor.
   document.querySelectorAll('input[data-rec], textarea[data-rec]').forEach((el) =>
     el.addEventListener('input', () => {
+      /* El RUT se reescribe con sus puntos y su guión en cada tecla. Hay que
+         devolver el cursor a mano: al cambiar el valor el navegador lo manda al
+         final, y si alguien corrige un dígito del medio el cursor le salta. Se
+         cuenta cuántos dígitos quedaban a la izquierda y se lo deja después del
+         mismo dígito, ya con los puntos puestos. */
+      if (el.dataset.rec === 'rut') {
+        const antesDelCursor = String(el.value).slice(0, el.selectionStart || 0)
+          .replace(/[^0-9K]/gi, '').length;
+        el.value = formatearRut(el.value);
+        let pos = 0, vistos = 0;
+        while (pos < el.value.length && vistos < antesDelCursor) {
+          if (/[0-9K]/i.test(el.value[pos])) vistos++;
+          pos++;
+        }
+        try { el.setSelectionRange(pos, pos); } catch (e) { /* el campo no lo permite */ }
+      }
       r.campos[el.dataset.rec] = el.value;
       recDesmarcar(el, el.dataset.rec);
       guardarBorrador();

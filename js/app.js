@@ -1337,7 +1337,10 @@ function dobleClicPorFilas(selector) {
        en la torre — que la tiene entre sus 17 columnas. Se inserta acá, junto
        con su encabezado, en vez de agregarle una columna a mano a las seis
        tablas: el que escribe una pantalla nueva no tiene que acordarse. */
-    tr.classList.add('desplegable');
+    // OJO: no usar 'desplegable' a secas — esa clase ya existe para el menú de
+    // la barra superior y es position:fixed. Puesta en un <tr>, lo saca del
+    // flujo y la tabla entera colapsa: las filas quedan en el DOM sin verse.
+    tr.classList.add('fila-desplegable');
     if (!tr.querySelector('td.flecha-col')) {
       const cel = document.createElement('td');
       cel.className = 'flecha-col';

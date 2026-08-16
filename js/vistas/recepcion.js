@@ -380,10 +380,13 @@ const recMarcado = (clave) => rec().marcados.indexOf(clave) >= 0;
 /* El menú de cuatro opciones, copiado del original. Cada tarjeta es un botón
    grande: es una pantalla que se usa de pie, en el mesón, muchas veces al día. */
 function vRecepcionMenu() {
-  const r = rec();
-  const hayBorrador = !!(String(r.campos.patente || '').trim() ||
-    String(r.campos.rut || '').trim() || r.danos.length || r.fotos.length);
+  /* ⛔ ACÁ IBA EL CARTEL «hay un borrador a medio llenar», y se sacó el
+     15-08-2026 junto con la razón de que existiera: ahora **salir del proceso
+     descarta lo llenado a medias**, así que no hay nada que anunciar.
 
+     El cartel no decía de qué auto era el ingreso a medias, y sin eso no se
+     puede decidir si retomarlo o tirarlo: había que entrar a mirar. Avisaba de
+     un problema en vez de resolverlo. */
   const tarjeta = (o) => {
     const puede = Modelo.puede(o.permiso);
     /* La opción que el rol no puede usar NO se esconde ni se apaga: se aprieta
@@ -393,8 +396,6 @@ function vRecepcionMenu() {
       '<span class="circulo">' + ico(o.icono, 'g') + '</span>' +
       '<span class="rot">' + esc(o.rot) + '</span>' +
       '<span class="desc">' + esc(o.desc) + '</span>' +
-      (o.id === 'nuevo' && hayBorrador
-        ? '<span class="et ambar">hay un borrador a medio llenar</span>' : '') +
       (puede ? '' : '<span class="et gris">no es de este perfil</span>') +
       '</button>';
   };
@@ -1326,9 +1327,15 @@ function pRecepcion() {
     r.pantalla = op.id; r.buscaEditar = ''; render();
   }));
 
-  // Volver al menú, desde el formulario o desde el buscador.
+  /* Volver al menú, desde el formulario o desde el buscador. Salir del
+     formulario descarta lo que se hubiera llenado: es la misma regla que al
+     salir del módulo, y tiene que ser la misma por las dos puertas. */
   const volver = document.getElementById('rec-volver');
-  if (volver) volver.addEventListener('click', () => { r.pantalla = 'menu'; render(); });
+  if (volver) volver.addEventListener('click', () => {
+    limpiarBorrador();
+    rec().pantalla = 'menu';
+    render();
+  });
 
   // El buscador de `Editar Recepción`.
   const buscar = document.getElementById('rec-buscar-patente');

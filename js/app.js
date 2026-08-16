@@ -859,6 +859,23 @@ function ir(vista) {
     pintarMenu();
     montarRol();
   }
+  /* 🔶 SALIR DE RECEPCIÓN DESCARTA EL INGRESO A MEDIO LLENAR (15-08-2026,
+     pedido del cliente): *"si uno sale del proceso que se borre lo que habían
+     registrado a medias"*.
+
+     Antes el borrador sobrevivía y el menú lo anunciaba con un cartel. El
+     problema no era guardarlo: era que nadie sabía de QUÉ auto era. Un ingreso
+     a medias sin dueño reaparece días después y hay que abrirlo para
+     descubrirlo, y mientras tanto ensucia el menú.
+
+     ⚠️ La contracara, y hay que decirla: si alguien está llenando una recepción
+     y se va a la Torre a mirar algo, al volver empieza de nuevo. Es lo pedido,
+     y es la razón por la que `Descartar borrador` sigue existiendo aparte —
+     ahora es explícito, no la única salida. */
+  if (ui.vista === 'recepcion' && vista !== 'recepcion' && typeof limpiarBorrador === 'function') {
+    limpiarBorrador();
+  }
+
   ui.vista = vista;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === vista));
   const c = document.getElementById('contenido');

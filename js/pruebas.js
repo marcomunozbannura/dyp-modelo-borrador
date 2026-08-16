@@ -889,6 +889,84 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 32 · 🔴 NADIE ABRE UNA DETENCIÓN SIN EL PERMISO ─────────────────
+         C-1 de la auditoría del 16-08-2026. `abrir_detencion` y
+         `cerrar_detencion` estaban en `ESCRIBEN` —dejaban su hecho— pero no en
+         `PERMISO_DE`, y `conPermiso` sólo envuelve lo que aparece en ese mapa:
+         cualquiera podía detener una orden.
+
+         No era explotable porque ninguna pantalla las llama todavía. Pasaba a
+         serlo el día que se construyera Esperas, que es justo lo que está
+         modelado esperando — y ese día nadie se habría acordado de revisarlo.
+
+         Se prueban los dos lados: que al operario lo rechace NOMBRANDO el
+         permiso que le falta, y que a administración la deje. Un permiso que
+         rechaza a todos no es un permiso, es una pared. */
+      (function () {
+        restaurarSesion();
+        const o = abiertaCualquiera();
+        const motivos = db.motivo_detencion || [];
+
+        const operario = db.persona.find((p) => (p.correo || '').indexOf('pintura@') === 0);
+        Modelo.fijar_persona_actual(operario ? operario.id : null);
+        // Recibe el CÓDIGO del motivo, no su id ni un objeto.
+        const codigo = motivos.length ? motivos[0].codigo : null;
+        const comoOperario = Modelo.abrir_detencion(o.id, codigo, 'prueba de permiso');
+
+        const admin = db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl');
+        Modelo.fijar_persona_actual(admin ? admin.id : null);
+        const comoAdmin = Modelo.abrir_detencion(o.id, codigo, 'prueba de permiso');
+
+        const nombraElPermiso = !comoOperario.ok &&
+          /permiso|detencion\.gestionar|no tiene/i.test(comoOperario.motivo || '');
+
+        push({
+          nombre: '🔴 Nadie abre una detención sin el permiso para hacerlo',
+          intento: 'Abrir una detención en la OT ' + o.numero_ot + ' con cuenta de Pintura, y ' +
+                   'después con administración',
+          esperado: 'Al operario lo rechaza diciendo qué permiso falta · a administración la deja',
+          paso: !comoOperario.ok && nombraElPermiso && comoAdmin.ok,
+          detalle: 'Operario: ' + (comoOperario.ok
+            ? 'LO DEJÓ PASAR, no debería' : (comoOperario.motivo || 'rechazó sin decir por qué')) +
+            '  ·  Administración: ' + (comoAdmin.ok ? 'pudo' : 'NO PUDO — ' + comoAdmin.motivo)
+        });
+      })();
+
+      /* ── 33 · Una firma del motor no revienta: rechaza y explica ─────────
+         A-1 de la misma auditoría. `crear_presupuesto` desestructuraba su
+         segundo argumento sin valor por omisión: llamarla con uno solo lanzaba
+         un `TypeError` y dejaba la pantalla a medio pintar. Contradice la regla
+         de la casa —el botón se aprieta siempre y la regla explica el motivo—
+         porque un `TypeError` no explica nada.
+
+         Se prueban las cinco firmas que desestructuran, no sólo la del
+         hallazgo: si mañana alguien agrega una sexta sin `= {}`, esta prueba la
+         encuentra. */
+      (function () {
+        restaurarSesion();
+        const o = abiertaCualquiera();
+        const firmas = ['crear_presupuesto', 'registrar_entrega', 'cargar_repuesto',
+          'agregar_costo_adicional', 'escribir_bitacora'];
+        const reventaron = [];
+        firmas.forEach((f) => {
+          try {
+            const r = Modelo[f](o.id);
+            if (!r || typeof r.ok !== 'boolean') reventaron.push(f + ' (no devolvió ok/motivo)');
+          } catch (e) { reventaron.push(f + ' → ' + e.message); }
+        });
+
+        push({
+          nombre: 'Ninguna operación del motor revienta por un argumento que falta',
+          intento: 'Llamar las ' + firmas.length + ' operaciones que desestructuran su segundo ' +
+                   'argumento pasándoles sólo la orden',
+          esperado: 'Las ' + firmas.length + ' devuelven { ok, motivo }, ninguna lanza excepción',
+          paso: !reventaron.length,
+          detalle: reventaron.length
+            ? 'Reventaron: ' + reventaron.join(' · ')
+            : 'Las ' + firmas.length + ' rechazaron explicando, sin excepciones.'
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

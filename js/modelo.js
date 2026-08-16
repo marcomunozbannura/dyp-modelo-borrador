@@ -1449,7 +1449,7 @@ const Modelo = (function () {
     return { ok: true, motivo: '' };
   }
 
-  function registrar_entrega(ot_id, { estado, fecha, observacion }) {
+  function registrar_entrega(ot_id, { estado, fecha, observacion } = {}) {
     const e = Reglas.estadoPorCodigo(db, estado);
     if (!e) return { ok: false, motivo: 'El estado de entrega no existe en el catálogo.' };
     if (!e.es_final) return { ok: false, motivo: '"' + e.nombre + '" no cierra la orden: la entrega exige un estado final.' };
@@ -1481,7 +1481,7 @@ const Modelo = (function () {
 
   /* ── Bodega ───────────────────────────────────────────────────────────── */
 
-  function cargar_repuesto(ot_id, { descripcion, cantidad, responsable_pago_id }) {
+  function cargar_repuesto(ot_id, { descripcion, cantidad, responsable_pago_id } = {}) {
     const permiso = Reglas.puedeCargarRepuesto(db, { ot_id });
     if (!permiso.ok) return permiso;
     if (!descripcion || !String(descripcion).trim())
@@ -1707,7 +1707,13 @@ const Modelo = (function () {
     return rep;
   }
 
-  function crear_presupuesto(ot_id, { id_reparacion, lineas }) {
+  /* ⚠️ El `= {}` no es adorno (A-1 de la auditoría del 16-08-2026). Sin él,
+     llamarla con un solo argumento lanza `TypeError: Cannot destructure
+     property...` y deja la pantalla a medio pintar. La regla de la casa es la
+     contraria: el botón se aprieta siempre y la regla rechaza EXPLICANDO el
+     motivo — un TypeError no explica nada. Las cinco firmas del motor que
+     desestructuran quedaron iguales, no sólo ésta. */
+  function crear_presupuesto(ot_id, { id_reparacion, lineas } = {}) {
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     if (!o) return { ok: false, motivo: 'La orden de trabajo no existe.' };
     if (Reglas.esTerminal(db, o.estado))
@@ -1923,7 +1929,7 @@ const Modelo = (function () {
      modela como lo que el rótulo dice: costos que aparecen después del
      presupuesto y que alguien tiene que pagar. */
 
-  function agregar_costo_adicional(ot_id, { descripcion, monto, responsable_pago_id }) {
+  function agregar_costo_adicional(ot_id, { descripcion, monto, responsable_pago_id } = {}) {
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     if (!o) return { ok: false, motivo: 'La orden no existe.' };
     if (!Reglas.estaAbierta(db, o.estado))
@@ -2152,7 +2158,7 @@ const Modelo = (function () {
 
   /* ── Bitácora y alertas ───────────────────────────────────────────────── */
 
-  function escribir_bitacora(ot_id, { asunto_id, mensaje, destinatario_id }) {
+  function escribir_bitacora(ot_id, { asunto_id, mensaje, destinatario_id } = {}) {
     const permiso = Reglas.puedeEscribirBitacora(db, { ot_id, asunto_id, mensaje });
     if (!permiso.ok) return permiso;
     db.bitacora.push({
@@ -2723,6 +2729,14 @@ const Modelo = (function () {
     recibir_repuesto: 'repuesto.cargar',
     entregar_repuesto_area: 'repuesto.cargar',
     fijar_codigo_repuesto: 'repuesto.cargar',
+    /* 🔴 C-1 de la auditoría del 16-08-2026. Las dos estaban en `ESCRIBEN`
+       —dejaban su hecho en el expediente— pero NO acá, y `conPermiso` sólo
+       envuelve lo que aparece en este mapa: modificaban la orden sin preguntar
+       el rol. Hoy no era explotable porque ninguna vista las llama; lo pasaba a
+       ser el día que se construyera el módulo Esperas, que es justo lo que está
+       modelado esperando. */
+    abrir_detencion: 'detencion.gestionar',
+    cerrar_detencion: 'detencion.gestionar',
     adjuntar_vale_repuesto: 'repuesto.cargar',
     devolver_repuesto: 'repuesto.devolver',
     declarar_perdida_total: 'perdida_total.declarar',
@@ -2925,6 +2939,7 @@ const Modelo = (function () {
   })));
 })();
 
-/* Alias de transición: las vistas de las tandas anteriores hablan con
-   `Estado`. Se van migrando a `Modelo` a medida que se reescriben. */
-const Estado = Modelo;
+/* El alias `const Estado = Modelo` se retiró el 16-08-2026 (A-2 de la
+   auditoría): la migración terminó y no quedaba una sola llamada a `Estado.`
+   en vistas, `app.js` ni `pruebas.js`. Un alias que nadie usa sólo sirve para
+   que alguien lo vuelva a usar sin saber que era transitorio. */

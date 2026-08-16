@@ -83,6 +83,7 @@ const Semilla = (function () {
     ['repuesto.devolver',    'Devolver un repuesto y dejarlo pendiente de nuevo'],
     ['repuesto.cargar',      'Cargar repuestos en bodega'],
     ['salida.registrar',     'Registrar salidas y reingresos'],
+    ['detencion.gestionar',  'Abrir y cerrar detenciones de una orden'],
     ['entrega.registrar',    'Entregar el vehículo'],
     ['personal.ver',         'Ver la ficha de los trabajadores'],
     ['personal.editar',      'Crear, editar y dar de baja trabajadores'],
@@ -496,7 +497,9 @@ const Semilla = (function () {
       jefe_taller: ['torre.ver', 'taller.ver', 'repuesto.ver', 'espera.ver', 'ficha.completa',
                     'documento.ver', 'foto.ver', 'foto.cargar',
                     'etapa.asignar', 'etapa.finalizar', 'presupuesto.ver', 'presupuesto.montos',
-                    'presupuesto.crear', 'presupuesto.abrir', 'personal.ver', 'salida.registrar'],
+                    'presupuesto.crear', 'presupuesto.abrir', 'personal.ver', 'salida.registrar',
+                    // Quién decide que un auto se detiene y por qué: el que manda en el taller.
+                    'detencion.gestionar'],
       operario:    ['taller.ver', 'repuesto.ver', 'etapa.finalizar', 'presupuesto.ver'],
       bodega:      ['torre.ver', 'taller.ver', 'repuesto.ver', 'ficha.completa',
                     'documento.ver', 'documento.cargar', 'repuesto.cargar',

@@ -110,13 +110,19 @@ function vAsignarEtapas(o) {
           ? (a.responsable
               ? '<span>' + esc(a.responsable) + '</span>'
               : '<span style="color:var(--gris-2)">sin tomar todavía</span>')
-          : (gente.length
+          /* El desplegable existe en el DOM desde el arranque pero NO se ve
+             hasta que se marca la casilla, que es como aparece en el original.
+             Se oculta en vez de crearse al vuelo para no perder lo elegido si
+             alguien desmarca y vuelve a marcar, y para que el guardado lea
+             siempre del mismo sitio. */
+          : '<span class="resp-etapa' + '" style="display:none">' +
+            (gente.length
               ? '<select data-respasignar="' + esc(e.codigo) + '">' +
                 '<option value="">Seleccionar encargado</option>' +
                 gente.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>').join('') +
                 '</select>'
               : '<span class="et ambar" title="Se habilita en la ficha de cada persona">' +
-                'Nadie habilitado para esta etapa</span>')) + '</td>' +
+                'Nadie habilitado para esta etapa</span>') + '</span>') + '</td>' +
         '<td>' + (e.opcional
           ? '<span class="et ambar" title="Un tapabarro o un espejo no pasa por mecánica">no siempre</span>'
           : '<span class="et gris">siempre</span>') + '</td>' +
@@ -225,6 +231,32 @@ function pEtapas(o) {
   document.querySelectorAll('[data-modoetapa]').forEach((b) => b.addEventListener('click', () => {
     ui.ficha.modoEtapas = b.dataset.modoetapa; refrescarFicha();
   }));
+
+  /* 🔶 EL ENCARGADO APARECE AL MARCAR LA ETAPA, no antes (15-08-2026). Pedido
+     del cliente: *"cuando apriete una etapa ahí te deje poner el asignado"*.
+
+     Con los nueve desplegables a la vista la pantalla pide nueve decisiones
+     cuando en un vehículo aplican dos o tres. Mostrando solo el de la fila
+     marcada, la pantalla pregunta una cosa a la vez y en el orden en que se
+     piensa: primero qué se le hace al auto, después quién lo hace.
+
+     No se repinta la tabla: se muestra la celda que corresponde. Repintar
+     perdería el resto de las casillas marcadas, que es justo lo que se está
+     armando. */
+  document.querySelectorAll('[data-asignar]').forEach((c) => {
+    const fila = c.closest('tr');
+    const zona = fila && fila.querySelector('.resp-etapa');
+    if (!zona) return;
+    const refrescar = () => { zona.style.display = c.checked ? '' : 'none'; };
+    refrescar();
+    c.addEventListener('change', () => {
+      refrescar();
+      // Al marcarla, el foco se va al desplegable: es lo siguiente que hay que
+      // contestar, y ahorra ir a buscarlo con el mouse en una tabla de nueve.
+      const sel = zona.querySelector('select');
+      if (c.checked && sel) sel.focus();
+    });
+  });
 
   const asignar = document.getElementById('btn-asignar');
   if (asignar) asignar.addEventListener('click', () => {

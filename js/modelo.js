@@ -370,7 +370,7 @@ const Modelo = (function () {
         tipoNombre: (ix.tipoDano.get(d.tipo_id) || {}).nombre,
         color: (ix.tipoDano.get(d.tipo_id) || {}).color,
         severidad: d.severidad, x: d.x, y: d.y, vista: d.vista,
-        descripcion: d.descripcion || ''
+        descripcion: d.descripcion || '', trazo: d.trazo || null
       })),
 
       /* El inventario con sus cuatro estados. `presente` se mantiene como
@@ -834,7 +834,11 @@ const Modelo = (function () {
       (ficha.danos || []).forEach((d, i) => db.dano.push({
         id: nuevoId('da') + '-' + i, recepcion_id: rec_id, vista: d.vista || 'superior',
         zona_id: d.zona_id, tipo_id: d.tipo_id, severidad: d.severidad || 2,
-        x: d.x, y: d.y, descripcion: d.descripcion || ''
+        x: d.x, y: d.y, descripcion: d.descripcion || '',
+        /* El trazo con el que se rayó el auto. `x`/`y` siguen siendo el centro
+           de ese trazo y `zona_id` la pieza donde cayó: el dibujo se guarda
+           para poder redibujarlo, no para reemplazar al dato consultable. */
+        trazo: d.trazo || null
       }));
 
       const creadas = [];

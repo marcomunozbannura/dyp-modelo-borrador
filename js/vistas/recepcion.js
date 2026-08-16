@@ -829,45 +829,53 @@ function recDanos() {
   const estados = Modelo.inventarioEstados();
   const c = recInvConteo();
 
+  /* 🔶 EL LAYOUT COMPACTO DEL ORIGINAL (15-08-2026). El dibujo a la izquierda,
+     y a la derecha —en la misma pantalla, sin bajar— el tipo de daño, las
+     marcas con su observación, el kilometraje, el combustible y las fotos. Es
+     como está en el sistema real y es como se trabaja: el auto está adelante y
+     el recepcionista no puede andar buscando dónde quedó cada campo. */
   return `
-  <fieldset class="bloque"><legend>Daños al ingresar</legend>
-  <div class="silueta-zona">
-    <div>
+  <div class="estado-descriptivo">
+    <div class="ed-dibujo">
       <div class="lienzo">${svgSilueta()}</div>
-      <div class="pie-nota">Se marca la zona y se le escribe el defecto al lado. Cada marca guarda
-        <strong>zona, tipo, severidad y coordenada</strong>: por eso después se puede preguntar cuántos
-        vehículos de una compañía llegaron con daño en la puerta delantera izquierda. Un dibujo libre
-        no se puede consultar.</div>
+      <div class="ed-barra">
+        <span class="ayuda">Raya sobre el auto con el dedo o el mouse. Cada trazo es un daño.</span>
+        <span style="display:flex;gap:6px">
+          <button class="btn secundario" id="dano-deshacer">Deshacer el último</button>
+          <button class="btn secundario" id="dano-borrar">Borrar todo</button>
+        </span>
+      </div>
     </div>
-    <div>
+
+    <div class="ed-lado">
       <h4 class="rot-chico">Tipo de daño a marcar</h4>
-      <div class="chips" id="chips-tipo" style="margin-bottom:14px">
+      <div class="chips" id="chips-tipo" style="margin-bottom:12px">
         ${Modelo.tiposDano().map((t) => '<button class="chip' + (t.codigo === r.tipoDano ? ' activo' : '') +
           '" data-tipo="' + esc(t.codigo) + '"><i class="punto" style="background:' + t.color + '"></i>' +
           esc(t.nombre) + '</button>').join('')}
       </div>
-      <h4 class="rot-chico">Daños marcados <span id="n-danos">(0)</span></h4>
+
+      <h4 class="rot-chico">Observaciones de lo marcado <span id="n-danos">(0)</span></h4>
       <div class="lista-danos" id="lista-danos"></div>
+
+      <fieldset class="bloque" style="margin-top:12px"><legend>Tablero</legend>
+        <div class="rejilla-campos">
+          ${recCampo('km', 'Kilometraje', { tipo: 'number', ayuda: 'Como se lee al recibirlo' })}
+        </div>
+        <h4 class="rot-chico" style="margin-top:10px">Nivel de combustible</h4>
+        <div class="chips">
+          ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => '<button class="chip' +
+            (String(r.campos.combustible) === String(n) ? ' activo' : '') + '" data-comb="' + n + '">' +
+            n + '/8' + (n === 8 ? ' lleno' : n === 0 ? ' vacío' : '') + '</button>').join('')}
+        </div>
+        <div class="pie-nota">Nueve posiciones, como el original. Nuestro diseño decía ocho.</div>
+      </fieldset>
+
+      <fieldset class="bloque" style="margin-top:12px"><legend>Fotografías de ingreso</legend>
+        ${zonaFotos({ id: 'recfoto', fotos: r.fotos, titulo: 'Agregar fotografías' })}
+      </fieldset>
     </div>
   </div>
-  </fieldset>
-
-  <fieldset class="bloque" style="margin-top:12px"><legend>Tablero</legend>
-    <div class="rejilla-campos">
-      ${recCampo('km', 'Kilometraje', { tipo: 'number', ayuda: 'Como se lee en el tablero al recibirlo' })}
-    </div>
-    <h4 class="rot-chico" style="margin-top:11px">Nivel de combustible</h4>
-    <div class="chips">
-      ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => '<button class="chip' +
-        (String(r.campos.combustible) === String(n) ? ' activo' : '') + '" data-comb="' + n + '">' +
-        n + '/8' + (n === 8 ? ' lleno' : n === 0 ? ' vacío' : '') + '</button>').join('')}
-    </div>
-    <div class="pie-nota">Nueve posiciones, de 0/8 a 8/8, como el original. Nuestro diseño decía ocho.</div>
-  </fieldset>
-
-  <fieldset class="bloque" style="margin-top:12px"><legend>Fotografías de ingreso</legend>
-    ${zonaFotos({ id: 'recfoto', fotos: r.fotos, titulo: 'Agregar fotografías del vehículo' })}
-  </fieldset>
 
   <fieldset class="bloque" style="margin-top:12px">
     <legend>Inventario del vehículo · los ${items.length} ítems</legend>
@@ -921,23 +929,30 @@ function pintarDanos() {
   const lista = document.getElementById('lista-danos');
   if (!g || !lista) return;
 
-  g.innerHTML = r.danos.map((d) =>
-    '<g class="marca-dano"><circle cx="' + (d.x * 300).toFixed(1) + '" cy="' + (d.y * 470).toFixed(1) +
-    '" r="9" fill="' + d.color + '" fill-opacity=".85" stroke-width="2"></circle></g>').join('');
+  // Cada daño es un TRAZO. Se redibuja entero desde los puntos guardados, así
+  // que sobrevive a cambiar de paso, a recargar y al borrador restaurado.
+  g.innerHTML = r.danos.map((d, i) => {
+    // Un daño sin trazo viene de un borrador anterior al dibujo libre: se marca
+    // en el centro de su zona en vez de desaparecer de la pantalla.
+    const p = (d.trazo && d.trazo.length) ? d.trazo : [siluetaPuntoDeZona(d.vista, d.zona)];
+    return '<path class="trazo-dano" data-trazo="' + i + '" d="' + siluetaTrazoD(p) +
+      '" stroke="' + d.color + '"></path>';
+  }).join('');
 
   document.getElementById('n-danos').textContent = '(' + r.danos.length + ')';
-  /* Cada marca lleva SU comentario. La zona dice dónde y el tipo dice qué; lo
+  /* Cada marca lleva SU observación. La zona dice dónde y el tipo dice qué; lo
      que ninguno de los dos alcanza —"viene del roce con el portón", "ya estaba
      antes"— es exactamente lo que después se discute con la compañía. */
   lista.innerHTML = r.danos.length
     ? r.danos.map((d, i) =>
         '<div class="item-dano"><span><i class="punto" style="background:' + d.color + '"></i>' +
-        '<strong>' + esc(d.tipoNombre) + '</strong> · ' + esc(d.zonaNombre) +
-        ' <span class="et gris">' + esc(String(d.vista).replace('_', ' ')) + '</span></span>' +
+        '<strong>' + esc(d.tipoNombre) + '</strong> · ' + esc(d.zonaNombre || 'sin zona') +
+        ' <span class="et gris">' + esc(String(d.vista).replace(/_/g, ' ')) + '</span></span>' +
         '<button class="quitar" data-quitar="' + i + '" title="Quitar">&times;</button></div>' +
         '<div class="nota-dano"><input data-nota-dano="' + i + '" value="' + esc(d.descripcion || '') +
-        '" placeholder="Comentario del defecto (opcional)"></div>').join('')
-    : '<div style="color:var(--gris-2);font-size:12.5px;padding:8px 2px">Sin daños marcados todavía.</div>';
+        '" placeholder="Observación de este daño"></div>').join('')
+    : '<div style="color:var(--gris-2);font-size:12.5px;padding:8px 2px">Sin daños marcados todavía. ' +
+      'Raya sobre el dibujo.</div>';
 
   lista.querySelectorAll('[data-quitar]').forEach((b) => b.addEventListener('click', () => {
     r.danos.splice(Number(b.dataset.quitar), 1);
@@ -1310,24 +1325,86 @@ function pRecepcion() {
     r.tipoDano = b.dataset.tipo;
     document.querySelectorAll('[data-tipo]').forEach((x) => x.classList.toggle('activo', x.dataset.tipo === r.tipoDano));
   }));
+  /* ── Rayar sobre el auto ────────────────────────────────────────────
+     Se raya con el dedo o con el mouse, y cada trazo es un daño. Al soltar se
+     calcula el centro del trazo y se mira en qué vista y en qué zona cayó: el
+     recepcionista dibuja, el sistema clasifica. Así el dato sigue siendo
+     consultable —"cuántos vehículos de SURA llegaron con la puerta delantera
+     izquierda dañada"— sin obligarlo a apuntarle a un rectángulo.
+
+     `pointer*` y no `mouse*`: esto se usa en una tablet. El `touch-action:none`
+     del CSS evita que el dedo arrastre la página mientras se raya. */
   const svg = document.getElementById('silueta');
   if (svg) {
-    svg.addEventListener('click', (ev) => {
-      const zona = ev.target.dataset && ev.target.dataset.zona;
-      if (!zona) return;
+    const zonas = Modelo.zonasDano();
+    let trazo = null, vivo = null;
+
+    const punto = (ev) => {
       const caja = svg.getBoundingClientRect();
+      return { x: Number(((ev.clientX - caja.left) / caja.width).toFixed(4)),
+               y: Number(((ev.clientY - caja.top) / caja.height).toFixed(4)) };
+    };
+
+    svg.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      try { svg.setPointerCapture(ev.pointerId); } catch (e) { /* no siempre se puede */ }
       const t = Modelo.tiposDano().find((x) => x.codigo === r.tipoDano) || Modelo.tiposDano()[0];
+      trazo = { puntos: [punto(ev)], color: t.color, tipo: t };
+      vivo = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      vivo.setAttribute('class', 'trazo-dano');
+      vivo.setAttribute('stroke', t.color);
+      document.getElementById('marcas').appendChild(vivo);
+    });
+
+    svg.addEventListener('pointermove', (ev) => {
+      if (!trazo) return;
+      trazo.puntos.push(punto(ev));
+      vivo.setAttribute('d', siluetaTrazoD(trazo.puntos));
+    });
+
+    const soltar = () => {
+      if (!trazo) return;
+      const puntos = trazo.puntos, t = trazo.tipo;
+      trazo = null; vivo = null;
+
+      // El centro del trazo decide la zona. Con el promedio y no con el primer
+      // punto: una raya que cruza dos piezas pertenece a la que más recorre.
+      const cx = puntos.reduce((s, p) => s + p.x, 0) / puntos.length;
+      const cy = puntos.reduce((s, p) => s + p.y, 0) / puntos.length;
+      const u = siluetaUbicar(cx, cy);
+      const z = u.zona ? zonas.find((x) => x.codigo === u.zona) : null;
+
       r.danos.push({
-        vista: 'superior', zona, zonaNombre: ev.target.dataset.nombre,
+        vista: u.vista, zona: u.zona, zonaNombre: z ? z.nombre : 'Sin zona',
         tipo: t.codigo, tipoNombre: t.nombre, color: t.color, severidad: 2,
         descripcion: '',
-        x: Number(((ev.clientX - caja.left) / caja.width).toFixed(4)),
-        y: Number(((ev.clientY - caja.top) / caja.height).toFixed(4))
+        x: Number(cx.toFixed(4)), y: Number(cy.toFixed(4)),
+        trazo: puntos
       });
       guardarBorrador(); pintarDanos();
-    });
+    };
+    svg.addEventListener('pointerup', soltar);
+    svg.addEventListener('pointerleave', soltar);
+    svg.addEventListener('pointercancel', soltar);
+
     pintarDanos();
   }
+
+  const deshacer = document.getElementById('dano-deshacer');
+  if (deshacer) deshacer.addEventListener('click', () => {
+    if (!r.danos.length) return avisar({ ok: false, motivo: 'No hay ningún daño marcado todavía.' });
+    const d = r.danos.pop();
+    guardarBorrador(); pintarDanos();
+    avisar({ ok: true, motivo: '' }, 'Se quitó el ' + d.tipoNombre.toLowerCase() + ' de ' +
+      (d.zonaNombre || 'sin zona') + '.');
+  });
+  const borrarTodo = document.getElementById('dano-borrar');
+  if (borrarTodo) borrarTodo.addEventListener('click', () => {
+    if (!r.danos.length) return avisar({ ok: false, motivo: 'No hay nada que borrar.' });
+    if (!confirm('¿Borrar los ' + r.danos.length + ' daños marcados y sus observaciones?')) return;
+    r.danos = [];
+    guardarBorrador(); pintarDanos();
+  });
 
   // Inventario · cuatro estados
   document.querySelectorAll('[data-inv]').forEach((sel) => sel.addEventListener('change', () => {
@@ -1582,6 +1659,8 @@ function guardarRecepcion() {
     danos: r.danos.map((d) => ({
       vista: d.vista, severidad: d.severidad, x: d.x, y: d.y,
       descripcion: d.descripcion || '',
+      // El trazo va junto con la zona: uno se dibuja, la otra se consulta.
+      trazo: d.trazo || null,
       zona_id: (zonas.find((z) => z.codigo === d.zona) || {}).id || null,
       tipo_id: (tipos.find((t) => t.codigo === d.tipo) || {}).id || null
     })),

@@ -200,17 +200,29 @@ const CSS_IMPRESO = `
   @page{size:A4;margin:14mm 13mm}
 }`;
 
+/* La silueta en el papel. Se reusa el MISMO dibujo de la pantalla —no una
+   versión aparte, que se despegaría al primer cambio— con los colores forzados
+   para tinta: el auto en negro fino y los trazos del daño en su color.
+
+   Los trazos van con `stroke` y sin relleno; los daños viejos, que se marcaban
+   con un clic y no tienen trazo, se siguen dibujando como un punto. */
 function svgSiluetaImpresa(danos) {
-  const marcas = (danos || []).map((d) =>
-    '<circle cx="' + (d.x * 300).toFixed(1) + '" cy="' + (d.y * 470).toFixed(1) +
-    '" r="9" fill="' + d.color + '" fill-opacity=".8" stroke="#111" stroke-width="1.5"></circle>').join('');
-  // Se reusa la misma silueta de pantalla, con los colores forzados para papel.
-  return '<div style="width:52mm">' +
+  const marcas = (danos || []).map((d) => {
+    if (d.trazo && d.trazo.length) {
+      return '<path d="' + siluetaTrazoD(d.trazo) + '" fill="none" stroke="' + d.color +
+        '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>';
+    }
+    // Sin trazo: se dibuja en el centro de su zona, que es el dato que sí tiene.
+    const p = siluetaPuntoDeZona(d.vista, d.zona);
+    return '<circle cx="' + (p.x * SILUETA_CAJA.w).toFixed(1) + '" cy="' + (p.y * SILUETA_CAJA.h).toFixed(1) +
+      '" r="7" fill="' + d.color + '" fill-opacity=".8" stroke="#111" stroke-width="1.5"></circle>';
+  }).join('');
+
+  return '<div style="width:104mm">' +
     svgSilueta().replace('<svg ', '<svg style="width:100%;height:auto" ')
       .replace('<g id="marcas"></g>', '<g>' + marcas + '</g>')
-      .replace(/class="zona"/g, 'class="zona" fill="#f4f5fa" stroke="#aab" stroke-width="1"')
-      .replace(/class="zona-rotulo"/g, 'class="zona-rotulo" fill="#889" font-size="8"')
-      .replace(/class="rueda"/g, 'class="rueda" fill="#ccc"') +
+      .replace(/class="auto"/g, 'class="auto" fill="none" stroke="#333" stroke-width="1.4"')
+      .replace(/class="vista-rotulo"/g, 'class="vista-rotulo" fill="#889" font-size="11"') +
     '</div>';
 }
 
@@ -295,7 +307,7 @@ function impresoRecepcion(o) {
   </div>
 
   <h2>Estado descriptivo</h2>
-  <div style="display:flex;gap:10px">
+  <div style="display:flex;gap:10px;flex-direction:column">
     ${svgSiluetaImpresa(o.danos)}
     <div style="flex:1">
       <table><thead><tr><th>Zona</th><th>Daño</th><th>Severidad</th><th>Comentario</th></tr></thead><tbody>

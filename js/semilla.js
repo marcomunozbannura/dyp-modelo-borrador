@@ -354,12 +354,21 @@ const Semilla = (function () {
       { id: 'td-5', codigo: 'oxido',      nombre: 'Óxido',      color: '#84cc16', vigente: true }
     ];
 
+    /* 🔴 CUATRO ZONAS QUE FALTABAN, y no era un detalle. La silueta ofrecía
+       marcar el parabrisas, la luneta y los dos costados traseros, pero esos
+       cuatro códigos no estaban en este catálogo: al guardar, `zona_id` quedaba
+       en null y el daño se perdía como dato consultable —seguía dibujado, pero
+       nadie podía preguntar después cuántos vehículos llegaron con la luneta
+       rota—. Se agregan (15-08-2026). Es exactamente el agujero que este
+       catálogo existe para tapar. */
     const zona_dano = [
       ['capo', 'Capó'], ['techo', 'Techo'], ['maletero', 'Maletero'],
       ['puerta_del_izq', 'Puerta del. izq.'], ['puerta_tra_izq', 'Puerta tras. izq.'],
       ['puerta_del_der', 'Puerta del. der.'], ['puerta_tra_der', 'Puerta tras. der.'],
       ['paragolpes_del', 'Paragolpes del.'], ['paragolpes_tra', 'Paragolpes tras.'],
-      ['tapabarro_izq', 'Tapabarro izq.'], ['tapabarro_der', 'Tapabarro der.']
+      ['tapabarro_izq', 'Tapabarro izq.'], ['tapabarro_der', 'Tapabarro der.'],
+      ['parabrisas', 'Parabrisas'], ['luneta', 'Luneta'],
+      ['costado_tra_izq', 'Costado tras. izq.'], ['costado_tra_der', 'Costado tras. der.']
     ].map(([c, n], i) => ({ id: 'zd-' + (i + 1), codigo: c, nombre: n, vigente: true }));
 
     /* ═══════════════════════════════════════════════════════════════════

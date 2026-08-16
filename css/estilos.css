@@ -566,16 +566,24 @@ fieldset.bloque legend {
 /* La silueta es la herramienta con la que se marca el daño: tiene que ser grande
    para poder apuntar bien. Se le da una columna propia con piso y techo, y el
    resto del ancho queda para la lista. */
-.silueta-zona { display: grid; grid-template-columns: minmax(320px, 480px) minmax(240px, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 900px) { .silueta-zona { grid-template-columns: 1fr; } }
-.lienzo { background: var(--superficie-3); border: 1px solid var(--borde); border-radius: 3px; padding: 12px; }
-.lienzo svg { width: 100%; max-width: 440px; height: auto; display: block; margin: 0 auto; touch-action: none; }
-.zona { fill: var(--zona-fill); stroke: var(--zona-stroke); stroke-width: 1.2; cursor: crosshair; transition: fill .1s; }
-.zona:hover { fill: var(--zona-hover); }
-.zona-rotulo { font-size: 8.5px; fill: var(--gris); pointer-events: none; font-family: "Segoe UI", sans-serif; }
-.rueda { fill: var(--rueda); }
-.marca-dano { pointer-events: none; }
-.marca-dano circle { stroke: var(--superficie-3); }
+.lienzo { background: var(--superficie-3); border: 1px solid var(--borde); border-radius: 3px; padding: 10px; }
+/* `touch-action:none` es lo que permite rayar con el dedo en una tablet sin que
+   la página se mueva debajo. Sin esto el trazo sale cortado. */
+.lienzo svg { width: 100%; height: auto; display: block; margin: 0 auto; touch-action: none; cursor: crosshair; }
+/* El dibujo del auto: líneas, sin relleno. Es un croquis, no un icono. */
+.auto { fill: none; stroke: var(--zona-stroke); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.vista-rotulo { font-size: 11px; fill: var(--gris-2); pointer-events: none; font-family: "Segoe UI", sans-serif;
+  text-transform: uppercase; letter-spacing: .5px; }
+/* El trazo del daño. Grueso y redondeado: es una raya hecha con el dedo. */
+.trazo-dano { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+/* ── Paso 4 · el dibujo a la izquierda y todo lo demás a la derecha ──
+   Es el reparto del sistema real. En pantallas angostas se apila, porque en un
+   teléfono dos columnas dejan el auto del tamaño de una estampilla. */
+.estado-descriptivo { display: grid; grid-template-columns: minmax(420px, 1.35fr) minmax(280px, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .estado-descriptivo { grid-template-columns: 1fr; } }
+.ed-barra { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.ed-lado > .bloque { margin-top: 12px; }
 .leyenda { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10.5px; color: var(--gris); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--borde); }
 .leyenda span { display: flex; align-items: center; gap: 4px; }
 

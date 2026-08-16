@@ -35,7 +35,18 @@ const FICHA_TABS = [
 const tabsVisibles = () => FICHA_TABS.filter((t) => !t.permiso || Modelo.puede(t.permiso));
 
 function fichaEstado() {
-  ui.ficha = ui.ficha || { tab: 'ficha', modoEtapas: null, bitacora: { asunto: 'as-1', destinatario: null, mensaje: '' } };
+  /* La pestaña de arranque puede venir pedida en la dirección
+     (`#ot=23506&tab=etapas`), que es como el listado de Taller manda a asignar
+     etapas. Solo se respeta la PRIMERA vez: después manda lo que el usuario
+     haya apretado, o volvería a saltar a Etapas en cada repintado. */
+  if (!ui.ficha) {
+    const pedida = typeof PARAM_TAB === 'string' ? PARAM_TAB : null;
+    ui.ficha = {
+      tab: FICHA_TABS.some((t) => t.id === pedida) ? pedida : 'ficha',
+      modoEtapas: null,
+      bitacora: { asunto: 'as-1', destinatario: null, mensaje: '' }
+    };
+  }
   // Si la cuenta no alcanza la pestaña donde quedó —se cambió de sesión en la
   // misma pestaña del navegador— vuelve a la primera que sí puede ver.
   if (!tabsVisibles().some((t) => t.id === ui.ficha.tab)) ui.ficha.tab = 'ficha';

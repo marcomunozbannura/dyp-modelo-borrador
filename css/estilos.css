@@ -412,6 +412,14 @@ input:focus, select:focus, textarea:focus {
 .btn.secundario { background: var(--superficie); color: var(--texto); border-color: var(--borde); font-weight: 500; }
 .btn.secundario:hover { background: var(--superficie-2); border-color: var(--borde-fuerte); }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
+/* Botón de fila. El listado de Taller tiene catorce columnas y una acción en
+   cada renglón: con la altura normal las filas crecen y entran menos órdenes
+   en pantalla, que es justo lo que esa lista tiene que dar. */
+.btn.chico {
+  height: 21px; padding: 1px 8px; font-size: 11px;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.btn.chico .ico { width: 12px; height: 12px; flex-basis: 12px; }
 
 /* Grilla de datos — el componente central del sistema */
 .grid-envoltorio { overflow-x: auto; }

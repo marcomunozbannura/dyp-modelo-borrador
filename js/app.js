@@ -998,68 +998,11 @@ function render() {
    Silueta:        js/vistas/silueta.js  (recepcion y ficha la comparten)
    Configuracion:  js/vistas/configuracion.js                          */
 
-/* ───────────────── Vista · Taller ───────────────── */
-
-function vTaller() {
-  const enTaller = Modelo.torre().filter((o) => o.enTaller);
-  // En la tarjeta del tablero, la compañía es dato de negocio: quien no ve la
-  // ficha completa ve el vehículo, que es lo que le sirve para reconocerlo.
-  const conCompania = Modelo.puede('ficha.completa');
-  return `
-  <div class="panel" style="margin-top:20px">
-    <div class="cab"><div><h2>Vehículos por etapa</h2>
-      <div class="desc">${enTaller.length} en taller · ${Modelo.metricas().fueraDeTaller} más están fuera de taller y no ocupan box</div></div></div>
-    <div class="cuerpo">
-      <div class="tablero">
-        ${ETAPAS.map((e) => {
-          const ots = enTaller.filter((o) => o.etapa === e.codigo);
-          return '<div class="columna"><div class="titulo"><span><i class="punto" style="background:' + e.color + '"></i>' +
-            esc(e.nombre) + '</span><span class="n">' + ots.length + '</span></div>' +
-            (ots.length ? ots.map((o) =>
-              '<div class="tarjeta-ot' + (tieneRepuestoPendiente(o) ? ' detenida' : '') + '" data-ficha="' + esc(o.id) + '">' +
-              '<div class="ot">OT ' + o.numeroOT + '</div><div class="pat">' + esc(o.patente) + '</div>' +
-              '<div class="meta"><span>' + esc(conCompania ? o.compania
-                : ([o.marca, o.modelo].filter(Boolean).join(' ') || '—')) +
-              '</span><span>' + o.diasReparacion + ' d</span></div></div>').join('')
-              : '<div style="font-size:12px;color:var(--gris-2);padding:6px 2px">Sin vehículos</div>') +
-            '</div>';
-        }).join('')}
-      </div>
-    </div>
-  </div>
-  <div class="panel">
-    <div class="cab"><div><h2>Las nueve etapas</h2>
-      <div class="desc">Los nombres son los del sistema actual. Se editan en Configuración</div></div></div>
-    <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>#</th><th>Etapa</th><th>Aplica siempre</th><th>Bloquea si faltan repuestos</th><th>Vehículos</th></tr></thead>
-      <tbody>${ETAPAS.map((e) => '<tr><td class="num">' + e.orden + '</td>' +
-        '<td><i class="punto" style="background:' + e.color + '"></i>' + esc(e.nombre) + '</td>' +
-        '<td>' + (e.opcional ? '<span class="et gris">No siempre</span>' : '<span class="et verde">Sí</span>') + '</td>' +
-        '<td>' + (e.reqRepuestos ? '<span class="et ambar">Sí</span>' : '<span class="et gris">No</span>') + '</td>' +
-        '<td class="num">' + enTaller.filter((o) => o.etapa === e.codigo).length + '</td></tr>').join('')}</tbody>
-    </table></div>
-  </div>
-`;
-}
-
-function pTaller() {
-  document.querySelectorAll('[data-ficha]').forEach((f) => f.addEventListener('click', () => {
-    /* La tarjeta llevaba SIEMPRE a la torre, y hay cuentas que no tienen torre:
-       el operario apretaba y no pasaba nada visible. Sin `torre.ver` se abre
-       la orden en su propia ventana, que es a donde quería llegar igual. */
-    if (!Modelo.puede('torre.ver')) {
-      const o = Modelo.otPorId(f.dataset.ficha);
-      if (o) abrirFicha(o.numeroOT);
-      return;
-    }
-    ui.torre.abierta = f.dataset.ficha;
-    ui.torre.situacion = 'piso'; ui.torre.busqueda = ''; ui.torre.etapa = 'todas';
-    ui.torre.pagina = 1;
-    const idx = filtrarTorre().findIndex((o) => o.id === f.dataset.ficha);
-    if (idx >= 0) ui.torre.pagina = Math.floor(idx / ui.torre.porPagina) + 1;
-    ir('torre');
-  }));
-}
+/* ───────────────── Vista · Taller ─────────────────
+   Se mudó a js/vistas/taller.js el 15-08-2026, cuando pasó a tener dos
+   apartados —el listado de órdenes y el tablero por etapa—. Era la única
+   pantalla que seguía viviendo acá; ahora se cumple la regla de la casa de
+   una vista por archivo. */
 
 /* ───────────────── Vista · Repuestos ───────────────── */
 
@@ -1323,14 +1266,33 @@ const PARAM_OT = (function () {
   } catch (e) { return null; }
 })();
 
+// En qué pestaña de la orden abrir, si la dirección lo pide (`#ot=N&tab=etapas`).
+const PARAM_TAB = (function () {
+  try {
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (h.get('vista')) return null;
+    return h.get('tab');
+  } catch (e) { return null; }
+})();
+
 // Busca en TODAS las órdenes, no solo en la torre y el histórico: una orden
 // rechazada o dada por pérdida total también tiene que poder abrirse.
 const buscarOT = (n) => Modelo.otPorNumero(n);
 
-const urlFicha = (numero) => 'index.html#ot=' + encodeURIComponent(numero);
+/* La dirección puede pedir además EN QUÉ PESTAÑA abrir la orden.
 
-function abrirFicha(numero) {
-  window.open(urlFicha(numero), '_blank', 'noopener');
+   Lo necesita el listado de Taller: `Asignar etapas` tiene que caer en las
+   etapas de esa OT, no en su ficha para que después alguien busque la
+   pestaña. Es el mismo gesto del sistema actual, donde el enlace de la lista
+   va derecho a `taller-habilitar-etapas&id=23506`.
+
+   Va en la dirección y no en una variable porque la orden se abre en una
+   ventana NUEVA: lo que esta pestaña tenga en memoria no la acompaña. */
+const urlFicha = (numero, tab) => 'index.html#ot=' + encodeURIComponent(numero) +
+  (tab ? '&tab=' + encodeURIComponent(tab) : '');
+
+function abrirFicha(numero, tab) {
+  window.open(urlFicha(numero, tab), '_blank', 'noopener');
 }
 
 /* ───────────── Doble clic para abrir la orden ─────────────

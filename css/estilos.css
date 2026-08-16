@@ -152,19 +152,24 @@ svg.ico.g { width: 16px; height: 16px; flex-basis: 16px; }
 .barra-menu .mnu.inerte { opacity: .55; }
 
 /* Desplegable de la barra de menú */
-.desplegable {
+/* `div.desplegable`, NO `.desplegable` a secas. Es el menú de la barra
+   superior y es position:fixed: aplicada por error a un <tr> —basta que
+   alguien llame igual a una clase de fila— saca la fila del flujo y la tabla
+   entera colapsa a 26 px con sesenta filas dentro, sin dar ningún error.
+   Pasó de verdad. Acotarla al elemento que sí es hace que no pueda repetirse. */
+div.desplegable {
   position: fixed; z-index: 900; min-width: 250px;
   background: var(--superficie); border: 1px solid var(--borde-fuerte);
   border-radius: 3px; box-shadow: 0 6px 20px rgba(0,0,0,.35); padding: 4px;
 }
-.desplegable button {
+div.desplegable button {
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: none; border: none; color: var(--texto); font-family: inherit;
   font-size: 12px; text-align: left; padding: 6px 9px; border-radius: 2px; cursor: pointer;
 }
-.desplegable button .ico { color: var(--gris); }
-.desplegable button:hover { background: var(--seleccion); color: var(--tinta); }
-.desplegable button:hover .ico { color: var(--acento); }
+div.desplegable button .ico { color: var(--gris); }
+div.desplegable button:hover { background: var(--seleccion); color: var(--tinta); }
+div.desplegable button:hover .ico { color: var(--acento); }
 
 /* Aviso de estado modificado en la barra inferior */
 .barra-estado .celda.modificado { color: var(--ambar-texto); }

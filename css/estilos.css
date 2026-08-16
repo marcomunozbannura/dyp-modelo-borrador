@@ -647,6 +647,29 @@ fieldset.bloque legend {
   .barra-menu .mnu { display: none; }
 }
 
+/* ───────── El expandible de los paneles ─────────
+   Lo que se abre bajo la fila al hacer un clic. La tabla anidada de OR es el
+   centro: es donde el usuario ve los presupuestos de esa OT sin abrirla. */
+.detalle-ot { padding: 10px 12px 8px; }
+.detalle-ot .rejilla-datos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 2px 16px; margin-bottom: 10px;
+}
+.detalle-ot .dato { display: flex; justify-content: space-between; gap: 8px;
+  border-bottom: 1px dotted var(--borde); padding: 2px 0; font-size: 12px; }
+.detalle-ot .dato .k { color: var(--gris); }
+.detalle-ot .dato .v { font-weight: 600; text-align: right; }
+.detalle-ot .bloque { margin-top: 10px; }
+.detalle-ot .bloque h4 {
+  margin: 0 0 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--gris); display: flex; align-items: center; gap: 6px;
+}
+.detalle-ot .pie-detalle { margin-top: 9px; font-size: 11px; color: var(--gris-2); }
+/* La tabla anidada no es sticky ni pagina: vive dentro de una fila. */
+table.grid.anidada { margin: 0; }
+table.grid.anidada th { position: static; background: var(--superficie-2); }
+table.grid.anidada td { font-size: 12px; }
+
 /* ───────── Expediente del vehículo ─────────
    La línea de tiempo con todo lo que le pasó a un vehículo. Se imprime y se le
    entrega a la compañía, así que la jerarquía tiene que leerse en papel: el día

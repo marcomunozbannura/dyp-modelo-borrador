@@ -1289,14 +1289,109 @@ function conDobleClic(el, clave, alDoble, alSimple) {
     : 'Doble clic abre la orden en una pestaña nueva';
 }
 
-/* Engancha el doble clic en todas las filas de un panel que traigan `data-ot`
-   con el NÚMERO de la orden. Es la forma corta que usan los paneles simples. */
+/* ───────────── El expandible, en todos los paneles ─────────────
+   Pedido del cliente el 15-08-2026: la torre despliega la fila con un clic y
+   los demás paneles no. Ahora lo hacen todos, y con el mismo gesto —clic
+   despliega, doble clic abre en pestaña nueva—, que es lo que evita tener que
+   aprender una interacción distinta por pantalla.
+
+   La fila de detalle se INSERTA en el DOM después de pintar, en vez de armarla
+   dentro del HTML de cada vista. Así vale para los seis paneles y para los que
+   vengan, sin tocar seis archivos ni repetir el mismo bloque seis veces.
+
+   Cuál está abierta se guarda por panel: abrir una en Presupuesto no tiene por
+   qué desplegar nada en Bodega. */
+const abiertoPorPanel = {};
+
 function dobleClicPorFilas(selector) {
+  const vista = ui.vista;
+  const abierta = abiertoPorPanel[vista] || null;
+
   document.querySelectorAll(selector || 'tr.fila[data-ot]').forEach((tr) => {
     const n = tr.dataset.ot;
     if (!n) return;
-    conDobleClic(tr, 'ot-' + n, () => { abrirFicha(n); return true; });
+
+    conDobleClic(tr, 'ot-' + n,
+      () => { abrirFicha(n); return true; },
+      () => {
+        abiertoPorPanel[vista] = (abiertoPorPanel[vista] === n) ? null : n;
+        render();
+      });
+
+    if (n !== abierta) return;
+    tr.classList.add('abierta');
+    const fila = document.createElement('tr');
+    fila.className = 'detalle';
+    const td = document.createElement('td');
+    td.colSpan = tr.children.length;
+    td.innerHTML = detalleDeOT(n);
+    fila.appendChild(td);
+    tr.parentNode.insertBefore(fila, tr.nextSibling);
   });
+}
+
+/* Lo que se ve al desplegar. El bloque de PRESUPUESTOS es la tabla anidada que
+   pidió el cliente: cuando una OT tiene varias OR, se abren bajo su fila con
+   monto, estado y versión, sin abrir la orden. Su frase: "que el usuario tenga
+   el detalle ahí mismo y no tenga que estar abriendo la OT". */
+function detalleDeOT(clave) {
+  const o = ordenPorNumeroOId(clave);
+  if (!o) return '<div class="vacio"><div class="texto">No se pudo leer esta orden.</div></div>';
+
+  const e = o.etapa ? etapaPorCodigo(o.etapa) : null;
+  const pend = o.repuestos.filter((r) => !r.fechaBodega);
+  const dato = (k, v) => '<div class="dato"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span></div>';
+
+  const cabecera = '<div class="rejilla-datos">' +
+    dato('Vehículo', esc([o.marca, o.modelo, o.color].filter(Boolean).join(' · ') || '—')) +
+    dato('Cliente', esc(o.cliente)) +
+    dato('Compañía', o.compania === '—' ? 'Particular' : esc(o.compania)) +
+    dato('Siniestro', esc(o.siniestro || '—')) +
+    dato('Etapa', e ? esc(e.nombre) : 'Pendiente') +
+    dato('Encargado', esc(o.asignado || 'Sin asignar')) +
+    dato('Dónde está', o.fueraDeTaller ? 'Fuera del taller' : 'En el taller') +
+    dato('Días', o.diasKpi + ' de reparación · ' + o.diasTotales + ' totales') +
+    '</div>';
+
+  // Tabla anidada de OR. Una OT tiene una sola OT y puede tener varias OR.
+  const presupuestos = o.presupuestos.length
+    ? '<table class="grid anidada"><thead><tr>' +
+        '<th>OR</th><th>Versión</th><th>Estado</th><th>Líneas</th>' +
+        '<th class="num">Neto</th><th class="num">Total</th></tr></thead><tbody>' +
+      o.presupuestos.map((p) =>
+        '<tr><td class="num"><span data-or="' + esc(p.numeroOR) + '">' + esc(p.numeroOR) + '</span></td>' +
+        '<td class="num">v' + p.version + '</td>' +
+        '<td><span class="et">' + esc(p.estado) + '</span></td>' +
+        '<td class="num">' + p.lineas.length + '</td>' +
+        '<td class="num">' + fMonto(p.neto) + '</td>' +
+        '<td class="num"><strong>' + fMonto(p.total) + '</strong></td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="texto" style="color:var(--gris-2)">Sin presupuesto todavía.</div>';
+
+  const repuestos = o.repuestos.length
+    ? '<table class="grid anidada"><thead><tr>' +
+        '<th>Repuesto</th><th class="num">Cant.</th><th>Paga</th><th>Pedido</th>' +
+        '<th>En bodega</th><th>Entregado</th></tr></thead><tbody>' +
+      o.repuestos.map((r) =>
+        '<tr><td>' + esc(r.descripcion) + '</td>' +
+        '<td class="num">' + (r.cantidad || 1) + '</td>' +
+        '<td>' + esc(r.responsablePago || '—') + '</td>' +
+        '<td class="num">' + (r.fechaSolicitud ? fCorta(r.fechaSolicitud) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega)
+          : '<span style="color:var(--rojo)">por llegar</span>') + '</td>' +
+        '<td class="num">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="texto" style="color:var(--gris-2)">No requiere repuestos.</div>';
+
+  return '<div class="detalle-ot">' + cabecera +
+    '<div class="bloque"><h4>Presupuestos y OR' +
+      (o.presupuestos.length > 1 ? ' <span class="et gris">' + o.presupuestos.length + '</span>' : '') +
+      '</h4>' + presupuestos + '</div>' +
+    '<div class="bloque"><h4>Repuestos' +
+      (pend.length ? ' <span class="et roja">' + pend.length + ' por llegar</span>' : '') +
+      '</h4>' + repuestos + '</div>' +
+    '<div class="pie-detalle">Doble clic en la fila abre la orden completa en una pestaña nueva</div>' +
+    '</div>';
 }
 
 /* ───────────── Etiqueta de datos ─────────────

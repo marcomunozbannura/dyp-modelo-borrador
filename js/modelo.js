@@ -121,7 +121,18 @@ const Modelo = (function () {
       const guardados = (g.db.permiso || []).map((p) => p.codigo);
       const faltan = Semilla.CATALOGO_PERMISOS
         .map(([c]) => c).filter((c) => guardados.indexOf(c) < 0);
-      return faltan.length ? faltan : null;
+      if (faltan.length) return faltan;
+
+      /* No todo cambio de esquema agrega un permiso. El 15-08-2026 la OR perdió
+         su correlativo final —de `23368-18868-001` a `23368-18868`— y una base
+         guardada de antes seguiría mostrando el número viejo en pantalla
+         mientras el código genera el nuevo: dos formatos conviviendo, que es
+         justo lo que confunde al que está probando. */
+      const conFormatoViejo = (g.db.presupuesto || [])
+        .some((p) => /-\d{3}$/.test(String(p.numero_or || '')));
+      if (conFormatoViejo) return ['OR con el correlativo viejo (23368-18868-001)'];
+
+      return null;
     } catch (e) { return ['(base ilegible)']; }
   }
 
@@ -1134,15 +1145,37 @@ const Modelo = (function () {
 
   /* ── Presupuesto ──────────────────────────────────────────────────────── */
 
+  /* El primero conserva la cuenta de siempre —para que los números de la
+     demostración no cambien de golpe— y de ahí en adelante busca el siguiente
+     que no esté tomado por esa orden. */
+  function siguienteReparacion(o) {
+    const base = 18000 + (o.numero_ot % 900);
+    const tomados = db.presupuesto.filter((p) => p.ot_id === o.id)
+      .map((p) => Number(p.id_reparacion));
+    let rep = base;
+    while (tomados.indexOf(rep) >= 0) rep++;
+    return rep;
+  }
+
   function crear_presupuesto(ot_id, { id_reparacion, lineas }) {
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     if (!o) return { ok: false, motivo: 'La orden de trabajo no existe.' };
     if (Reglas.esTerminal(db, o.estado))
       return { ok: false, motivo: 'La orden ' + o.numero_ot + ' está cerrada y no admite presupuestos nuevos.' };
 
-    const rep = id_reparacion || (18000 + (o.numero_ot % 900));
+    /* El id de reparación distingue TRABAJOS distintos sobre la misma orden:
+       "un vehículo tiene una sola OT y puede tener varias OR", textual del
+       cliente. Antes salía de una cuenta fija sobre el número de OT, así que
+       toda reparación de una misma orden daba el mismo id — y no importaba,
+       porque el correlativo `-001`/`-002` las separaba igual.
+
+       Sacado el correlativo, ese id pasa a ser lo ÚNICO que distingue una OR de
+       otra dentro de la misma orden. Si se repitiera, la segunda OR chocaría
+       con la primera y el taller no podría abrir un trabajo nuevo. Por eso
+       ahora avanza hasta encontrar uno libre. */
+    const rep = id_reparacion || siguienteReparacion(o);
     const corr = Reglas.siguienteCorrelativoOR(db, ot_id, rep);
-    const numero_or = Reglas.formatoOR(o.numero_ot, rep, corr);
+    const numero_or = Reglas.formatoOR(o.numero_ot, rep);
     const libre = Reglas.numeroORDisponible(db, numero_or);
     if (!libre.ok) return libre;
 
@@ -1278,7 +1311,9 @@ const Modelo = (function () {
     if (Reglas.esTerminal(db, o.estado))
       return { ok: false, motivo: 'La orden ' + o.numero_ot + ' está cerrada.' };
     const corr = Reglas.siguienteCorrelativoOR(db, p.ot_id, p.id_reparacion);
-    const numero_or = Reglas.formatoOR(o.numero_ot, p.id_reparacion, corr);
+    // La version nueva CONSERVA la OR: es el mismo trabajo, discutido otra vez.
+    // Por eso acá no se pregunta si la OR esta libre — no lo esta, y esta bien.
+    const numero_or = Reglas.formatoOR(o.numero_ot, p.id_reparacion);
     const nid = nuevoId('pr');
     const previos = db.presupuesto.filter((x) => x.ot_id === p.ot_id);
     db.presupuesto.push({

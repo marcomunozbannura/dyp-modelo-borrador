@@ -807,7 +807,7 @@ const Semilla = (function () {
       if (sinPresupuesto) { seqPre--; } else
       presupuesto.push({
         id: pid, ot_id, id_reparacion, correlativo: 1,
-        numero_or: Reglas.formatoOR(numero_ot, id_reparacion, 1),
+        numero_or: Reglas.formatoOR(numero_ot, id_reparacion),
         version: 1, estado: viva ? elegir(['borrador', 'enviado', 'aprobado']) : 'aprobado',
         neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
         enviado_at: null, resuelto_at: null

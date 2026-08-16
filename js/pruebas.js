@@ -255,13 +255,23 @@ const Pruebas = (function () {
         const r = Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
           { proceso: 'reparar', descripcion: 'Otra cosa', precio_unitario: 10000 });
         const v2 = Modelo.nueva_version_presupuesto(cr.presupuesto_id);
+        /* Hasta el 15-08-2026 esta prueba exigía que la versión nueva tuviera
+           una OR DISTINTA: con el correlativo, la v1 era `-001` y la v2 `-002`.
+           Sacado el correlativo a pedido del cliente, la regla se da vuelta y
+           lo correcto es que la OR sea LA MISMA —es el mismo trabajo, discutido
+           otra vez con la compañía— y que lo que cambie sea la versión. */
+        const p1 = Modelo.base().presupuesto.find((x) => x.id === cr.presupuesto_id) || {};
+        const p2 = Modelo.base().presupuesto.find((x) => x.numero_or === v2.numero_or &&
+                     x.version > (p1.version || 0)) || {};
         push({
           nombre: 'Un presupuesto enviado no se edita: se versiona',
           intento: 'Agregar una línea al presupuesto ' + cr.numero_or + ' después de enviarlo',
-          esperado: 'Rechazo, y la versión nueva sí se puede crear',
-          paso: env.ok && !r.ok && v2.ok && v2.numero_or !== cr.numero_or,
+          esperado: 'Rechazo. La versión nueva se crea, conserva la OR y sube la versión',
+          paso: env.ok && !r.ok && v2.ok &&
+                v2.numero_or === cr.numero_or && (p2.version || 0) > (p1.version || 0),
           detalle: (r.motivo || 'Dejó editarlo: NO debería.') +
-                   (v2.ok ? '  ·  Versión nueva: ' + v2.numero_or : '')
+                   (v2.ok ? '  ·  Versión nueva: ' + v2.numero_or +
+                     ' (v' + (p1.version || '?') + ' → v' + (p2.version || '?') + ')' : '')
         });
       })();
 

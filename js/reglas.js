@@ -337,9 +337,25 @@ const Reglas = (function () {
      ORDEN, no global: la versión anterior devolvía un consecutivo único
      para todo el sistema y eso no reproduce el formato real. */
 
-  function formatoOR(numero_ot, id_reparacion, correlativo) {
-    return String(numero_ot) + '-' + String(id_reparacion) + '-' +
-      String(correlativo).padStart(3, '0');
+  /* La OR SIN el correlativo final. Pedido del cliente el 15-08-2026: antes
+     era `23368-18868-001` y ahora es `23368-18868`.
+
+     ⚠️ Esto se APARTA de la réplica y hay que decirlo: la OR compuesta con sus
+     tres partes es lo que muestra el sistema actual —verificado en pantalla, la
+     de repuestos titula "Repuestos Presupuesto Orden N° 23488-18382-001"—. En
+     `DECISIONES-REPLICA` estaba clasificada como Igual y pasa a Corregido.
+
+     Lo que hacía el correlativo era distinguir las VERSIONES de un mismo
+     presupuesto. Sacándolo, la OR identifica la reparación y las versiones la
+     comparten, que además calza mejor con la regla del propio cliente: el
+     presupuesto se versiona, no se edita, y las versiones son del mismo
+     trabajo. La versión se muestra aparte, que es donde corresponde.
+
+     El campo `correlativo` se sigue guardando en la fila. No se muestra, pero
+     al migrar hay presupuestos ya enviados a las compañías con el número viejo
+     impreso, y sin él no habría cómo reconstruirlo. */
+  function formatoOR(numero_ot, id_reparacion) {
+    return String(numero_ot) + '-' + String(id_reparacion);
   }
 
   function siguienteCorrelativoOR(db, ot_id, id_reparacion) {
@@ -348,9 +364,14 @@ const Reglas = (function () {
     return previos.reduce((m, p) => Math.max(m, Number(p.correlativo) || 0), 0) + 1;
   }
 
+  /* Desde que la OR no lleva correlativo, sus VERSIONES la comparten a
+     propósito: son el mismo trabajo. Lo que no puede pasar es abrir un
+     presupuesto nuevo sobre una reparación que ya tiene uno — eso es
+     versionarlo, y hay una operación para eso. */
   function numeroORDisponible(db, numero_or) {
     return db.presupuesto.some((p) => p.numero_or === numero_or)
-      ? no('La OR ' + numero_or + ' ya existe. Los correlativos pueden saltarse, pero no repetirse.')
+      ? no('La OR ' + numero_or + ' ya existe para esta reparación. Un presupuesto no se ' +
+           'reemplaza con otro: se crea la versión siguiente, y la anterior queda intacta.')
       : ok();
   }
 

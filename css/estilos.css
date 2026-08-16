@@ -595,10 +595,6 @@ fieldset.bloque legend {
 }
 .item-dano .quitar { background: none; border: none; color: var(--gris-2); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; font-family: inherit; }
 .item-dano .quitar:hover { color: var(--rojo); }
-/* El comentario de cada marca. Va pegado bajo su daño y con sangría, para que
-   se lea como parte de él y no como una fila más de la lista. */
-.nota-dano { margin: -1px 0 6px 12px; }
-.nota-dano input { width: 100%; font-size: 11px; }
 
 /* ───────── El menú de opciones de Recepción ─────────
    Copiado del original: cuatro opciones, cada una con su icono en un círculo

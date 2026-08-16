@@ -855,8 +855,19 @@ function recDanos() {
           esc(t.nombre) + '</button>').join('')}
       </div>
 
-      <h4 class="rot-chico">Observaciones de lo marcado <span id="n-danos">(0)</span></h4>
+      <h4 class="rot-chico">Lo marcado <span id="n-danos">(0)</span></h4>
       <div class="lista-danos" id="lista-danos"></div>
+
+      ${/* UNA sola observación para todo el estado descriptivo, como el
+           original. Antes había una casilla por trazo y se llenaba de campos
+           vacíos: quien raya el auto cuenta lo que le pasó al vehículo, no
+           redacta una ficha por cada raya. La lista de arriba ya dice qué se
+           marcó y dónde; acá se escribe el resto. */''}
+      <div class="campo" style="margin-top:10px">
+        <label>Observaciones</label>
+        <textarea rows="3" data-rec="observaciones"
+          placeholder="Lo que hay que decir del estado del vehículo al recibirlo">${esc(r.campos.observaciones)}</textarea>
+      </div>
 
       <fieldset class="bloque" style="margin-top:12px"><legend>Tablero</legend>
         <div class="rejilla-campos">
@@ -940,27 +951,21 @@ function pintarDanos() {
   }).join('');
 
   document.getElementById('n-danos').textContent = '(' + r.danos.length + ')';
-  /* Cada marca lleva SU observación. La zona dice dónde y el tipo dice qué; lo
-     que ninguno de los dos alcanza —"viene del roce con el portón", "ya estaba
-     antes"— es exactamente lo que después se discute con la compañía. */
+  /* La lista dice QUÉ se marcó y DÓNDE, que es lo que el trazo por sí solo no
+     alcanza a decir. Lo que se cuenta en palabras va en la observación única de
+     abajo, no en una casilla por raya. */
   lista.innerHTML = r.danos.length
     ? r.danos.map((d, i) =>
         '<div class="item-dano"><span><i class="punto" style="background:' + d.color + '"></i>' +
         '<strong>' + esc(d.tipoNombre) + '</strong> · ' + esc(d.zonaNombre || 'sin zona') +
-        ' <span class="et gris">' + esc(String(d.vista).replace(/_/g, ' ')) + '</span></span>' +
-        '<button class="quitar" data-quitar="' + i + '" title="Quitar">&times;</button></div>' +
-        '<div class="nota-dano"><input data-nota-dano="' + i + '" value="' + esc(d.descripcion || '') +
-        '" placeholder="Observación de este daño"></div>').join('')
+        ' <span class="et gris">' + esc(SILUETA_NOMBRE_VISTA[d.vista] || d.vista) + '</span></span>' +
+        '<button class="quitar" data-quitar="' + i + '" title="Quitar">&times;</button></div>').join('')
     : '<div style="color:var(--gris-2);font-size:12.5px;padding:8px 2px">Sin daños marcados todavía. ' +
       'Raya sobre el dibujo.</div>';
 
   lista.querySelectorAll('[data-quitar]').forEach((b) => b.addEventListener('click', () => {
     r.danos.splice(Number(b.dataset.quitar), 1);
     guardarBorrador(); pintarDanos();
-  }));
-  lista.querySelectorAll('[data-nota-dano]').forEach((el) => el.addEventListener('input', () => {
-    const d = r.danos[Number(el.dataset.notaDano)];
-    if (d) { d.descripcion = el.value; guardarBorrador(); }
   }));
 }
 
@@ -1089,10 +1094,11 @@ function recVerificar() {
       firmado.</div>
   </fieldset>
 
-  <div class="rejilla-campos" style="margin-top:12px">
-    <div class="campo" style="grid-column:1/-1"><label>Observaciones de la recepción</label>
-      <textarea rows="2" data-rec="observaciones">${esc(r.campos.observaciones)}</textarea></div>
-  </div>
+  ${/* Las observaciones se escriben en el paso 4, junto al dibujo, que es donde
+       están mirando el auto. Acá se muestran para revisarlas antes de firmar,
+       no para escribirlas de nuevo. */''}
+  <div class="dato-largo" style="margin-top:12px"><span class="k">Observaciones de la recepción</span>
+    <span class="v">${v(r.campos.observaciones)}</span></div>
 
   <div class="pie-nota">El comprobante se genera <strong>en el navegador</strong>, con
     <strong>Guardar PDF</strong>. No queda ningún archivo en una ruta adivinable: es la corrección

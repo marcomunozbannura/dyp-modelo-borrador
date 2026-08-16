@@ -43,63 +43,68 @@ const SILUETA_VISTAS = [
    ser una cuadrícula tosca — lo que el usuario ve es el auto, no esto.
 
    El orden importa: se devuelve la primera que contenga el punto. */
+/* ⚠️ LAS CAJAS TIENEN QUE CUBRIR LA VISTA ENTERA, sin huecos. La primera
+   versión dejaba franjas sin asignar y un trazo que caía ahí se guardaba como
+   "Sin zona" — o sea, el daño quedaba dibujado y sin dato consultable, que es
+   exactamente lo que este mapa existe para evitar. Cada vista se reparte de
+   0 a 1 en los dos ejes y no queda un milímetro afuera. */
+
 const SILUETA_ZONAS = {
   superior: [
-    ['paragolpes_del', 0, 0,    1, 0.09],
-    ['capo',           0.18, 0.09, 0.64, 0.16],
+    // franjas de proa a popa, cada una de ancho completo o repartida a los lados
+    ['paragolpes_del', 0,    0,    1,    0.09],
     ['tapabarro_izq',  0,    0.09, 0.18, 0.16],
+    ['capo',           0.18, 0.09, 0.64, 0.16],
     ['tapabarro_der',  0.82, 0.09, 0.18, 0.16],
-    ['parabrisas',     0.15, 0.25, 0.70, 0.10],
+    ['parabrisas',     0,    0.25, 1,    0.10],
     ['puerta_del_izq', 0,    0.35, 0.20, 0.16],
+    ['techo',          0.20, 0.35, 0.60, 0.32],
     ['puerta_del_der', 0.80, 0.35, 0.20, 0.16],
     ['puerta_tra_izq', 0,    0.51, 0.20, 0.16],
     ['puerta_tra_der', 0.80, 0.51, 0.20, 0.16],
-    ['techo',          0.20, 0.35, 0.60, 0.32],
-    ['luneta',         0.15, 0.67, 0.70, 0.10],
-    ['maletero',       0.18, 0.77, 0.64, 0.14],
-    ['costado_tra_izq',0,    0.67, 0.18, 0.24],
-    ['costado_tra_der',0.82, 0.67, 0.18, 0.24],
-    ['paragolpes_tra', 0,    0.91, 1, 0.09]
+    ['costado_tra_izq',0,    0.67, 0.20, 0.24],
+    ['luneta',         0.20, 0.67, 0.60, 0.10],
+    ['costado_tra_der',0.80, 0.67, 0.20, 0.24],
+    ['maletero',       0.20, 0.77, 0.60, 0.14],
+    ['paragolpes_tra', 0,    0.91, 1,    0.09]
   ],
   frontal: [
-    ['parabrisas',     0.18, 0.06, 0.64, 0.24],
+    ['parabrisas',     0,    0,    1,    0.30],
+    ['tapabarro_izq',  0,    0.30, 0.10, 0.28],
     ['capo',           0.10, 0.30, 0.80, 0.28],
-    ['tapabarro_izq',  0,    0.30, 0.10, 0.40],
-    ['tapabarro_der',  0.90, 0.30, 0.10, 0.40],
-    ['paragolpes_del', 0,    0.58, 1, 0.42]
+    ['tapabarro_der',  0.90, 0.30, 0.10, 0.28],
+    ['paragolpes_del', 0,    0.58, 1,    0.42]
   ],
   trasera: [
-    ['luneta',         0.18, 0.06, 0.64, 0.24],
+    ['luneta',         0,    0,    1,    0.30],
+    ['costado_tra_izq',0,    0.30, 0.10, 0.28],
     ['maletero',       0.10, 0.30, 0.80, 0.28],
-    ['costado_tra_izq',0,    0.30, 0.10, 0.40],
-    ['costado_tra_der',0.90, 0.30, 0.10, 0.40],
-    ['paragolpes_tra', 0,    0.58, 1, 0.42]
+    ['costado_tra_der',0.90, 0.30, 0.10, 0.28],
+    ['paragolpes_tra', 0,    0.58, 1,    0.42]
   ],
+  /* El lateral se define UNA vez, con el auto mirando a la derecha, y el
+     izquierdo se deriva reflejándolo — igual que el dibujo. Escribirlo dos
+     veces fue el otro error: el dibujo se reflejaba y el mapa no, así que en el
+     lateral izquierdo la puerta trasera caía donde se ve la delantera. */
   lateral_der: [
-    ['paragolpes_tra', 0,    0.30, 0.09, 0.55],
-    ['costado_tra_der',0.09, 0.30, 0.16, 0.55],
-    ['luneta',         0.22, 0.10, 0.16, 0.24],
-    ['techo',          0.38, 0.04, 0.26, 0.16],
-    ['parabrisas',     0.62, 0.10, 0.14, 0.24],
-    ['puerta_tra_der', 0.25, 0.34, 0.20, 0.42],
-    ['puerta_del_der', 0.45, 0.34, 0.22, 0.42],
-    ['tapabarro_der',  0.67, 0.30, 0.24, 0.55],
-    ['capo',           0.76, 0.20, 0.15, 0.18],
-    ['paragolpes_del', 0.91, 0.30, 0.09, 0.55]
-  ],
-  lateral_izq: [
-    ['paragolpes_tra', 0,    0.30, 0.09, 0.55],
-    ['costado_tra_izq',0.09, 0.30, 0.16, 0.55],
-    ['luneta',         0.22, 0.10, 0.16, 0.24],
-    ['techo',          0.38, 0.04, 0.26, 0.16],
-    ['parabrisas',     0.62, 0.10, 0.14, 0.24],
-    ['puerta_tra_izq', 0.25, 0.34, 0.20, 0.42],
-    ['puerta_del_izq', 0.45, 0.34, 0.22, 0.42],
-    ['tapabarro_izq',  0.67, 0.30, 0.24, 0.55],
-    ['capo',           0.76, 0.20, 0.15, 0.18],
-    ['paragolpes_del', 0.91, 0.30, 0.09, 0.55]
+    ['costado_tra_der',0,    0,    0.20, 0.32],
+    ['luneta',         0.20, 0,    0.18, 0.32],
+    ['techo',          0.38, 0,    0.24, 0.32],
+    ['parabrisas',     0.62, 0,    0.20, 0.32],
+    ['capo',           0.82, 0,    0.18, 0.32],
+    ['paragolpes_tra', 0,    0.32, 0.09, 0.68],
+    ['costado_tra_der',0.09, 0.32, 0.16, 0.68],
+    ['puerta_tra_der', 0.25, 0.32, 0.23, 0.68],
+    ['puerta_del_der', 0.48, 0.32, 0.22, 0.68],
+    ['tapabarro_der',  0.70, 0.32, 0.20, 0.68],
+    ['paragolpes_del', 0.90, 0.32, 0.10, 0.68]
   ]
 };
+
+/* El lateral izquierdo, reflejado del derecho: la caja que estaba en `x` con
+   ancho `w` pasa a `1 - x - w`, y las piezas que tienen lado cambian de lado. */
+SILUETA_ZONAS.lateral_izq = SILUETA_ZONAS.lateral_der.map(([c, x, y, w, h]) =>
+  [c.replace(/_der$/, '_izq'), Number((1 - x - w).toFixed(4)), y, w, h]);
 
 /* Dónde cayó un punto del lienzo, en coordenadas normalizadas 0..1 sobre el
    SVG completo. Devuelve la vista y la zona, o la vista sola si el trazo quedó
@@ -252,6 +257,11 @@ function svgSilueta() {
     siluetaLateral(liz.x, liz.y, liz.w, liz.h, true) +
     '<g id="marcas"></g></svg>';
 }
+
+// El nombre de cada vista, para no andar reemplazando guiones bajos por ahí.
+const SILUETA_NOMBRE_VISTA = SILUETA_VISTAS.reduce((m, v) => {
+  m[v.id] = v.nombre; return m;
+}, {});
 
 /* El centro de una zona, en coordenadas normalizadas del lienzo completo.
 

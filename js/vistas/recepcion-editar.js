@@ -248,20 +248,32 @@ function vEditRecDanos() {
   const e = editRec();
   const n = e.danos.length;
 
+  /* 🔶 LA LISTA ES PARA MIRAR, NO PARA ESCRIBIR (15-08-2026, corrección de
+     Marco). Tenía una casilla de observación POR MARCA, y eso es exactamente
+     lo que el cliente mandó sacar del ingreso —tres veces— cuando se sacaron
+     el tipo de daño y el comentario por trazo: la recepción se hace en el
+     mesón con el cliente esperando, y redactar una línea después de cada raya
+     es más trabajo del que ahorra.
+
+     Se escribe en UNA sola casilla, la de abajo, que es la misma que ya tiene
+     la recepción: volver a rayar corrige la observación que ya existe, no
+     abre comentarios nuevos. Lo que la lista muestra —zona, vista y lo que se
+     hubiera escrito antes— es de sólo lectura. */
   const lista = n
     ? '<div class="grid-envoltorio"><table class="grid">' +
       '<thead><tr><th style="width:34px">#</th><th>Dónde cayó la marca</th>' +
-      '<th>Observación</th><th style="width:84px"></th></tr></thead><tbody>' +
+      '<th>Lo que se anotó</th><th style="width:84px"></th></tr></thead><tbody>' +
       e.danos.map((d, i) => '<tr><td class="num">' + (i + 1) + '</td>' +
         '<td>' + esc(d.zonaNombre || 'Sin zona identificada') +
           '<div class="ayuda" style="margin:2px 0 0">' +
           esc(SILUETA_NOMBRE_VISTA[d.vista] || d.vista || '—') + '</div></td>' +
-        '<td><input data-edrec-dano="' + i + '" value="' + esc(d.descripcion || '') + '" ' +
-          'placeholder="Qué es la marca"></td>' +
+        '<td>' + (d.descripcion
+          ? esc(d.descripcion)
+          : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
         '<td><button class="btn secundario" data-edrec-quitar="' + i + '">Quitar</button></td></tr>').join('') +
       '</tbody></table></div>'
-    : '<div class="nota" style="margin-top:9px">La recepción quedó <strong>sin marcas</strong> en la ' +
-      'silueta. Si el auto entró con daños y no se marcaron, se marcan acá.</div>';
+    : '<div class="nota">La recepción quedó <strong>sin marcas</strong> en la silueta. Si el auto ' +
+      'entró con daños y no se marcaron, se marcan acá.</div>';
 
   return `
   <div class="estado-descriptivo" style="margin-top:11px">
@@ -276,7 +288,17 @@ function vEditRecDanos() {
         </span>
       </div>
     </div>
-    <div class="ed-lado">${lista}</div>
+    <div class="ed-lado">
+      <div class="campo">
+        <label>Observaciones</label>
+        <textarea rows="5" data-edrec="observaciones"
+          placeholder="Qué trae el vehículo: dónde está el daño, de qué tipo, si ya venía…">${
+          esc(e.campos.observaciones || '')}</textarea>
+        <span class="ayuda">Es la misma casilla de la recepción, no una nueva. Rayar de nuevo
+          corrige lo que dice acá</span>
+      </div>
+      ${lista}
+    </div>
   </div>`;
 }
 
@@ -365,9 +387,12 @@ function pEditRecDanos() {
     e.danos.splice(Number(b.dataset.edrecQuitar), 1);
     render();
   }));
-  document.querySelectorAll('[data-edrec-dano]').forEach((el) => el.addEventListener('input', () => {
-    e.danos[Number(el.dataset.edrecDano)].descripcion = el.value;
-  }));
+
+  /* La casilla de observaciones de esta pestaña no se engancha acá: lleva
+     `data-edrec="observaciones"` —es literalmente el mismo campo que en la
+     pestaña Recepción— y la ata el bucle general de `pRecepcionEditarFicha`,
+     que corre después de esta función. Atarla también acá la dejaría con dos
+     escuchas haciendo lo mismo. */
 
   const deshacer = document.getElementById('edrec-dano-deshacer');
   if (deshacer) deshacer.addEventListener('click', () => {

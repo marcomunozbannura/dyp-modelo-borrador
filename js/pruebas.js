@@ -763,6 +763,41 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 29 · 🔴 EL TOPE DEL CAMPO NO PUEDE VIVIR EN EL NAVEGADOR ──────
+         Reclamo del cliente el 15-08-2026: *"aun deja pasarme de 17
+         caracteres"*, con un VIN de 29 en pantalla y el tope ya publicado.
+
+         La causa: `maxlength` es del navegador y solo frena lo que TECLEA una
+         persona. El formulario se guarda solo en `localStorage`, así que un
+         VIN escrito antes de que existiera el tope quedaba guardado y se
+         repintaba entero en cada recarga — el campo se veía sin límite aunque
+         el límite estuviera puesto.
+
+         Por eso el corte tiene que estar en el DATO. Esta prueba mide justo
+         eso: lo que llega de afuera, no lo que se teclea. */
+      (function () {
+        const largo = '64646465646846464646468464868';   // 29, el del reclamo
+        const cortado = normalizarVin(largo);
+        const conBasura = normalizarVin(' 1hgcm8-2633a 004352 ');
+        const patSucia = normalizarPatente('AABB1199');
+
+        const ok = cortado.length === VIN_LARGO &&
+                   cortado === largo.slice(0, VIN_LARGO) &&
+                   conBasura === '1HGCM82633A004352' &&
+                   patSucia.length === PATENTE_LARGO;
+
+        push({
+          nombre: '🔴 Un VIN largo guardado de antes se corta al volver a abrirlo',
+          intento: 'Restaurar un borrador con un VIN de ' + largo.length +
+                   ' caracteres, que `maxlength` no toca porque no se tecleó',
+          esperado: 'Queda en ' + VIN_LARGO + ', en mayúsculas y sin espacios ni guiones',
+          paso: ok,
+          detalle: '«' + largo + '» → «' + cortado + '» (' + cortado.length + ')' +
+            '  ·  con basura → «' + conBasura + '»' +
+            (ok ? '' : '  ·  NO CUADRA: el tope se apoya en el navegador y no en el dato.')
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

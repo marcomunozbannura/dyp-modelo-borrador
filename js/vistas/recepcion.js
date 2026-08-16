@@ -97,6 +97,20 @@ const PATENTE_LARGO = 6;
 const normalizarPatente = (t) =>
   String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, PATENTE_LARGO);
 
+/* 🔴 EL VIN SE CORTA EN CÓDIGO, NO SOLO CON `maxlength` (15-08-2026).
+
+   `maxlength` es del navegador y solo vale para lo que TECLEA una persona. Un
+   valor que se le pone al campo por código —que es como se repinta el
+   formulario cada vez— pasa entero, sin que el navegador diga nada.
+
+   Y el formulario se guarda solo en `localStorage`: un VIN de 29 caracteres
+   escrito antes de que existiera el tope quedó guardado, y volvía a pintarse
+   completo en cada recarga. El campo se veía sin límite aunque el límite
+   estuviera puesto. Por eso el corte tiene que estar acá, en el dato, y no
+   apoyarse en el atributo. */
+const normalizarVin = (t) =>
+  String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, VIN_LARGO);
+
 /* ── Estado del formulario ─────────────────────────────────────────────── */
 
 /* El bloque nace SIN tipo de ingreso y SIN estado, a propósito. El paso 3
@@ -169,7 +183,28 @@ function restaurarBorrador() {
     if (!crudo) return null;
     const d = JSON.parse(crudo);
     if (!d || !d.bloques) return null;
-    return Object.assign({ creadas: null, marcados: [], firma: null }, d);
+
+    /* 🔴 LO GUARDADO SE SANEA AL ENTRAR, y no se le cree nada.
+
+       El borrador vive en el navegador del recepcionista y **sobrevive a las
+       publicaciones**: puede venir de una versión anterior del formulario, con
+       campos que ya no existen, sin campos que hoy sí, o con valores más
+       largos de los que ahora se admiten. Si se usa tal cual, un borrador
+       viejo deja la pantalla en blanco o muestra un dato que el formulario ya
+       no acepta — y el recepcionista no tiene forma de saber por qué.
+
+       Se rellenan las piezas que falten y se cortan la patente y el VIN. Con
+       el auto en el mesón, un formulario a medio restaurar es mejor que una
+       pantalla rota. */
+    d.campos = Object.assign({}, d.campos);
+    d.campos.patente = normalizarPatente(d.campos.patente);
+    d.campos.vin = normalizarVin(d.campos.vin);
+
+    return Object.assign({
+      paso: 'cliente', llave: 'rec-' + Date.now().toString(36),
+      textos: {}, danos: [], inventario: {}, fotos: [],
+      firmaTrazos: [], creadas: null, marcados: [], firma: null
+    }, d);
   } catch (e) { return null; }
 }
 
@@ -260,8 +295,9 @@ function recFaltantes() {
       paso
     }));
 
-  // Y si se escribió un VIN, tiene que estar completo.
-  const vin = String(r.campos.vin || '').trim();
+  // Y si se escribió un VIN, tiene que estar completo. Se mide lo saneado: es
+  // lo que el campo muestra y lo que se va a guardar.
+  const vin = normalizarVin(r.campos.vin);
   if (!sinVer && vin && vin.length !== VIN_LARGO) {
     faltan.push({
       paso: 'vehiculo', campo: 'vin',
@@ -575,7 +611,11 @@ function reescribir(el, formatear, significativo) {
 function recCampo(clave, rotulo, opciones) {
   const o = opciones || {};
   const r = rec();
-  const v = r.campos[clave] == null ? '' : r.campos[clave];
+  /* Se pinta el valor SANEADO, no el crudo. Si lo guardado quedó fuera de
+     norma —un borrador de una versión anterior—, el campo tiene que mostrar lo
+     que hoy se admite; si no, se ve un dato que el formulario ya no acepta. */
+  const crudo = r.campos[clave] == null ? '' : r.campos[clave];
+  const v = o.normalizar ? o.normalizar(crudo) : crudo;
   const obliga = REC_OBLIGATORIOS.some(([c]) => c === clave);
   return '<div class="campo' + (recMarcado(clave) ? ' falta' : '') + '"><label>' + esc(rotulo) +
     (obliga ? ' <span style="color:var(--rojo)">*</span>' : '') + '</label>' +
@@ -688,7 +728,10 @@ function recSobranFaltan(largo, esperado) {
    el contador tiene que moverse igual, tecla a tecla. */
 function recAyudaLargo(clave) {
   const meta = clave === 'patente' ? PATENTE_LARGO : VIN_LARGO;
-  const v = String(rec().campos[clave] || '').trim();
+  // Se cuenta sobre el valor saneado, que es el que se está viendo en el campo.
+  const v = clave === 'patente'
+    ? normalizarPatente(rec().campos[clave])
+    : normalizarVin(rec().campos[clave]);
   if (!v) {
     return clave === 'patente'
       ? 'Son ' + PATENTE_LARGO + ' caracteres, en mayúsculas y sin guión'
@@ -731,7 +774,7 @@ function recVin() {
      contador de abajo va diciendo cuánto falta mientras se copia del chasis. */
   return '<div class="campo' + (recMarcado('vin') ? ' falta' : '') + '">' +
     '<label>VIN (número de chasis) <span style="color:var(--rojo)">*</span></label>' +
-    '<input type="text" autocomplete="off" data-rec="vin" value="' + esc(r.campos.vin || '') + '" ' +
+    '<input type="text" autocomplete="off" data-rec="vin" value="' + esc(normalizarVin(r.campos.vin)) + '" ' +
     'maxlength="' + VIN_LARGO + '" placeholder="' + VIN_LARGO + ' caracteres">' +
     casilla +
     '<span class="ayuda" data-ayuda="vin">' + esc(recAyudaLargo('vin')) + '</span></div>';
@@ -747,7 +790,8 @@ function recVehiculo() {
   return `
   <div class="rejilla-campos">
     ${recCampo('patente', 'Patente', {
-      marcador: 'AABB11', largo: PATENTE_LARGO, ayuda: recAyudaLargo('patente') })}
+      marcador: 'AABB11', largo: PATENTE_LARGO, normalizar: normalizarPatente,
+      ayuda: recAyudaLargo('patente') })}
     ${recCombo('marca_id', 'Marca', marcas, 'marca', { marcador: 'Escribe la marca' })}
     ${recCombo('modelo_id', 'Modelo', modelos, 'modelo', {
       marcador: r.campos.marca_id ? 'Escribe el modelo' : 'Primero la marca',
@@ -1311,6 +1355,7 @@ function pRecepcion() {
       // La patente se limpia en el mismo gesto: mayúsculas, sin guión ni
       // punto, y cortada en seis. Escribir la séptima simplemente no hace nada.
       if (el.dataset.rec === 'patente') reescribir(el, normalizarPatente, /[A-Z0-9]/i);
+      if (el.dataset.rec === 'vin') reescribir(el, normalizarVin, /[A-Z0-9]/i);
 
       r.campos[el.dataset.rec] = el.value;
       // El contador de patente y VIN se mueve tecla a tecla. No se repinta el
@@ -1676,10 +1721,10 @@ function recComprobanteBorrador() {
 
   mostrarImpreso(impresoRecepcion({
     id: null, numeroOT: 'sin asignar',
-    patente: String(r.campos.patente || '').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+    patente: normalizarPatente(r.campos.patente),
     marca: nom('marca', r.campos.marca_id), modelo: nom('modelo', r.campos.modelo_id),
     anio: r.campos.anio || null, color: nom('color_vehiculo', r.campos.color_id),
-    vin: r.campos.vin || null,
+    vin: normalizarVin(r.campos.vin) || null,
     cliente: r.campos.nombre || '', rut: r.campos.rut || null,
     telefono: r.campos.telefono || null, direccion: r.campos.direccion || null,
     origenIngresoNombre: t ? t.nombre : null,

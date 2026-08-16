@@ -399,8 +399,9 @@ function vRecepcionMenu() {
       '</button>';
   };
 
-  return `
-  <div class="panel">
+  // Si se acaba de guardar una recepción, su comprobante va arriba del menú.
+  return (r.creadas ? vRecepcionResultado(r) : '') + `
+  <div class="panel"${r.creadas ? ' style="margin-top:11px"' : ''}>
     <div class="cab"><div><h2>${ico('recepcion', 'g')}Seleccione una opción</h2>
       <div class="desc">Las cuatro del sistema actual, con sus mismos nombres</div></div></div>
     <div class="cuerpo">
@@ -492,7 +493,16 @@ function vRecepcionBuscar(modo) {
 
 function vRecepcion() {
   const r = rec();
-  if (r.creadas) return vRecepcionResultado(r);
+  /* 🔶 GUARDADA LA RECEPCIÓN SE VUELVE AL INICIO DEL MÓDULO (15-08-2026,
+     pedido del cliente). El comprobante no desaparece: se muestra ARRIBA del
+     menú de cuatro opciones, no en una pantalla aparte.
+
+     Antes la confirmación se quedaba con la pantalla entera y para hacer
+     cualquier otra cosa —entregar una unidad, corregir una recepción— había
+     que salir del módulo y volver a entrar. Y el recepcionista sigue
+     necesitando el número de OT a la vista: es lo que anota en el papel y lo
+     que después busca. Las dos cosas a la vez. */
+  if (r.creadas) return vRecepcionMenu();
   if (r.pantalla === 'menu') return vRecepcionMenu();
   if (r.pantalla === 'editar' || r.pantalla === 'or') return vRecepcionBuscar(r.pantalla);
   // La corrección de una recepción ya guardada vive en `recepcion-editar.js`.
@@ -1327,6 +1337,8 @@ function pRecepcion() {
   // enganches. Sale de acá derecho para no arrastrar los del formulario.
   if (r.pantalla === 'editar-ficha') return pRecepcionEditarFicha();
 
+  /* El comprobante de lo recién guardado. Ya NO corta acá: ahora convive con
+     el menú de opciones abajo, y las dos partes necesitan sus enganches. */
   if (r.creadas) {
     document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
       abrirFicha(b.dataset.abrirOt)));
@@ -1340,7 +1352,6 @@ function pRecepcion() {
     if (comp) comp.addEventListener('click', () => abrirImpreso('recepcion', r.creadas[0].ot_id));
     const torre = document.getElementById('rec-ir-torre');
     if (torre) torre.addEventListener('click', () => { limpiarBorrador(); ir('torre'); });
-    return;
   }
 
   /* El menú de cuatro opciones. Cada una lleva a algo que existe; la que el rol
@@ -1354,6 +1365,15 @@ function pRecepcion() {
         '». Se administra en Configuración → Roles y permisos.' });
     }
     if (op.id === 'entregar') return ir('entrega');
+
+    /* Elegir una opción cierra el comprobante de la recepción anterior: ya
+       está guardada y su OT quedó en la torre. Si no se limpiara acá, el
+       comprobante viejo seguiría colgado arriba de la pantalla siguiente. */
+    if (r.creadas) {
+      limpiarBorrador();
+      const n = rec();
+      n.pantalla = op.id; n.buscaEditar = ''; return render();
+    }
     // Las otras tres son pantallas de este mismo módulo.
     r.pantalla = op.id; r.buscaEditar = ''; render();
   }));
@@ -1697,10 +1717,31 @@ function recAvanzar() {
    todavía no se llegó al último paso: lleva a Verificar si está todo, y si no,
    rechaza donde falta. Vive acá y no en `app.js` porque las reglas del
    formulario son de este archivo. */
+/* 🔴 LA ÚNICA PUERTA AL FORMULARIO.
+
+   Desde que la recepción guardada vuelve al menú con su comprobante arriba,
+   cualquier camino que entre al formulario tiene que descartar ese comprobante
+   primero: mientras `creadas` esté puesto, la vista muestra el menú, y un
+   `pantalla = 'nuevo'` suelto dejaba el botón sin efecto visible — un botón
+   muerto, que es justo lo que la casa no permite.
+
+   Son cuatro los caminos —`Ingresar recepción`, `Agregar fotos`, `Nuevo
+   ingreso` y `Descartar borrador`—, así que la decisión vive acá y no
+   repartida en cada uno. */
+function recEntrarAlFormulario(paso) {
+  let r = rec();
+  // La recepción anterior ya está guardada y su OT quedó en la torre: lo que
+  // se descarta es el comprobante en pantalla, no un dato.
+  if (r.creadas) { limpiarBorrador(); r = rec(); }
+  r.pantalla = 'nuevo';
+  if (paso) r.paso = paso;
+  return r;
+}
+
 function recIrAVerificar() {
-  const r = rec();
   // Desde el menú, `Ingresar recepción` entra al formulario: es lo que se pidió.
-  if (r.pantalla !== 'nuevo') { r.pantalla = 'nuevo'; render(); }
+  const r = recEntrarAlFormulario();
+  render();
   const faltan = recFaltantes();
   if (faltan.length) {
     r.paso = faltan[0].paso;
@@ -1909,6 +1950,10 @@ function guardarRecepcion() {
     }
 
     r.creadas = res.ordenes;
+    // Se vuelve al inicio del módulo, con el comprobante arriba. La pantalla
+    // se deja en `menu` para que la barra de acciones y la de estado hablen de
+    // dónde está parado el recepcionista y no del formulario que ya cerró.
+    r.pantalla = 'menu';
     try { localStorage.removeItem(CLAVE_BORRADOR); } catch (e) { /* nada */ }
     render();
     avisar({ ok: true, motivo: '' },

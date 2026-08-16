@@ -307,7 +307,7 @@ function accionModulo(accion) {
       if (ui.vista === 'personal') { const b = document.getElementById('per-nuevo'); if (b) b.click(); return; }
       // El botón dice "Nuevo ingreso", así que entra derecho al formulario y no
       // al menú de opciones: el usuario ya eligió al apretarlo.
-      rec().pantalla = 'nuevo';
+      recEntrarAlFormulario();
       return ir('recepcion');
 
     case 'abrir': {
@@ -347,7 +347,7 @@ function accionModulo(accion) {
         if (b) return b.click();
         // Desde el menú no hay botón a la vista: se entra al formulario, que es
         // donde vive el borrador, en vez de no hacer nada.
-        rec().pantalla = 'nuevo'; render();
+        recEntrarAlFormulario(); render();
         const b2 = document.getElementById('rec-limpiar');
         if (b2) b2.click();
         return;
@@ -366,8 +366,8 @@ function accionModulo(accion) {
     case 'fotos': {
       const r = rec();
       // Las fotos viven dentro del formulario: si estamos en el menú, se entra.
-      if (r.pantalla !== 'nuevo' || r.paso !== 'danos') {
-        r.pantalla = 'nuevo'; r.paso = 'danos'; guardarBorrador(); render();
+      if (r.creadas || r.pantalla !== 'nuevo' || r.paso !== 'danos') {
+        recEntrarAlFormulario('danos'); guardarBorrador(); render();
       }
       const z = document.getElementById('recfoto-zona');
       if (z) z.scrollIntoView({ block: 'center' });

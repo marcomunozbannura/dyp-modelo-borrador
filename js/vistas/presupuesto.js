@@ -51,6 +51,49 @@ function vPresupuesto() {
 
 /* ── Listado ───────────────────────────────────────────────────────────── */
 
+/* 🟰 LA FILA QUE SE DESPLIEGA AL APRETAR `Ver` (15-08-2026).
+
+   Es como funciona el original: `Ver` no abre otra pantalla, abre una línea
+   DEBAJO de la orden con cada presupuesto y sus cuatro acciones —`Ver PDF`,
+   `Editar Presupuesto`, `Enviar`, `Anular`—. Tiene sentido: una OT puede tener
+   varias OR, y desde el listado hay que poder elegir sobre CUÁL se actúa sin
+   perder de vista la lista.
+
+   Cada acción se muestra solo si se puede hacer sobre ese presupuesto:
+   `Editar` y `Enviar` mueren cuando deja de ser borrador —lo enviado no se
+   edita, se versiona—, y `Anular` no aplica a lo ya resuelto ni a lo ya
+   anulado. Se ocultan en vez de rechazarse porque acá no hay una regla que
+   explicar: el estado del presupuesto ya está a la vista en su etiqueta. */
+function filaDesplegada(o) {
+  const veMontos = Modelo.puede('presupuesto.montos');
+  const cols = 10;
+
+  const acciones = (pr) => {
+    const b = [];
+    if (veMontos) b.push('<button class="btn secundario chico" data-pr-pdf="' + esc(pr.id) +
+      '" data-pr-ot="' + esc(o.id) + '">' + ico('imprimir') + 'Ver PDF</button>');
+    if (pr.estado === 'borrador') {
+      b.push('<button class="btn secundario chico" data-pr-editar="' + esc(pr.id) +
+        '" data-pr-ot="' + esc(o.id) + '">' + ico('editar') + 'Editar Presupuesto</button>');
+      b.push('<button class="btn secundario chico" data-pr-enviar="' + esc(pr.id) + '">Enviar</button>');
+    }
+    if (pr.estado !== 'anulado' && pr.estado !== 'aprobado' && pr.estado !== 'rechazado')
+      b.push('<button class="btn secundario chico" data-pr-anular="' + esc(pr.id) + '">Anular</button>');
+    return b.join(' ');
+  };
+
+  return '<tr class="fila-presu-desplegada"><td colspan="' + cols + '">' +
+    o.presupuestos.map((pr) => {
+      const e = ESTADO_PRESUPUESTO[pr.estado] || { txt: pr.estado, clase: 'gris' };
+      return '<div class="linea-presu">' +
+        '<span class="cod">Presupuesto ' + esc(pr.numeroOR) + '</span>' +
+        '<span class="et ' + esc(e.clase) + '">' + esc(e.txt) + '</span>' +
+        '<span class="et gris">v' + pr.version + '</span>' +
+        '<span class="monto">' + (veMontos ? fMonto(pr.total) : '•••••') + '</span>' +
+        '<span class="acc">' + acciones(pr) + '</span></div>';
+    }).join('') + '</td></tr>';
+}
+
 function vPresupuestoListado() {
   const p = presuEstado();
   const q = p.busqueda.trim().toLowerCase();
@@ -112,7 +155,15 @@ function vPresupuestoListado() {
               (o.presupuestos.length > 1 ? ' <span class="et gris">v' + o.presupuestos.length + '</span>' : '')
             : '<span class="et ambar">sin presupuesto</span>') + '</td>' +
           '<td class="num">' + (neto ? fMonto(neto) : '—') + '</td>' +
-          '<td><button class="btn secundario" data-presu-ot="' + esc(o.id) + '">Generar presupuesto</button></td></tr>';
+          '<td><span style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button class="btn secundario chico" data-presu-ot="' + esc(o.id) + '">' +
+              ico('editar') + 'Generar</button>' +
+            (o.presupuestos.length
+              ? '<button class="btn secundario chico" data-presu-ver-fila="' + esc(o.id) + '">' +
+                ico('imprimir') + 'Ver</button>'
+              : '') +
+          '</span></td></tr>' +
+          (p.abierta === o.id ? filaDesplegada(o) : '');
       }).join('')}</tbody>
     </table></div>
     <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
@@ -133,8 +184,18 @@ function vPresupuestoOT(o) {
   return `
   <div class="panel">
     <div class="cab">
-      <div><h2>${ico('presupuesto', 'g')}Generar presupuesto Orden N° ${o.numeroOT}</h2>
-        <div class="desc">${esc(o.patente)} · ${esc(o.cliente)} · ${esc(o.compania)}</div></div>
+      ${/* El título es el del original: `Editar presupuesto N° <OR>-<versión> -
+           <PATENTE>`, y debajo el siniestro con su glosa. Se entra acá desde
+           `Editar Presupuesto` del listado con una OR ya elegida, así que el
+           encabezado tiene que decir CUÁL se está editando — si dice solo el
+           número de orden, con varias OR no se sabe en cuál se está. */''}
+      <div><h2>${ico('presupuesto', 'g')}${actual
+        ? 'Editar presupuesto N° ' + esc(actual.numeroOR) + '-' +
+          String(actual.version).padStart(3, '0') + ' · ' + esc(o.patente)
+        : 'Generar presupuesto · Orden N° ' + o.numeroOT}</h2>
+        <div class="desc">${o.siniestro
+          ? esc(o.siniestro) + ' · ' + esc(o.origenIngresoNombre || '') + ' · '
+          : ''}${esc(o.cliente)}${o.compania && o.compania !== '—' ? ' · ' + esc(o.compania) : ''}</div></div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn secundario" id="presu-volver">Volver al listado</button>
         ${actual && actual.estado === 'borrador'
@@ -353,8 +414,53 @@ function pPresupuesto() {
     soloSin.addEventListener('click', () => { p.soloSin = !p.soloSin; render(); });
   }
 
-  document.querySelectorAll('[data-presu-ot]').forEach((b) => b.addEventListener('click', () => {
+  /* 🔴 LOS BOTONES DE FILA CORTAN EL EVENTO. La fila entera abre la orden con
+     doble clic, así que sin `stopPropagation` apretar dos veces seguidas
+     `Ver` —para abrir y cerrar, que es lo natural— abría además la ventana de
+     la orden encima. Se vio probando. */
+  document.querySelectorAll('[data-presu-ot]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
     p.otId = b.dataset.presuOt; p.presupuestoId = null; render();
+  }));
+
+  /* `Ver` despliega la línea de abajo, y vuelve a apretarse para cerrarla. Se
+     abre una a la vez: con 60 filas, dejarlas todas abiertas convierte el
+     listado en una lista de presupuestos y se pierde la lista de órdenes. */
+  document.querySelectorAll('[data-presu-ver-fila]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const id = b.dataset.presuVerFila;
+    p.abierta = (p.abierta === id) ? null : id;
+    render();
+  }));
+
+  document.querySelectorAll('[data-pr-pdf]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    abrirImpreso('presupuesto', b.dataset.prOt, b.dataset.prPdf);
+  }));
+
+  // `Editar Presupuesto` entra a ESE presupuesto, no al último de la orden:
+  // desde el listado se eligió cuál, y perder esa elección sería hacérsela
+  // repetir adentro.
+  document.querySelectorAll('[data-pr-editar]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    p.otId = b.dataset.prOt; p.presupuestoId = b.dataset.prEditar; render();
+  }));
+
+  document.querySelectorAll('[data-pr-enviar]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    ejecutar(() => Modelo.cambiar_estado_presupuesto(b.dataset.prEnviar, 'enviado'),
+      'Presupuesto enviado a la compañía.');
+  }));
+
+  /* Anular pregunta. Es la única de las cuatro que no se deshace sola: deja la
+     OR fuera de la venta del taller, y si fue por error hay que crear otra. */
+  document.querySelectorAll('[data-pr-anular]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (!confirm('¿Anular este presupuesto?\n\nLa OR deja de contar en la venta de la orden y ' +
+                 'del taller. No se reactiva: si fue un error, hay que generar otra.\n\n' +
+                 'Se puede deshacer con Ctrl+Z.')) return;
+    ejecutar(() => Modelo.cambiar_estado_presupuesto(b.dataset.prAnular, 'anulado'),
+      'Presupuesto anulado. Salió de la venta parada.');
   }));
   /* Eliminar una OR creada por equivocación. Solo en borrador, y preguntando:
      es la única acción del presupuesto que borra en vez de versionar. */

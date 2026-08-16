@@ -421,6 +421,19 @@ input:focus, select:focus, textarea:focus {
 }
 .btn.chico .ico { width: 12px; height: 12px; flex-basis: 12px; }
 
+/* La línea que `Ver` despliega bajo una orden del listado de Presupuesto.
+   Va hundida y con su borde izquierdo para que se lea como parte de la fila de
+   arriba y no como una orden más: son las OR de ESA orden. */
+.fila-presu-desplegada > td { background: var(--superficie-3); padding: 0; }
+.linea-presu {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 10px 7px 34px; border-left: 3px solid var(--acento-borde);
+  border-bottom: 1px solid var(--borde);
+}
+.linea-presu:last-child { border-bottom: 0; }
+.linea-presu .monto { font-variant-numeric: tabular-nums; color: var(--tinta); font-weight: 600; }
+.linea-presu .acc { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+
 /* Grilla de datos — el componente central del sistema */
 .grid-envoltorio { overflow-x: auto; }
 table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }

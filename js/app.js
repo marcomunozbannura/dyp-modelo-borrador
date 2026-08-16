@@ -58,7 +58,10 @@ const ESTADO_PRESUPUESTO = {
   borrador:  { txt: 'Borrador',  clase: 'gris' },
   enviado:   { txt: 'Enviado',   clase: 'azul' },
   aprobado:  { txt: 'Aprobado',  clase: 'verde' },
-  rechazado: { txt: 'Rechazado', clase: 'roja' }
+  rechazado: { txt: 'Rechazado', clase: 'roja' },
+  // `anulado` existía en el motor desde el principio y no tenía rótulo acá:
+  // la etiqueta salía vacía. Es el estado que deja `Anular` del listado.
+  anulado:   { txt: 'Anulado',   clase: 'gris' }
 };
 
 /* ───────────────── Estado de la interfaz ───────────────── */

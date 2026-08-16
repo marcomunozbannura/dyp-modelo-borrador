@@ -478,7 +478,15 @@ const Modelo = (function () {
     return !!o && !enAlcance(vistaOT(o));
   };
 
-  const totalOT = (o) => o.presupuestos.reduce((s, p) => s + p.total, 0);
+  /* 🔴 UN PRESUPUESTO ANULADO NO ES VENTA. `anulado` estaba entre los estados
+     posibles desde el principio, pero la suma no lo miraba: una OR anulada
+     seguía contando en la venta parada del taller y en el total de la orden.
+     Es plata que no existe, sumada en el número que el dueño mira todos los
+     días. El rechazado tampoco es venta, pero ese ya se ve como tal; el
+     anulado se veía igual que uno vivo. */
+  const totalOT = (o) => o.presupuestos
+    .filter((p) => p.estado !== 'anulado')
+    .reduce((s, p) => s + p.total, 0);
   const tieneRepuestoPendiente = (o) => o.repuestos.some((r) => !r.fechaBodega);
 
   function metricas() {

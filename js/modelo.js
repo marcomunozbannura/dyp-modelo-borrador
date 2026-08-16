@@ -906,15 +906,41 @@ const Modelo = (function () {
   /* Asignar es un paso aparte de finalizar, igual que en el original. Y a
      diferencia del original, la pantalla de asignar SÍ refleja lo ya
      asignado — allá muestra las nueve desmarcadas siempre. */
-  function asignar_etapas(ot_id, etapa_ids) {
+  /* `responsables` es opcional: un mapa `etapa_id → persona_id` para decir, en
+     el mismo acto, QUIÉN hace cada etapa. Es como asigna el sistema actual —
+     la pantalla de asignar tiene una columna `Responsable` con su desplegable
+     al lado de cada casilla— y no sustituye a `tomar_etapa`: una etapa se
+     puede seguir asignando sin dueño y que la agarre después el que esté
+     libre, que es como funciona el piso del taller.
+
+     Si el encargado que viene no tiene esa etapa habilitada en su ficha, la
+     etapa SE ASIGNA IGUAL y se avisa. Trabar el reparto entero por un
+     desplegable mal elegido sería peor: la etapa es del vehículo, el
+     responsable es un dato de quién la toma. */
+  function asignar_etapas(ot_id, etapa_ids, responsables) {
+    const resp = responsables || {};
     const fallas = [];
     let n = 0;
     (etapa_ids || []).forEach((eid) => {
       const r = Reglas.puedeAsignarEtapa(db, { ot_id, etapa_id: eid });
       if (!r.ok) { fallas.push(r.motivo); return; }
+
+      let persona_id = resp[eid] || null;
+      if (persona_id) {
+        const p = db.persona.find((x) => x.id === persona_id);
+        const etapa = db.etapa.find((x) => x.id === eid) || {};
+        if (!p) { fallas.push('La persona indicada para ' + (etapa.nombre || 'la etapa') + ' no existe.'); persona_id = null; }
+        else if (!db.persona_etapa.some((h) => h.persona_id === persona_id && h.etapa_id === eid)) {
+          fallas.push(p.nombres + ' no tiene ' + etapa.nombre + ' entre sus etapas, así que ' +
+            'quedó asignada sin encargado. Se habilita en su ficha de personal.');
+          persona_id = null;
+        }
+      }
+
       db.ot_etapa.push({ id: nuevoId('oe'), ot_id, etapa_id: eid,
-        asignada_at: HOY, salio_at: null, persona_id: null, observacion: '' });
-      registrarEvento(ot_id, 'etapa', 'Asignada', eid);
+        asignada_at: HOY, salio_at: null, persona_id, observacion: '' });
+      registrarEvento(ot_id, 'etapa', persona_id
+        ? 'Asignada a ' + nombreDe(db.persona.find((x) => x.id === persona_id)) : 'Asignada', eid);
       n++;
     });
     if (!n) return { ok: false, motivo: fallas[0] || 'No se asignó ninguna etapa.' };

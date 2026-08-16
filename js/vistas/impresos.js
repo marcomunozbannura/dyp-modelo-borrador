@@ -58,8 +58,14 @@ const CSS_IMPRESO = `
 .impreso td.n{text-align:right}
 .impreso .inv{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 8px;font-size:9.5px}
 .impreso .inv span{border-bottom:1px dotted #ddd;padding:1px 0}
+/* Las cuatro marcas del inventario. Son cuatro estados, no un sí/no, así que
+   son cuatro signos distintos: el cliente firma este papel y tiene que poder
+   distinguir "no estaba" de "estaba roto" y de "no se alcanzó a revisar". */
 .impreso .marca{color:#0a8a2a;font-weight:700}
 .impreso .falta{color:#b00;font-weight:700}
+.impreso .danado{color:#a35a00;font-weight:700}
+.impreso .sinver{color:#888;font-weight:700}
+.impreso .leyenda-inv{font-size:8.5px;color:#666;margin-top:3px}
 /* Recuadro en blanco: el documento se imprime y se firma a mano. */
 .impreso .firma{border:1px solid #999;height:26mm}
 .impreso .fotos{display:flex;gap:4px;flex-wrap:wrap}
@@ -226,8 +232,10 @@ function cabeceraImpreso(o, titulo, extra) {
       <div style="margin-top:5px;font-size:13px;font-weight:700">${esc(titulo)}</div>
     </div>
     <div class="der">
-      <div><strong>OT N° ${o.numeroOT}</strong></div>
-      <div>Patente <strong>${esc(o.patente)}</strong></div>
+      ${/* En el comprobante que se imprime antes de guardar no hay número de OT
+           todavía, y va rotulado en vez de inventado. */''}
+      <div><strong>OT N° ${esc(String(o.numeroOT))}</strong></div>
+      <div>Patente <strong>${esc(o.patente || 'sin patente')}</strong></div>
       ${extra || ''}
       <div>Emitido ${fFecha(HOY)}</div>
     </div>
@@ -243,22 +251,41 @@ const campoImpreso = (k, v) => '<div class="c"><span class="k">' + esc(k) + '</s
 
 /* ── 1 · Comprobante de recepción ──────────────────────────────────────── */
 
+/* `o` puede ser una OT de verdad o el BORRADOR del formulario de recepción, que
+   todavía no creó nada: en ese caso trae `fotosIngreso` con las fotos del
+   borrador y `numeroOT` rotulado, no un número inventado. El documento es el
+   mismo, y eso es lo importante — lo que el cliente firma en el mesón tiene que
+   ser lo que queda guardado. */
 function impresoRecepcion(o) {
   const inv = o.inventario;
-  const fotos = Modelo.mediaDe(o.id).filter((m) => m.momento === 'ingreso');
+  const fotos = o.fotosIngreso || Modelo.mediaDe(o.id).filter((m) => m.momento === 'ingreso');
+  const MARCA_INV = {
+    presente:     '<span class="marca">✔</span>',
+    no_presente:  '<span class="falta">✘</span>',
+    danado:       '<span class="danado">△</span>',
+    sin_verificar:'<span class="sinver">–</span>'
+  };
+  const cuenta = (cod) => inv.filter((i) => (i.estado || (i.presente ? 'presente' : 'no_presente')) === cod).length;
+  /* La firma: de la OT sale de los adjuntos, con su propio momento; del
+     borrador viene ya resuelta como URL, porque todavía no está guardada. */
+  const firma = o.firmaSrc
+    ? { src: o.firmaSrc }
+    : (o.id ? Modelo.mediaDe(o.id).find((m) => m.momento === 'firma') : null);
   return cabeceraImpreso(o, 'Comprobante de recepción') + `
   <h2>Datos del cliente y del vehículo</h2>
   <div class="rej">
     ${campoImpreso('Cliente', esc(o.cliente))}
     ${campoImpreso('RUT', esc(o.rut || '—'))}
     ${campoImpreso('Teléfono', esc(o.telefono || '—'))}
-    ${campoImpreso('Domicilio', esc(o.direccion || '—'))}
+    ${campoImpreso('Dirección', esc(o.direccion || '—'))}
     ${campoImpreso('Patente', esc(o.patente))}
     ${campoImpreso('Marca', esc(o.marca || '—'))}
     ${campoImpreso('Modelo', esc(o.modelo || '—'))}
     ${campoImpreso('Año', o.anio || '—')}
     ${campoImpreso('Color', esc(o.color || '—'))}
-    ${campoImpreso('VIN', esc(o.vin || '—'))}
+    ${campoImpreso('VIN', o.vin
+      ? esc(o.vin)
+      : (o.vinPendiente ? 'Pendiente — ' + esc(o.vinMotivo || 'no viene a la vista') : '—'))}
     ${campoImpreso('Kilometraje', fKm(o.recepcion && o.recepcion.km))}
     ${campoImpreso('Combustible', fComb(o.recepcion && o.recepcion.combustible))}
     ${campoImpreso('Tipo de ingreso', esc(o.origenIngresoNombre || '—'))}
@@ -271,18 +298,28 @@ function impresoRecepcion(o) {
   <div style="display:flex;gap:10px">
     ${svgSiluetaImpresa(o.danos)}
     <div style="flex:1">
-      <table><thead><tr><th>Zona</th><th>Daño</th><th>Severidad</th></tr></thead><tbody>
+      <table><thead><tr><th>Zona</th><th>Daño</th><th>Severidad</th><th>Comentario</th></tr></thead><tbody>
       ${o.danos.length ? o.danos.map((d) => '<tr><td>' + esc(d.zonaNombre) + '</td><td>' +
-        esc(d.tipoNombre) + '</td><td>' + '●'.repeat(d.severidad || 1) + '</td></tr>').join('')
-        : '<tr><td colspan="3">Sin daños marcados</td></tr>'}
+        esc(d.tipoNombre) + '</td><td>' + '●'.repeat(d.severidad || 1) + '</td><td>' +
+        esc(d.descripcion || '—') + '</td></tr>').join('')
+        : '<tr><td colspan="4">Sin daños marcados</td></tr>'}
       </tbody></table>
     </div>
   </div>
 
-  <h2>Inventario del vehículo · ${inv.filter((i) => i.presente).length} de ${inv.length}</h2>
+  <h2>Inventario del vehículo · ${inv.length} ítems</h2>
   <div class="inv">
-    ${inv.map((i) => '<span>' + (i.presente ? '<span class="marca">✔</span>' : '<span class="falta">✘</span>') +
-      ' ' + esc(i.item) + '</span>').join('')}
+    ${inv.map((i) => {
+      const cod = i.estado || (i.presente ? 'presente' : 'no_presente');
+      return '<span>' + (MARCA_INV[cod] || MARCA_INV.sin_verificar) + ' ' + esc(i.item) +
+        (String(i.observacion || '').trim() ? ' <em>(' + esc(i.observacion) + ')</em>' : '') + '</span>';
+    }).join('')}
+  </div>
+  <div class="leyenda-inv">
+    <span class="marca">✔</span> presente ${cuenta('presente')} ·
+    <span class="falta">✘</span> no presente ${cuenta('no_presente')} ·
+    <span class="danado">△</span> dañado ${cuenta('danado')} ·
+    <span class="sinver">–</span> sin verificar ${cuenta('sin_verificar')}
   </div>
 
   ${o.recepcion && o.recepcion.observaciones ?
@@ -291,9 +328,19 @@ function impresoRecepcion(o) {
   ${fotos.length ? '<h2>Fotografías de ingreso</h2><div class="fotos">' +
     fotos.slice(0, 6).map((f) => '<img data-media="' + esc(f.id) + '" alt="">').join('') + '</div>' : ''}
 
+  ${/* 🔶 LA FIRMA SE ESTAMPA (15-08-2026). El cliente pidió las dos mitades:
+       firmar en pantalla Y que esa firma salga impresa. Estaba construida la
+       primera y el recuadro seguía saliendo en blanco.
+
+       Si no hay firma tomada, el recuadro queda vacío como antes: el
+       comprobante se puede seguir imprimiendo para firmarlo a mano, que es como
+       trabaja el taller cuando el cliente no está con el teléfono en la mano. */''}
   <h2>Firma del cliente</h2>
   <div class="rej dos" style="align-items:end">
-    <div class="firma"></div>
+    <div class="firma">${firma
+      ? '<img ' + (firma.src ? 'src="' + esc(firma.src) + '"' : 'data-media="' + esc(firma.id) + '"') +
+        ' alt="Firma del cliente" style="height:100%;width:auto;display:block;margin:0 auto">'
+      : ''}</div>
     <div>
       ${campoImpreso('Nombre', esc(o.cliente))}
       ${campoImpreso('RUT', esc(o.rut || '—'))}
@@ -670,6 +717,15 @@ function abrirImpreso(tipo, ot_id, presupuesto_id) {
                    ficha: () => impresoFicha(o), entrega: () => impresoEntrega(o),
                    expediente: () => impresoExpediente(o) }[tipo]();
 
+  mostrarImpreso(cuerpo, meta.archivo(o, pr));
+}
+
+/* Poner un documento en pantalla. Está separado de `abrirImpreso` porque hay un
+   caso que no viene de una OT: el comprobante que la recepción imprime ANTES de
+   guardar, desde el paso Verificar. Ahí no hay orden todavía —y no la puede
+   haber: el papel se revisa con el cliente delante y recién después se ingresa—
+   así que el cuerpo lo arma quien llama y esta función solo lo muestra. */
+function mostrarImpreso(cuerpo, nombre) {
   if (!document.getElementById('css-impreso')) {
     const s = document.createElement('style');
     s.id = 'css-impreso'; s.textContent = CSS_IMPRESO;
@@ -698,7 +754,6 @@ function abrirImpreso(tipo, ot_id, presupuesto_id) {
   // El nombre del archivo que propone el navegador sale del título del
   // documento. Es lo que hace que el guion pueda decir cuál debe quedar.
   const tituloPrevio = document.title;
-  const nombre = meta.archivo(o, pr);
 
   const cerrar = () => { velo.remove(); document.title = tituloPrevio; };
   velo.querySelector('#imp-cerrar').addEventListener('click', cerrar);

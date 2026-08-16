@@ -45,19 +45,41 @@ const Modelo = (function () {
           ficha completa, editar personal).
      v5 · sin tempario: se fue la tabla, su catálogo y el `tempario_id` de las
           líneas del presupuesto. */
-  const CLAVE = 'dyp-modelo-v5';
+  /* v6 · el rediseño del ingreso (15-08-2026): el inventario pasa de
+          `presente boolean` a `estado` con cuatro valores, el cliente tiene un
+          solo campo de nombre, y la orden guarda su descripción de daños, su
+          descripción de estado y la OR externa de las órdenes de empresa. */
+  const CLAVE = 'dyp-modelo-v6';
 
   // Y se barre lo que dejaron las versiones anteriores: ocupa espacio y no
   // sirve para nada.
   try {
-    ['dyp-modelo', 'dyp-modelo-v2', 'dyp-modelo-v3', 'dyp-modelo-v4']
+    ['dyp-modelo', 'dyp-modelo-v2', 'dyp-modelo-v3', 'dyp-modelo-v4', 'dyp-modelo-v5']
       .forEach((k) => localStorage.removeItem(k));
   } catch (e) { /* sin almacenamiento */ }
 
   /* El nombre que se muestra de una cuenta. Las cuentas de rol no tienen
      apellido —"Pintura" no se apellida—, así que concatenar a secas dejaba un
      espacio colgando en cada pantalla. */
+  /* El CLIENTE, desde el 15-08-2026, tampoco tiene apellido aparte: su nombre
+     completo vive entero en `nombres`. Esta misma función sirve para los dos
+     porque nunca supuso que el apellido estuviera. */
   const nombreDe = (p) => (p ? String((p.nombres || '') + ' ' + (p.apellidos || '')).trim() : '');
+
+  /* Los cuatro estados del inventario salen del catálogo de la semilla, nunca
+     escritos a mano. Un valor desconocido —o una fila vieja, con el booleano
+     `presente` de antes de v6— cae en el que corresponde en vez de reventar la
+     ficha: el checklist es lo primero que se mira cuando hay un reclamo. */
+  const INV_ESTADOS = Semilla.INVENTARIO_ESTADOS;
+  function estadoInventario(fila) {
+    const cod = fila && fila.estado
+      ? fila.estado
+      : (fila && typeof fila.presente === 'boolean'
+          ? (fila.presente ? 'presente' : 'no_presente')
+          : Semilla.INVENTARIO_POR_OMISION);
+    return INV_ESTADOS.find((e) => e.codigo === cod) ||
+           INV_ESTADOS.find((e) => e.codigo === Semilla.INVENTARIO_POR_OMISION);
+  }
 
   let db = null;
   let modificado = false;
@@ -259,12 +281,20 @@ const Modelo = (function () {
       anio: veh.anio,
       color: (ix.color.get(veh.color_id) || {}).nombre,
       vin: veh.vin,
-      cliente: [cli.nombres, cli.apellidos].filter(Boolean).join(' '),
+      // El chasis que se declaró no visible, con su motivo. Es un pendiente de
+      // la orden, no un dato que falta por descuido.
+      vinPendiente: !!veh.vin_pendiente, vinMotivo: veh.vin_motivo || null,
+      cliente: nombreDe(cli),
       rut: cli.rut, telefono: cli.telefono, direccion: cli.direccion,
       compania: comp ? comp.codigo : '—', companiaId: o.compania_id,
       origenIngreso: (ix.tipo_ingreso.get(o.tipo_ingreso_id) || {}).codigo,
       origenIngresoNombre: (ix.tipo_ingreso.get(o.tipo_ingreso_id) || {}).nombre,
       siniestro: o.siniestro, deducible: o.deducible, liquidador: o.liquidador,
+      // Lo que se escribió en el ingreso, por orden. `orExterna` es la OR que
+      // digita la recepción en las órdenes de empresa: no es la OR del taller.
+      descripcionDanos: o.descripcion_danos || '',
+      descripcionEstado: o.descripcion_estado || '',
+      orExterna: o.or_externa || null,
       prioridad: (ix.prioridad.get(o.prioridad_id) || {}).codigo,
       fechaIngreso: o.fecha_ingreso, fechaCompromiso: o.fecha_compromiso,
       fechaEntrega: o.fecha_entrega_real,
@@ -330,18 +360,32 @@ const Modelo = (function () {
       })),
 
       // Del vehículo, no de la orden: dos siniestros comparten la silueta.
+      // `descripcion` es el comentario que la recepción le escribe a CADA
+      // marca: la zona dice dónde, el tipo dice qué, y el comentario dice lo
+      // que ninguno de los dos alcanza —"viene del roce con el portón".
       danos: (ix.danosDeRec.get(o.recepcion_id) || []).map((d) => ({
         zona: (ix.zonaDano.get(d.zona_id) || {}).codigo,
         zonaNombre: (ix.zonaDano.get(d.zona_id) || {}).nombre,
         tipo: (ix.tipoDano.get(d.tipo_id) || {}).codigo,
         tipoNombre: (ix.tipoDano.get(d.tipo_id) || {}).nombre,
         color: (ix.tipoDano.get(d.tipo_id) || {}).color,
-        severidad: d.severidad, x: d.x, y: d.y, vista: d.vista
+        severidad: d.severidad, x: d.x, y: d.y, vista: d.vista,
+        descripcion: d.descripcion || ''
       })),
 
-      inventario: (ix.inventarioDeRec.get(o.recepcion_id) || []).map((i) => ({
-        item: (ix.inventario_item.get(i.item_id) || {}).nombre, presente: i.presente
-      })),
+      /* El inventario con sus cuatro estados. `presente` se mantiene como
+         booleano derivado —lo leen las pantallas viejas— pero NO es la fuente:
+         la fuente es `estado`, y un ítem sin verificar no cuenta como presente
+         ni como faltante. */
+      inventario: (ix.inventarioDeRec.get(o.recepcion_id) || []).map((i) => {
+        const est = estadoInventario(i);
+        return {
+          item: (ix.inventario_item.get(i.item_id) || {}).nombre,
+          codigo: (ix.inventario_item.get(i.item_id) || {}).codigo,
+          estado: est.codigo, estadoNombre: est.nombre, estadoClase: est.clase,
+          observacion: i.observacion || '', presente: est.codigo === 'presente'
+        };
+      }),
 
       presupuestos: (ix.presupuestosDeOT.get(o.id) || [])
         .sort((a, b) => a.version - b.version)
@@ -531,14 +575,26 @@ const Modelo = (function () {
     if (o.danos.length) {
       sumar(o.fechaIngreso, -2, 'recepcion', 'Daños registrados en la recepción',
         o.danos.map((d) => d.zonaNombre + ': ' + d.tipoNombre +
-          (d.severidad ? ' (' + d.severidad + ')' : '')).join(' · '), null);
+          (d.severidad ? ' (' + d.severidad + ')' : '') +
+          // El comentario que la recepción le escribió a esa marca. Es lo que
+          // después se discute con la compañía, así que va en el expediente.
+          (d.descripcion ? ' — ' + d.descripcion : '')).join(' · '), null);
     }
-    const faltantes = o.inventario.filter((i) => !i.presente);
+    /* El inventario, con los cuatro estados del 15-08-2026. Decía "falta:" y
+       ahí adentro caía TODO lo que no estuviera presente: lo que no vino, lo
+       que llegó roto y lo que nadie alcanzó a mirar. Son tres hechos distintos
+       y en un expediente que se le muestra a una compañía tienen que leerse
+       distinto — sobre todo el tercero, que no es un reclamo contra nadie. */
     if (o.inventario.length) {
+      const de = (cod) => o.inventario.filter((i) => i.estado === cod);
+      const noEstan = de('no_presente'), danados = de('danado'), sinVer = de('sin_verificar');
+      const partes = [];
+      if (noEstan.length) partes.push('no vienen: ' + noEstan.map((i) => i.item).join(', '));
+      if (danados.length) partes.push('dañados: ' + danados.map((i) => i.item).join(', '));
+      if (sinVer.length) partes.push(sinVer.length + ' sin verificar');
       sumar(o.fechaIngreso, -1, 'recepcion', 'Inventario de recepción',
-        faltantes.length
-          ? o.inventario.length + ' ítems revisados, falta: ' + faltantes.map((i) => i.item).join(', ')
-          : 'Los ' + o.inventario.length + ' ítems presentes', null);
+        de('presente').length + ' de ' + o.inventario.length + ' presentes' +
+        (partes.length ? ' · ' + partes.join(' · ') : ''), null);
     }
 
     // 2 · El registro de hechos: etapas, estados, salidas, reingresos.
@@ -645,6 +701,9 @@ const Modelo = (function () {
   const tiposDano = () => vigentes('tipo_dano');
   const zonasDano = () => vigentes('zona_dano');
   const inventarioItems = () => vigentes('inventario_item').sort((a, b) => a.orden - b.orden).map((i) => i.nombre);
+  // Los cuatro estados posibles de un ítem del checklist. Una copia, para que
+  // ninguna vista pueda reordenar ni renombrar el catálogo desde afuera.
+  const inventarioEstados = () => INV_ESTADOS.map((e) => Object.assign({}, e));
   const roles = () => vigentes('rol');
   const motivosDetencion = () => vigentes('motivo_detencion');
   const prerrequisitos = () => db.etapa_prerrequisito.map((p) => ({
@@ -716,17 +775,33 @@ const Modelo = (function () {
       if (!veh) {
         veh = { id: nuevoId('veh'), patente: pat, marca_id: ficha.marca_id || null,
           modelo_id: ficha.modelo_id || null, anio: ficha.anio || null,
-          color_id: ficha.color_id || null, vin: ficha.vin || null };
+          color_id: ficha.color_id || null, vin: ficha.vin || null,
+          /* 🔴 EL VIN DECLARADO COMO NO VISIBLE SE GUARDA, no solo se pide en
+             pantalla. La recepción exige el motivo para dejar pasar la orden;
+             si ese motivo no queda escrito en ninguna parte, la exigencia es
+             decorativa y nadie puede saber después qué órdenes tienen el chasis
+             pendiente ni por qué. Con esto la orden queda marcada de verdad. */
+          vin_pendiente: !!ficha.vin_no_visible,
+          vin_motivo: ficha.vin_no_visible ? (ficha.vin_motivo || null) : null };
         db.vehiculo.push(veh);
+      } else if (ficha.vin && !veh.vin) {
+        // Reingreso de un vehículo que entró sin VIN: si ahora viene, se carga
+        // y deja de estar pendiente. Es la única forma de cerrar el pendiente.
+        veh.vin = ficha.vin;
+        veh.vin_pendiente = false;
+        veh.vin_motivo = null;
       }
 
       const permiso = Reglas.puedeCrearOT(db, { vehiculo_id: veh.id });
       if (!permiso.ok) return permiso;
 
+      /* El cliente tiene UN campo de nombre (15-08-2026). Se sigue guardando en
+         la columna `nombres`, que es la que comparte con el personal, y
+         `apellidos` no se escribe: en un cliente no existe. */
       let cli = ficha.cliente_id && db.persona.find((p) => p.id === ficha.cliente_id);
       if (!cli) {
         cli = { id: nuevoId('pe-c'), tipo: 'cliente', ficha: null, rut: ficha.rut || null,
-          nombres: ficha.nombres || 'Cliente', apellidos: ficha.apellidos || '',
+          nombres: ficha.nombre || 'Cliente',
           correo: ficha.correo || null, telefono: ficha.telefono || null,
           direccion: ficha.direccion || null, comuna: ficha.comuna || null,
           activo: true, demo: !!ficha.demo };
@@ -740,10 +815,18 @@ const Modelo = (function () {
         observaciones: ficha.observaciones || '', firma_media_id: ficha.firma_media_id || null,
         recibido_por: 'pe-u-recepcion'
       });
-      db.inventario_item.forEach((it, i) => db.recepcion_inventario.push({
-        recepcion_id: rec_id, item_id: it.id,
-        presente: !!(ficha.inventario && ficha.inventario[i]), observacion: ''
-      }));
+      /* El checklist llega como un mapa `item_id → estado`. Lo que no venga
+         queda `sin_verificar`, que es el valor por omisión y NO `no_presente`:
+         el ítem que nadie miró no se puede reclamar como faltante. */
+      const invValidos = INV_ESTADOS.map((e) => e.codigo);
+      db.inventario_item.forEach((it) => {
+        const pedido = (ficha.inventario || {})[it.id];
+        db.recepcion_inventario.push({
+          recepcion_id: rec_id, item_id: it.id,
+          estado: invValidos.indexOf(pedido) >= 0 ? pedido : Semilla.INVENTARIO_POR_OMISION,
+          observacion: (ficha.obsInventario || {})[it.id] || ''
+        });
+      });
       // Los daños de la silueta cuelgan de la RECEPCIÓN, no de la orden: son
       // el estado físico del vehículo al entrar, y es uno solo aunque el auto
       // traiga dos siniestros. Lo que sí es por orden es la "Descripción de
@@ -767,10 +850,27 @@ const Modelo = (function () {
           siniestro: b.siniestro || null, deducible: b.deducible || 0,
           liquidador: b.liquidador || null, prioridad_id: b.prioridad_id || 'pri-1',
           fecha_ingreso: HOY, fecha_compromiso: b.fecha_compromiso || null,
+          /* Sin estado elegido, la orden nace `Recibido`. No es un dato
+             inventado: es el estado inicial del maestro y la pantalla de
+             Verificar lo dice con todas las letras antes de guardar. */
           fecha_entrega_real: null, estado: b.estado || 'recibido',
           // El traspaso empieza acá: si la recepción eligió responsable, esa
           // orden le aparece en su pantalla apenas se guarda.
           responsable_id: b.responsable_id || null,
+          /* Los dos textos del ingreso, uno por orden. Antes se escribían en la
+             recepción y se perdían al guardar: el bloque los traía y nadie los
+             copiaba a la OT. Son de la ORDEN, no del vehículo — dos siniestros
+             comparten la silueta pero no la descripción del daño. */
+          descripcion_danos: b.descripcion_danos || '',
+          descripcion_estado: b.descripcion_estado || '',
+          /* ⚠️ LA OR EXTERNA DE LAS ÓRDENES DE EMPRESA. Va en su propia columna
+             y NO alimenta `presupuesto.numero_or`, que es la OR compuesta
+             `<OT>-<reparación>-<NNN>` que genera el presupuesto. Es una
+             pregunta abierta: si resulta que la OR de empresa es un número del
+             cliente corporativo, esta columna es la respuesta; si resulta que
+             es la misma OR del taller, hay que rehacer el modelo, y para eso
+             primero hay que preguntar. */
+          or_externa: b.numero_or || null,
           observaciones_ingreso: b.observaciones || '', demo: !!ficha.demo
         });
         // La estadía se abre acá. A partir de este momento los relojes se
@@ -2439,7 +2539,7 @@ const Modelo = (function () {
     alcanceActual, enAlcance,
     historialDe, bitacoraDe, expedienteDe, totalOT, tieneRepuestoPendiente,
     // catálogos de lectura
-    etapas, estadosOT, companias, tiposDano, zonasDano, inventarioItems, roles,
+    etapas, estadosOT, companias, tiposDano, zonasDano, inventarioItems, inventarioEstados, roles,
     motivosDetencion, prerrequisitos, catalogo, CATALOGOS, parametros, permisosDe,
     rolActual, puede, fijar_rol_actual, velar,
     personaActual, fijar_persona_actual, sesionesPosibles,

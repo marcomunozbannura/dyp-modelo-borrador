@@ -123,8 +123,13 @@ const MENU = [
 const MODULOS = {
   mitrabajo:   { ruta: ['Operación diaria', 'Mi trabajo'],
                  acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5']] },
+  /* `Ingresar recepción` se llama igual que el botón del paso Verificar: es la
+     misma operación y no puede tener dos nombres. Desde cualquier otro paso
+     lleva a Verificar si está todo completo, y si no, dice qué falta.
+     `Agregar fotos` lleva al paso Estado descriptivo, que es donde viven las
+     fotos desde el 15-08-2026 — no abre una pantalla que ya no existe. */
   recepcion:   { ruta: ['Operación diaria', 'Recepción'],
-                 acciones: [['guardar', 'Guardar recepción', 'guardar', 'F2'],
+                 acciones: [['guardar', 'Ingresar recepción', 'guardar', 'F2'],
                             ['camara', 'Agregar fotos', 'fotos'],
                             ['refrescar', 'Descartar borrador', 'limpiar']] },
   torre:       { ruta: ['Operación diaria', 'Torre de control'],
@@ -338,12 +343,17 @@ function accionModulo(accion) {
       return;
 
     case 'guardar':
-      if (ui.vista === 'recepcion') { const b = document.getElementById('rec-guardar'); if (b) return b.click(); }
+      if (ui.vista === 'recepcion') {
+        const b = document.getElementById('rec-guardar');
+        if (b) return b.click();
+        // Todavía no se llegó al paso Verificar: se llega, o se dice qué falta.
+        return recIrAVerificar();
+      }
       return avisar({ ok: false, motivo: 'En esta pantalla los cambios se guardan en cada tabla, no con un botón global.' });
 
     case 'fotos': {
       const r = rec();
-      if (r.paso !== 'cierre') { r.paso = 'cierre'; guardarBorrador(); render(); }
+      if (r.paso !== 'danos') { r.paso = 'danos'; guardarBorrador(); render(); }
       const z = document.getElementById('recfoto-zona');
       if (z) z.scrollIntoView({ block: 'center' });
       return;
@@ -850,9 +860,14 @@ const ESTADO_BARRA = {
   historico: () => '<strong>' + Modelo.historico({ todo: true }).length + '</strong> vehículos entregados',
   recepcion: () => {
     const r = rec();
-    const inv = Object.values(r.inventario).filter(Boolean).length;
+    // Cuántos ítems del checklist se revisaron de verdad. Contar "presentes"
+    // escondía que la mayoría podía estar sin mirar.
+    const total = Modelo.catalogo('inventario_item').length;
+    const vistos = Object.keys(r.inventario)
+      .filter((k) => r.inventario[k] && r.inventario[k] !== 'sin_verificar').length;
     return '<strong>' + r.bloques.length + '</strong> ' + (r.bloques.length === 1 ? 'orden' : 'órdenes') +
-      ' · ' + r.danos.length + ' daños · ' + inv + '/28 ítems · ' + r.fotos.length + ' fotos';
+      ' · ' + r.danos.length + ' daños · ' + vistos + '/' + total + ' ítems verificados · ' +
+      r.fotos.length + ' fotos';
   },
   configuracion: () => {
     const s = CONFIG_SECCIONES.find((x) => x.id === cfg().seccion) || {};
@@ -1318,10 +1333,25 @@ function dobleClicPorFilas(selector) {
         render();
       });
 
-    /* La flecha que anuncia que la fila se despliega. En la torre es una
-       columna propia; en los demas paneles la pone el CSS sobre la primera
-       celda, para no tener que agregarle una columna a cada tabla. */
+    /* La flecha va en su PROPIA columna, a la izquierda del número, igual que
+       en la torre — que la tiene entre sus 17 columnas. Se inserta acá, junto
+       con su encabezado, en vez de agregarle una columna a mano a las seis
+       tablas: el que escribe una pantalla nueva no tiene que acordarse. */
     tr.classList.add('desplegable');
+    if (!tr.querySelector('td.flecha-col')) {
+      const cel = document.createElement('td');
+      cel.className = 'flecha-col';
+      cel.innerHTML = '<span class="flecha">&#9656;</span>';
+      tr.insertBefore(cel, tr.firstChild);
+
+      const tabla = tr.closest('table');
+      const encab = tabla && tabla.querySelector('thead tr');
+      if (encab && !encab.querySelector('th.flecha-col')) {
+        const th = document.createElement('th');
+        th.className = 'flecha-col';
+        encab.insertBefore(th, encab.firstChild);
+      }
+    }
 
     if (n !== abierta) return;
     tr.classList.add('abierta');

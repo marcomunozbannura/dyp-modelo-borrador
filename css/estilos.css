@@ -393,6 +393,10 @@ input:focus, select:focus, textarea:focus {
 .chip:last-child { border-right: none; }
 .chip:hover { background: var(--superficie-2); }
 .chip.activo { background: var(--acento-solido); color: #fff; font-weight: 600; }
+/* El paso al que todavía no se puede llegar. Se ve apagado, pero NO está
+   deshabilitado: se aprieta igual y la regla explica qué falta antes. Un botón
+   gris que no responde enseña a no confiar en la pantalla. */
+.chip.pendiente { color: var(--gris-2); }
 
 .btn {
   background: var(--acento-solido); color: #fff; border: 1px solid var(--acento-solido);
@@ -578,6 +582,10 @@ fieldset.bloque legend {
 }
 .item-dano .quitar { background: none; border: none; color: var(--gris-2); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; font-family: inherit; }
 .item-dano .quitar:hover { color: var(--rojo); }
+/* El comentario de cada marca. Va pegado bajo su daño y con sangría, para que
+   se lea como parte de él y no como una fila más de la lista. */
+.nota-dano { margin: -1px 0 6px 12px; }
+.nota-dano input { width: 100%; font-size: 11px; }
 
 /* Formularios tipo ficha */
 .rejilla-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); gap: 8px; }
@@ -586,6 +594,23 @@ fieldset.bloque legend {
 .campo input, .campo select { width: 100%; }
 .campo .ayuda { font-size: 10.5px; color: var(--gris-2); }
 .campo.autollenado input { background: var(--verde-bg); border-color: var(--verde-borde); font-weight: 600; color: var(--verde-texto); }
+/* El campo que el último rechazo señaló como faltante. Es la contraparte
+   visible de la regla de la casa: el botón no se deshabilita nunca, así que
+   cuando la regla rechaza tiene que quedar claro DÓNDE. La marca se va sola al
+   escribir en ese campo, y solo en ése: los otros siguen señalados. */
+.campo.falta input, .campo.falta select, .campo.falta textarea { border-color: var(--rojo); background: var(--rojo-bg); }
+.campo.falta label { color: var(--rojo-texto); }
+
+/* Rótulos internos de un paso del formulario, y el título de una sección del
+   resumen. No son <h2>: el panel ya tiene el suyo. */
+.rot-chico { margin: 0 0 9px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--gris); font-weight: 700; }
+.rot-seccion { margin: 14px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .7px; color: var(--gris); font-weight: 700; }
+.chips-conteo { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+/* Un dato de texto largo del resumen: la clave arriba y el valor debajo, porque
+   una descripción de daños no cabe alineada a la derecha como una cifra. */
+.dato-largo { padding: 4px 0 2px; border-top: 1px dotted var(--borde); margin-top: 5px; }
+.dato-largo .k { display: block; font-size: 10px; font-weight: 700; color: var(--gris); text-transform: uppercase; letter-spacing: .4px; }
+.dato-largo .v { display: block; font-size: 11.5px; color: var(--tinta); margin-top: 2px; white-space: pre-wrap; }
 
 .inventario { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 4px; }
 .inv-item {
@@ -654,13 +679,9 @@ fieldset.bloque legend {
 /* La flecha del expandible en los paneles que no tienen columna propia para
    ella. La torre sí la tiene —es parte de sus 17 columnas—, así que ahí no se
    dibuja dos veces. */
-table.grid tr.fila.desplegable > td:first-child::before {
-  content: 'B8'; color: var(--gris); margin-right: 6px; display: inline-block;
-  transition: transform .12s ease;
-}
-table.grid tr.fila.desplegable.abierta > td:first-child::before {
-  transform: rotate(90deg); color: var(--acento);
-}
+table.grid th.flecha-col, table.grid td.flecha-col { width: 26px; padding-right: 0; }
+table.grid td.flecha-col .flecha { color: var(--gris); display: inline-block; transition: transform .12s ease; }
+table.grid tr.fila.desplegable.abierta td.flecha-col .flecha { transform: rotate(90deg); color: var(--acento); }
 table.grid tr.fila.desplegable { cursor: pointer; }
 table.grid tr.fila.desplegable:hover > td { background: var(--seleccion); }
 

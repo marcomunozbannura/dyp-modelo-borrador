@@ -648,6 +648,56 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 26 · 🔴 EL ÍTEM QUE NADIE MIRÓ NO ES UN ÍTEM FALTANTE ──────────
+         El cambio de modelo del 15-08-2026. Con el booleano `presente`, un
+         checklist que nadie tocó se guardaba entero en `false` y se leía como
+         "al auto le faltaban los 28 ítems" — que es exactamente el reclamo que
+         el taller no puede permitirse tener guardado por escrito.
+
+         Se prueban las dos mitades: lo que no se declara queda `sin_verificar`,
+         y lo que sí se declara se guarda tal cual, con `danado` distinto de
+         `no_presente`. */
+      (function () {
+        // Sin persona fijada: se lee una orden recién creada y el alcance del
+        // rol decide qué devuelve `otPorId`. Acá se prueba el checklist, no el
+        // reparto de permisos.
+        restaurarSesion();
+        Modelo.fijar_persona_actual(null);
+
+        const items = db.inventario_item;
+        const pedido = {};
+        pedido[items[0].id] = 'presente';
+        pedido[items[1].id] = 'no_presente';
+        pedido[items[2].id] = 'danado';
+
+        const r = Modelo.crear_ot_desde_recepcion(
+          { patente: 'ZZZZ98', nombre: 'Cliente de Prueba', rut: '11.111.111-2',
+            vin: 'PRUEBA00000000098', inventario: pedido, obsInventario: {}, demo: true },
+          [{ tipo_ingreso_id: 'ti-2' }], 'prueba-inventario-cuatro');
+
+        const ot = r.ok ? Modelo.otPorId(r.ordenes[0].ot_id) : null;
+        const inv = ot ? ot.inventario : [];
+        const cuenta = (c) => inv.filter((i) => i.estado === c).length;
+        const sinTocar = items.length - 3;
+
+        const ok = !!ot && inv.length === items.length &&
+          inv[0].estado === 'presente' && inv[1].estado === 'no_presente' &&
+          inv[2].estado === 'danado' && cuenta('sin_verificar') === sinTocar;
+
+        push({
+          nombre: '🔴 El ítem del checklist que nadie miró queda «sin verificar», no «no presente»',
+          intento: 'Guardar una recepción declarando 3 de los ' + items.length +
+                   ' ítems y dejando los otros ' + sinTocar + ' sin tocar',
+          esperado: '1 presente · 1 no presente · 1 dañado · ' + sinTocar + ' sin verificar',
+          paso: ok,
+          detalle: !ot ? ('No se pudo crear la recepción: ' + r.motivo)
+            : cuenta('presente') + ' presente · ' + cuenta('no_presente') + ' no presente · ' +
+              cuenta('danado') + ' dañado · ' + cuenta('sin_verificar') + ' sin verificar' +
+              (ok ? '' : '  ·  NO CUADRA: con un booleano los ' + sinTocar +
+                ' sin mirar se guardaban como faltantes.')
+        });
+      })();
+
       restaurarSesion();
       return res;
     });
@@ -671,6 +721,9 @@ const Pruebas = (function () {
       ['Estados finales',                  db.estado.filter((e) => e.es_final).length, 5],
       ['Asuntos de bitácora',              db.asunto_bitacora.length,     6],
       ['Ítems del checklist de recepción', db.inventario_item.length,     28],
+      // Cuatro, no dos: el checklist dejó de ser un sí/no el 15-08-2026.
+      ['Estados posibles de un ítem',      Modelo.inventarioEstados().length, 4],
+      ['Pasos del formulario de ingreso',  RECEPCION_PASOS.length,        5],
       // El tempario se eliminó el 13-08-2026 y con él su cifra de control.
       // Queda ésta en su lugar: que no haya quedado ni un rastro de la tabla.
       ['Catálogos configurables',          Modelo.CATALOGOS.length,       9]

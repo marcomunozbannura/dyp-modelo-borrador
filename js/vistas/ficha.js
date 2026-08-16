@@ -162,6 +162,18 @@ function fichaTrabajoAutorizado(o) {
     '<div class="pie-nota">Los valores no se muestran en este perfil.</div></fieldset>';
 }
 
+/* El desglose del checklist en una línea. Solo aparecen los estados que tienen
+   algo: un "0 dañados" ocupa lugar y no dice nada. Si el inventario viene vacío
+   —una OT creada desde otra pantalla— se dice, no se muestra un cero. */
+function fichaInventario(inv) {
+  if (!inv || !inv.length) return '<span class="et gris">Sin datos</span>';
+  const partes = Modelo.inventarioEstados().map((e) => {
+    const n = inv.filter((i) => i.estado === e.codigo).length;
+    return n ? '<span class="et ' + e.clase + '">' + n + ' ' + esc(e.nombre.toLowerCase()) + '</span>' : '';
+  }).filter(Boolean);
+  return partes.join(' ') + ' <span class="et gris">de ' + inv.length + '</span>';
+}
+
 function fichaResumen(o) {
   const dato = (k, v) => '<div class="dato"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span></div>';
   const pend = o.repuestos.filter((r) => !r.fechaBodega);
@@ -182,7 +194,9 @@ function fichaResumen(o) {
         ${dato('Año', o.anio || '—')}
         ${dato('Color', esc(o.color || '—'))}
         ${dato('Daños marcados', o.danos.length
-          ? o.danos.map((d) => esc(d.zonaNombre + ' · ' + d.tipoNombre)).join('<br>')
+          ? o.danos.map((d) => esc(d.zonaNombre + ' · ' + d.tipoNombre) +
+              (d.descripcion ? ' <span style="color:var(--gris-2)">' + esc(d.descripcion) + '</span>' : ''))
+              .join('<br>')
           : '<span style="color:var(--gris-2)">ninguno marcado</span>')}
       </fieldset>
 
@@ -219,11 +233,24 @@ function fichaResumen(o) {
       ${dato('Marca y modelo', esc([o.marca, o.modelo].filter(Boolean).join(' ') || '—'))}
       ${dato('Año', o.anio || '—')}
       ${dato('Color', esc(o.color || '—'))}
-      ${dato('VIN', esc(o.vin || '—'))}
+      ${/* El VIN declarado como no visible no es un campo vacío: es un pendiente
+           con motivo, y se lee como tal. Un guión ahí escondería que alguien lo
+           declaró y por qué. */''}
+      ${dato('VIN', o.vin
+        ? esc(o.vin)
+        : (o.vinPendiente
+            ? '<span class="et ambar" title="' + esc(o.vinMotivo || '') + '">pendiente</span>'
+            : '—'))}
+      ${o.vinPendiente && o.vinMotivo ? dato('Motivo del VIN', esc(o.vinMotivo)) : ''}
       ${dato('Kilometraje', fKm(o.recepcion && o.recepcion.km))}
       ${dato('Combustible', fComb(o.recepcion && o.recepcion.combustible))}
       ${dato('Daños marcados', o.danos.length + (o.danos.length ? ' <span class="et gris">del vehículo, no de la orden</span>' : ''))}
-      ${dato('Inventario', o.inventario.filter((i) => i.presente).length + ' de ' + o.inventario.length + ' ítems')}
+      ${/* 🔶 EL INVENTARIO, DESGLOSADO (15-08-2026). Decía "24 de 28 ítems", que
+           con cuatro estados no dice nada: mezclaba en un solo número lo que
+           está, lo que no está, lo que llegó roto y lo que nadie alcanzó a
+           mirar. **"Dañado" y "no presente" son reclamos distintos**, y el que
+           quedó sin verificar no es ninguno de los dos. */''}
+      ${dato('Inventario', fichaInventario(o.inventario))}
     </fieldset>
 
     <fieldset class="bloque"><legend>Cliente y siniestro</legend>
@@ -233,7 +260,7 @@ function fichaResumen(o) {
         : 'Enmascarado por rol: se garantiza en la base, no acá') + '">' +
         esc(Modelo.velar(o.rut, 'datos.rut_completo')) + '</span>')}
       ${dato('Teléfono', esc(Modelo.velar(o.telefono, 'datos.rut_completo')))}
-      ${dato('Domicilio', '<span title="Enmascarado por rol">' +
+      ${dato('Dirección', '<span title="Enmascarado por rol">' +
         esc(Modelo.velar(o.direccion, 'datos.rut_completo', 'todo')) + '</span>')}
       ${dato('Viene por', esc(o.origenIngresoNombre || '—'))}
       ${o.siniestro ? dato('Compañía', esc(o.compania)) + dato('Siniestro', esc(o.siniestro)) +

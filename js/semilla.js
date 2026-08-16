@@ -92,6 +92,25 @@ const Semilla = (function () {
     ['consolidado.ver',      'Ver el consolidado y la rentabilidad']
   ];
 
+  /* ── Los cuatro estados del inventario de recepción ────────────────────
+     🔶 DEJÓ DE SER UN SÍ/NO el 15-08-2026, por pedido del cliente.
+
+     El que nadie tocó queda `sin_verificar`, NO `no_presente`: no es lo mismo
+     "revisé y no está" que "no alcancé a mirar", y con un booleano las dos
+     cosas se guardaban igual —y la segunda se leía como la primera, que es la
+     que genera el reclamo—. `danado` tampoco es `no_presente`: el auto trae el
+     espejo, pero roto. Son tres conversaciones distintas con el cliente.
+
+     Vive acá afuera del generador para que el motor y las vistas ofrezcan
+     exactamente estos cuatro, y ninguna pantalla los escriba a mano. */
+  const INVENTARIO_ESTADOS = [
+    { codigo: 'presente',     nombre: 'Presente',      clase: 'verde' },
+    { codigo: 'no_presente',  nombre: 'No presente',   clase: 'roja'  },
+    { codigo: 'danado',       nombre: 'Dañado',        clase: 'ambar' },
+    { codigo: 'sin_verificar',nombre: 'Sin verificar', clase: 'gris'  }
+  ];
+  const INVENTARIO_POR_OMISION = 'sin_verificar';
+
   /* ── Generador determinista ────────────────────────────────────────────
      LCG clásico. No sirve para criptografía y no hace falta: sirve para que
      la demostración sea reproducible. */
@@ -196,10 +215,15 @@ const Semilla = (function () {
        persona guardado como compañía), y `DIVERSEY`, `EUROPCAR` y
        `GRAND LEASING`, que parecen empresas cliente y no aseguradoras. */
 
+    /* Qué campos pide cada tipo de ingreso va en el CATÁLOGO, no escrito en la
+       pantalla de recepción: el día que aparezca un cuarto tipo se agrega acá y
+       el formulario lo ofrece solo. `exige_or` es el N° de OR que la recepción
+       digita en las órdenes de empresa — ver la advertencia de `or_externa` en
+       `modelo.js`: no es la OR que genera el presupuesto. */
     const tipo_ingreso = [
-      { id: 'ti-1', codigo: 'compania',   nombre: 'Compañía',   exige_compania: true,  vigente: true },
-      { id: 'ti-2', codigo: 'particular', nombre: 'Particular', exige_compania: false, vigente: true },
-      { id: 'ti-3', codigo: 'empresa',    nombre: 'Empresa',    exige_compania: false, vigente: true }
+      { id: 'ti-1', codigo: 'compania',   nombre: 'Compañía',   exige_compania: true,  exige_or: false, vigente: true },
+      { id: 'ti-2', codigo: 'particular', nombre: 'Particular', exige_compania: false, exige_or: false, vigente: true },
+      { id: 'ti-3', codigo: 'empresa',    nombre: 'Empresa',    exige_compania: false, exige_or: true,  vigente: true }
     ];
 
     const prioridad = [
@@ -279,19 +303,48 @@ const Semilla = (function () {
     marca.forEach((m) => (MODELOS[m.nombre] || []).forEach((n, j) =>
       modelo.push({ id: m.id + '-mo-' + (j + 1), marca_id: m.id, nombre: n, vigente: true })));
 
-    /* Los 28 ítems del checklist de recepción, con el nombre literal que
-       tienen en el código del sistema actual. inventario §Nuevo Ingreso.
-       Se cree que "el checklist se cayó": está entero. Pregunta 10. */
+    /* Los 28 ítems del checklist de recepción, en el orden del formulario del
+       sistema actual. inventario §Nuevo Ingreso.
+       Se cree que "el checklist se cayó": está entero. Pregunta 10.
+
+       El `codigo` es el `name` literal del HTML original y NO se toca: es la
+       llave de la migración. El `nombre` es lo que se lee en pantalla, y ahí sí
+       se corrigió (15-08-2026, pedido del cliente): seis rótulos que estaban en
+       plural donde el taller cuenta de a uno —`Ceniceros`→`Cenicero`— o sin la
+       preposición —`Llave rueda`→`Llave de rueda`—, más las tildes que faltaban
+       por venir de un `codigo` sin acentos: Botiquín, Cinturón, Batería,
+       Señalizadores y Triángulos. Antes se derivaba del código con un `replace`,
+       y por eso ninguna llevaba tilde. */
     const inventario_item = [
-      'radio', 'ceniceros', 'encendedor', 'espejo_interior', 'luz_interior', 'pisos_goma', 'tag',
-      'cinturon', 'antena_radio', 'botiquin', 'parabrisas', 'emblemas_delanteros',
-      'placa_patente_delantera', 'espejos_laterales', 'senalizadores_laterales', 'llave_rueda',
-      'rueda_repuesto', 'tapas_ruedas', 'placa_patente_trasera', 'tapa_bencina', 'bateria',
-      'bocina', 'documentos', 'llaves_vehiculo', 'sistema_alarma', 'extintor', 'triangulos', 'gata'
-    ].map((c, i) => ({
-      id: 'inv-' + (i + 1), codigo: c, orden: i + 1, vigente: true,
-      nombre: c.replace(/_/g, ' ').replace(/^./, (s) => s.toUpperCase())
-    }));
+      ['radio',                   'Radio'],
+      ['ceniceros',               'Cenicero'],
+      ['encendedor',              'Encendedor'],
+      ['espejo_interior',         'Espejo interior'],
+      ['luz_interior',            'Luz interior'],
+      ['pisos_goma',              'Pisos de goma'],
+      ['tag',                     'Tag'],
+      ['cinturon',                'Cinturón'],
+      ['antena_radio',            'Antena radio'],
+      ['botiquin',                'Botiquín'],
+      ['parabrisas',              'Parabrisas'],
+      ['emblemas_delanteros',     'Emblemas delanteros'],
+      ['placa_patente_delantera', 'Placa patente delantera'],
+      ['espejos_laterales',       'Espejos laterales'],
+      ['senalizadores_laterales', 'Señalizadores laterales'],
+      ['llave_rueda',             'Llave de rueda'],
+      ['rueda_repuesto',          'Rueda repuesto'],
+      ['tapas_ruedas',            'Tapas de rueda'],
+      ['placa_patente_trasera',   'Placa patente trasera'],
+      ['tapa_bencina',            'Tapa bencina'],
+      ['bateria',                 'Batería'],
+      ['bocina',                  'Bocina'],
+      ['documentos',              'Documentos'],
+      ['llaves_vehiculo',         'Llaves del vehículo'],
+      ['sistema_alarma',          'Sistema de alarma'],
+      ['extintor',                'Extintor'],
+      ['triangulos',              'Triángulos'],
+      ['gata',                    'Gata']
+    ].map(([c, n], i) => ({ id: 'inv-' + (i + 1), codigo: c, orden: i + 1, vigente: true, nombre: n }));
 
     const tipo_dano = [
       { id: 'td-1', codigo: 'rayon',      nombre: 'Rayón',      color: '#f59e0b', vigente: true },
@@ -546,7 +599,7 @@ const Semilla = (function () {
         nombres: x.nombre, apellidos: x.apellidos || '', cargo: x.cargo,
         correo: corto + '@dyp.cl',
         telefono: '+56 9 0000 ' + String(1001 + i).slice(-4),
-        direccion: 'Domicilio de ejemplo ' + (100 + i), comuna: 'Comuna de ejemplo',
+        direccion: 'Dirección de ejemplo ' + (100 + i), comuna: 'Comuna de ejemplo',
         activo: true, demo: true
       });
       x.etapas.forEach((e) => persona_etapa.push({ persona_id: id, etapa_id: e }));
@@ -650,13 +703,20 @@ const Semilla = (function () {
     for (let i = 0; i < 23; i++) planTipo.push({ tipo: 'ti-3', comp: null });
     planTipo.push({ tipo: 'ti-2', comp: null });
 
+    /* 🔶 EL CLIENTE TIENE UN SOLO CAMPO DE NOMBRE (15-08-2026, pedido del
+       cliente). El apellido se conserva en el modelo de PERSONAL —al trabajador
+       se le paga y se le emite, y ahí el apellido es un dato propio— pero al
+       cliente se le escribe el nombre completo en una sola casilla, que es como
+       llega: de la cédula o de la póliza, de corrido. Dos casillas invitaban a
+       repartirlo mal —"de la Fuente" cae en cualquiera de las dos— y después
+       ningún listado ordenaba igual. */
     function nuevoCliente(i) {
       const id = 'pe-c-' + i;
       persona.push({
         id, tipo: 'cliente', ficha: null, rut: rutFalso(2000 + i),
-        nombres: NOM[(i * 3) % NOM.length], apellidos: APE[(i * 7) % APE.length],
+        nombres: NOM[(i * 3) % NOM.length] + ' ' + APE[(i * 7) % APE.length],
         correo: 'cliente' + i + '@ejemplo.cl', telefono: '+56 9 1111 ' + String(1000 + i).slice(-4),
-        direccion: 'Domicilio de ejemplo ' + (200 + i), comuna: 'Comuna de ejemplo',
+        direccion: 'Dirección de ejemplo ' + (200 + i), comuna: 'Comuna de ejemplo',
         activo: true, demo: true
       });
       return id;
@@ -701,9 +761,17 @@ const Semilla = (function () {
         km: entre(15, 220) * 1000, combustible: entre(0, 8),
         observaciones: '', firma_media_id: null, recibido_por: 'pe-u-recepcion'
       });
-      inventario_item.forEach((it) => recepcion_inventario.push({
-        recepcion_id: rec_id, item_id: it.id, presente: rnd() > 0.18, observacion: ''
-      }));
+      /* Un solo `rnd()` por ítem, igual que cuando era un booleano: la semilla
+         es determinista y cambiar la CANTIDAD de tiradas corre toda la
+         secuencia siguiente y descuadra las cifras de control. */
+      inventario_item.forEach((it) => {
+        const s = rnd();
+        recepcion_inventario.push({
+          recepcion_id: rec_id, item_id: it.id, observacion: '',
+          estado: s < 0.74 ? 'presente' : s < 0.86 ? 'no_presente'
+                : s < 0.94 ? 'danado' : 'sin_verificar'
+        });
+      });
       // Los daños son del vehículo al ingresar, así que cuelgan de la
       // recepción: si el auto trae dos siniestros, la silueta es una sola.
       const nD = entre(1, 4);
@@ -926,7 +994,7 @@ const Semilla = (function () {
   }
 
   return {
-    generar, CATALOGO_PERMISOS,
+    generar, CATALOGO_PERMISOS, INVENTARIO_ESTADOS, INVENTARIO_POR_OMISION,
     TOTAL_TORRE, CON_REPUESTO_PENDIENTE, FUERA_DE_TALLER, SIN_ETAPA,
     TRABAJADORES, EQUIPO_DEMO, TOTAL_HISTORICO, ULTIMA_OT
   };

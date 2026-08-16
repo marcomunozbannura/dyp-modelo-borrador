@@ -7,6 +7,14 @@
    severidad y coordenada normalizada**. Un dibujo no se puede consultar; esto
    sí. Es lo que después permite preguntarle al sistema cuántos vehículos de
    SURA llegaron con daño en la puerta delantera izquierda.
+
+   🔶 Desde el 15-08-2026 cada marca lleva además **su comentario en texto**
+   (`dano.descripcion`), que se escribe al lado en la lista de daños. La zona
+   dice dónde y el tipo dice qué; el comentario dice lo que ninguno de los dos
+   alcanza —"viene del roce con el portón", "ya venía así"— y es justamente lo
+   que después se discute con la compañía. Que se pueda escribir NO lo convierte
+   en dibujo libre: lo consultable sigue siendo la zona, y el texto va colgado
+   de ella, no suelto sobre el croquis.
    ──────────────────────────────────────────────────────────────────────── */
 
 /* Una sola vista: la superior (decisión del 13-08-2026). Antes había cinco

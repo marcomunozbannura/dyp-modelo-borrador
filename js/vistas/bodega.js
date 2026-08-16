@@ -10,16 +10,28 @@
 
    | Pantalla del original            | Estado hoy                          |
    |----------------------------------|-------------------------------------|
-   | Check-list Repuestos Presupuestos| ❌ la búsqueda no devuelve nada     |
+   | Check-list Repuestos Presupuestos| ✅ funciona                          |
    | Seguimiento Repuestos            | ✅ 102 filas, 14 columnas           |
    | Costos de Reparación             | ✅ 98 filas                          |
    | Valorizar TOT                    | ❌ cuelga el navegador               |
 
-   El check-list se construye funcionando: es la pantalla con la que el
-   bodeguero tendría que trabajar todos los días y hoy no sirve. Se comprobó
-   con dos patentes válidas, una de ellas con repuestos pendientes
-   confirmados, y en los dos casos la página quedó igual, sin tabla y sin
-   mensaje de error.
+   🔴 CORRECCIÓN NUESTRA (16-08-2026). Este archivo decía que el check-list del
+   original "no devuelve nada" y que "hoy no sirve". **Es falso y el error fue
+   de nosotros, no del sistema del cliente.** La pantalla
+   `?ver=mostrar-repuestos` usa `idp` —el identificador de la OR— y no `id`; se
+   probó pasándole el número de OT, que devuelve la página vacía. Está anotado
+   en `01 Levantamiento\SISTEMA-ACTUAL-INVENTARIO`, que ya lo había corregido:
+   *"se marcó rota por este motivo antes de verificar el parámetro; era error
+   de quien levantaba"*.
+
+   Se corrige acá porque esto se dice en una reunión: llegar a decirle al
+   cliente que su pantalla está rota cuando la rota era nuestra prueba cuesta
+   la credibilidad de todo lo demás que sí encontramos.
+
+   Lo que SÍ es cierto y sigue en pie: allá los dos hitos son **casillas
+   sí/no** (`ok_bodega` y `entregado`), y por eso el sistema actual no puede
+   responder cuánto demoró un repuesto. Acá son dos fechas. Eso es la mejora,
+   y no hace falta exagerar nada para sostenerla.
 
    ⚠️ `Valorizar TOT` NO se construye. Cuelga el navegador en los dos intentos
    y no se pudo ver qué hace. Construir a ciegas la pantalla que alimenta
@@ -198,7 +210,17 @@ function bodegaRepuestosPresupuesto(o, p) {
       (r.fechaEntregaArea ? 'Entregado el ' + esc(fCorta(r.fechaEntregaArea))
         : (!r.fechaBodega ? 'No se puede entregar lo que todavía no llegó'
           : (!r.valeMediaId ? 'Falta subir el vale de retiro, abajo en la ficha'
-            : 'Marcar al entregarlo al área'))) + '"></td></tr>';
+            : 'Marcar al entregarlo al área'))) + '"></td>' +
+    /* 🔶 LA COLUMNA QUE EL ORIGINAL NO TIENE (16-08-2026, Marco): el vale de
+       retiro y la DEVOLUCIÓN, en la misma pantalla donde se marca que llegó.
+
+       Devolver no es "desmarcar": el ciclo que se cierra queda guardado entero
+       —cuándo llegó, cuándo se entregó, con qué vale— y el repuesto vuelve a
+       quedar pendiente con el pedido corriendo de nuevo desde hoy. Por eso la
+       fila muestra en qué VUELTA va. Y por eso el motivo es obligatorio: sin
+       él, el expediente no puede explicar después por qué el vehículo estuvo
+       detenido dos semanas más. */
+    '<td>' + accionesRepuesto(r) + '</td></tr>';
 
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px">
@@ -214,9 +236,10 @@ function bodegaRepuestosPresupuesto(o, p) {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>Código interno</th><th>Código externo</th><th class="num" style="width:70px">Cantidad</th>
         <th>Descripción</th><th style="width:160px">Proveedor</th>
-        <th style="width:90px">OK Bodega</th><th style="width:90px">Entregado</th></tr></thead>
+        <th style="width:90px">OK Bodega</th><th style="width:90px">Entregado</th>
+        <th>Vale y devolución</th></tr></thead>
       <tbody>${o.repuestos.length ? o.repuestos.map(fila).join('')
-        : '<tr><td colspan="7"><div class="vacio"><div class="titulo">Este presupuesto no generó ' +
+        : '<tr><td colspan="8"><div class="vacio"><div class="titulo">Este presupuesto no generó ' +
           'repuestos</div><div class="texto">Los repuestos salen de las líneas de proceso ' +
           '<strong>Cambio</strong>. Si el presupuesto es sólo mano de obra, no hay nada que pedir.' +
           '</div></div></td></tr>'}</tbody>

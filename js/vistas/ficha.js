@@ -80,7 +80,7 @@ function vFichaOT(o) {
   return `
   <div class="panel">
     <div class="cab">
-      <div><h2>${ico('auto', 'g')}Orden N° ${o.numeroOT} · ${esc(o.patente)}</h2>
+      <div><h2>${ico('auto', 'g')}Orden N° ${o.numeroOT} · <span class="patente">${esc(o.patente)}</span></h2>
         <div class="desc">${esc([o.marca, o.modelo].filter(Boolean).join(' '))}${o.anio ? ' · ' + o.anio : ''}</div></div>
       <span class="et ${esc(o.estadoClase)}">${esc(o.estadoNombre)}</span>
     </div>
@@ -314,7 +314,7 @@ function fichaHistorial(o) {
   const eventos = Modelo.historialDe(o.id);
   return `
   <div class="panel">
-    <div class="cab"><div><h2>${ico('reloj', 'g')}Historial ${esc(o.patente)}</h2>
+    <div class="cab"><div><h2>${ico('reloj', 'g')}Historial <span class="patente">${esc(o.patente)}</span></h2>
       <div class="desc">Qué pasó, cuándo y quién. Al segundo, igual que el original</div></div>
       <span class="et gris">${plural(eventos.length, 'evento', 'eventos')}</span></div>
     <div class="grid-envoltorio"><table class="grid">

@@ -444,11 +444,18 @@ table.grid tfoot td { background: var(--superficie-2); font-weight: 600; color: 
   font-family: "Consolas", "Courier New", monospace; font-weight: 700;
   letter-spacing: .3px; color: var(--tinta);
 }
+/* La patente es el dato con el que se habla del vehículo: el taller no dice
+   "la OT 23368", dice "el Tucson de la SXHC21". A 11,5 px competía con
+   cualquier otro campo de la ficha. Sube a 13 y gana peso: es lo primero que
+   se busca en la pantalla. */
 .patente {
-  font-family: "Consolas", "Courier New", monospace; font-weight: 700; font-size: 11.5px;
-  letter-spacing: .5px; color: var(--tinta); background: var(--neutro-bg);
-  padding: 1px 5px; border-radius: 2px; border: 1px solid var(--neutro-borde);
+  font-family: "Consolas", "Courier New", monospace; font-weight: 700; font-size: 13px;
+  letter-spacing: .6px; color: var(--tinta); background: var(--neutro-bg);
+  padding: 2px 7px; border-radius: 3px; border: 1px solid var(--neutro-borde);
 }
+/* En la CABECERA de la ficha —donde se abre la orden y se confirma que es el
+   auto correcto— va más grande todavía. */
+.cab .patente, h2 .patente, .campo-cab .patente { font-size: 15px; padding: 2px 9px; }
 .flecha { display: inline-block; width: 10px; color: var(--gris-2); transition: transform .12s; }
 tr.abierta .flecha { transform: rotate(90deg); color: var(--acento); }
 

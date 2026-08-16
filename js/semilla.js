@@ -104,10 +104,10 @@ const Semilla = (function () {
      Vive acá afuera del generador para que el motor y las vistas ofrezcan
      exactamente estos cuatro, y ninguna pantalla los escriba a mano. */
   const INVENTARIO_ESTADOS = [
-    { codigo: 'presente',     nombre: 'Presente',      clase: 'verde' },
-    { codigo: 'no_presente',  nombre: 'No presente',   clase: 'roja'  },
-    { codigo: 'danado',       nombre: 'Dañado',        clase: 'ambar' },
-    { codigo: 'sin_verificar',nombre: 'Sin verificar', clase: 'gris'  }
+    { codigo: 'presente',     nombre: 'Presente',      clase: 'verde', icono: 'check' },
+    { codigo: 'no_presente',  nombre: 'No presente',   clase: 'roja',  icono: 'cruz' },
+    { codigo: 'danado',       nombre: 'Dañado',        clase: 'ambar', icono: 'alerta' },
+    { codigo: 'sin_verificar',nombre: 'Sin verificar', clase: 'gris',  icono: 'pregunta' }
   ];
   const INVENTARIO_POR_OMISION = 'sin_verificar';
 

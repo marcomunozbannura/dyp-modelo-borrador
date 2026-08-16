@@ -115,7 +115,7 @@ function rec() {
       danos: [],
       // item_id → 'presente' | 'no_presente' | 'danado' | 'sin_verificar'.
       // Lo que no está en el mapa es `sin_verificar`: nadie lo miró todavía.
-      inventario: {}, obsInventario: {},
+      inventario: {},
       // La firma del cliente: el PNG para guardar y los trazos para repintar.
       firma: null, firmaTrazos: [],
       fotos: [], creadas: null
@@ -142,7 +142,7 @@ function guardarBorrador() {
     localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({
       paso: r.paso, llave: r.llave, campos: r.campos, bloques: r.bloques,
       danos: r.danos, textos: r.textos,
-      inventario: r.inventario, obsInventario: r.obsInventario,
+      inventario: r.inventario,
       fotos: r.fotos,
       // El Blob de la firma no es serializable; los trazos sí, y con ellos
       // se vuelve a pintar el lienzo tal cual estaba.
@@ -894,17 +894,28 @@ function recDanos() {
       <button class="btn secundario" id="inv-todos">Marcar todos presentes</button>
       <button class="btn secundario" id="inv-ninguno">Volver todos a sin verificar</button>
     </div>
+    ${/* 🔶 CUATRO BOTONES POR ÍTEM, no un desplegable (15-08-2026). Son 28
+         ítems: con un `select` hay que abrirlo, buscar la opción y cerrarlo —
+         tres gestos por ítem, 84 en total— y encima no se ve de un golpe cómo
+         quedó el checklist. Con los botones se marca de un toque y el estado se
+         lee de lejos por su color y su icono, que es lo que hace el original.
+
+         Y se fue la columna de observación por ítem: es la misma decisión que
+         en los daños. Lo que hay que contar se cuenta una vez, arriba, en la
+         casilla de Observaciones. */''}
     <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>Elemento</th><th style="width:170px">Estado</th><th style="width:42%">Observación</th></tr></thead>
+      <thead><tr><th>Elemento</th><th style="width:290px">Estado</th></tr></thead>
       <tbody>${items.map((it) => {
         const v = r.inventario[it.id] || 'sin_verificar';
         return '<tr><td>' + esc(it.nombre) +
           ' <span class="cod" style="font-size:10.5px;color:var(--gris-2)">' + esc(it.codigo) + '</span></td>' +
-          '<td><select data-inv="' + esc(it.id) + '">' +
-            estados.map((e) => '<option value="' + esc(e.codigo) + '"' + (v === e.codigo ? ' selected' : '') +
-              '>' + esc(e.nombre) + '</option>').join('') + '</select></td>' +
-          '<td><input data-obsinv="' + esc(it.id) + '" value="' + esc(r.obsInventario[it.id] || '') +
-            '" placeholder="Sin observación"></td></tr>';
+          '<td><span class="inv-botones">' +
+            estados.map((e) => '<button type="button" class="inv-btn ' + e.clase +
+              (v === e.codigo ? ' activo' : '') + '" data-inv="' + esc(it.id) +
+              '" data-estado="' + esc(e.codigo) + '" title="' + esc(e.nombre) + '" ' +
+              'aria-label="' + esc(it.nombre + ': ' + e.nombre) + '">' +
+              ico(e.icono) + '</button>').join('') +
+          '</span></td></tr>';
       }).join('')}</tbody>
     </table></div>
     <div class="pie-nota">🔶 Dejó de ser un sí/no. <strong>Sin verificar no es lo mismo que no presente</strong>:
@@ -983,8 +994,6 @@ function recVerificar() {
     return f ? esc(f.nombre) : nada;
   };
   const c = recInvConteo();
-  const conObs = Modelo.catalogo('inventario_item')
-    .filter((it) => String(r.obsInventario[it.id] || '').trim());
 
   const orden = (b, i) => {
     const t = Modelo.catalogo('tipo_ingreso').find((x) => x.id === b.tipo_ingreso_id);
@@ -1053,7 +1062,6 @@ function recVerificar() {
       ${d('Daños marcados', r.danos.length ? String(r.danos.length) : nada)}
       ${d('Fotografías', r.fotos.length ? String(r.fotos.length) : nada)}
       ${d('Inventario', recInvResumen(c))}
-      ${d('Ítems con observación', conObs.length ? String(conObs.length) : nada)}
     </fieldset>
   </div>
 
@@ -1405,15 +1413,18 @@ function pRecepcion() {
     guardarBorrador(); pintarDanos();
   });
 
-  // Inventario · cuatro estados
-  document.querySelectorAll('[data-inv]').forEach((sel) => sel.addEventListener('change', () => {
-    r.inventario[sel.dataset.inv] = sel.value;
+  /* Inventario · cuatro botones por ítem. No se repinta la pantalla entera al
+     marcar uno: son 28 ítems y volver a dibujar la tabla en cada toque hace que
+     se sienta lenta justo donde hay que ir rápido. Se mueve la marca de esa
+     fila y se actualiza el conteo, nada más. */
+  document.querySelectorAll('.inv-btn').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.inv;
+    r.inventario[id] = b.dataset.estado;
+    document.querySelectorAll('.inv-btn[data-inv="' + id + '"]').forEach((otro) =>
+      otro.classList.toggle('activo', otro === b));
     const rot = document.getElementById('n-inv');
     if (rot) rot.innerHTML = recInvResumen(recInvConteo());
     guardarBorrador();
-  }));
-  document.querySelectorAll('[data-obsinv]').forEach((el) => el.addEventListener('input', () => {
-    r.obsInventario[el.dataset.obsinv] = el.value; guardarBorrador();
   }));
   const todos = document.getElementById('inv-todos');
   if (todos) todos.addEventListener('click', () => {
@@ -1624,8 +1635,7 @@ function recComprobanteBorrador() {
     inventario: items.map((it) => {
       const cod = r.inventario[it.id] || 'sin_verificar';
       const e = estados.find((x) => x.codigo === cod) || estados[estados.length - 1];
-      return { item: it.nombre, codigo: it.codigo, estado: e.codigo, estadoNombre: e.nombre,
-               observacion: r.obsInventario[it.id] || '' };
+      return { item: it.nombre, codigo: it.codigo, estado: e.codigo, estadoNombre: e.nombre };
     }),
     // Las fotos todavía no cuelgan de ninguna OT: van directo desde el borrador.
     fotosIngreso: r.fotos,
@@ -1654,7 +1664,7 @@ function guardarRecepcion() {
     combustible: Number(r.campos.combustible),
     // El checklist va como mapa `item_id → estado`, no como arreglo posicional:
     // así no depende del orden en que el catálogo devuelva los ítems.
-    inventario: r.inventario, obsInventario: r.obsInventario,
+    inventario: r.inventario,
     danos: r.danos.map((d) => ({
       vista: d.vista, severidad: d.severidad, x: d.x, y: d.y,
       descripcion: d.descripcion || '',

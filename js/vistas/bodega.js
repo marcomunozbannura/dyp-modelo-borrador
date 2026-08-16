@@ -27,27 +27,65 @@
    Es la pregunta 5, sin confirmar.
    ──────────────────────────────────────────────────────────────────────── */
 
+/* 🔶 BODEGA ENTRA POR UN MENÚ DE OPCIONES, COMO RECEPCIÓN (16-08-2026).
+
+   Las cuatro pantallas ya estaban; lo que cambió es cómo se llega. Estaban
+   como pestañas chicas en el encabezado y el sistema real las muestra como
+   cuatro opciones grandes, igual que Recepción. Marco: "es muy parecido a las
+   visuales y al front que tenemos en Recepción".
+
+   No es decoración: en el mesón y en bodega se trabaja con el dedo sobre una
+   pantalla, y cuatro botones grandes con su nombre completo se aciertan a la
+   primera. Una pestaña de doce píxeles, no.
+
+   Los nombres son los del sistema actual, con sus mayúsculas y todo: quien
+   sabe usar el de hoy tiene que reconocerlos sin que nadie le explique. */
 const BODEGA_PANTALLAS = [
-  { id: 'checklist',  n: 'Check-list de repuestos' },
-  { id: 'seguimiento', n: 'Seguimiento de repuestos' },
-  { id: 'costos',     n: 'Costos adicionales' },
-  { id: 'tot',        n: 'Valorizar TOT' }
+  { id: 'checklist',   n: 'Check-list Repuestos Presupuestos', icono: 'documento',
+    desc: 'Qué repuestos pide cada presupuesto y cuáles ya se cargaron' },
+  { id: 'seguimiento', n: 'Seguimiento Repuestos', icono: 'repuesto',
+    desc: 'Pedido, llegada a bodega y entrega al área, con sus fechas' },
+  { id: 'costos',      n: 'Costos de Reparación', icono: 'presupuesto',
+    desc: 'Los costos adicionales que no estaban en el presupuesto' },
+  { id: 'tot',         n: 'Valorizar TOT', icono: 'recepcion',
+    desc: 'Los trabajos que se mandan a terceros' }
 ];
 
 function bodegaEstado() {
-  ui.bodega = ui.bodega || { pantalla: 'seguimiento', patente: '', otId: null, busqueda: '' };
+  // Se entra por el menú, no por una pantalla cualquiera. Igual que Recepción.
+  ui.bodega = ui.bodega || { pantalla: 'menu', patente: '', otId: null, busqueda: '' };
   return ui.bodega;
+}
+
+function vBodegaMenu() {
+  return `
+  <div class="panel">
+    <div class="cab"><div><h2>${ico('bodega', 'g')}Bodega - DyP</h2>
+      <div class="desc">Las cuatro del sistema actual, con sus mismos nombres</div></div></div>
+    <div class="cuerpo">
+      <div class="opciones-rec">${BODEGA_PANTALLAS.map((x) =>
+        '<button class="opcion-rec" data-bod-opcion="' + x.id + '">' +
+        '<span class="circulo">' + ico(x.icono, 'g') + '</span>' +
+        '<span class="rot">' + esc(x.n) + '</span>' +
+        '<span class="desc">' + esc(x.desc) + '</span></button>').join('')}</div>
+    </div>
+  </div>`;
 }
 
 function vBodega() {
   const b = bodegaEstado();
+  if (b.pantalla === 'menu') return vBodegaMenu();
+
+  const opcion = BODEGA_PANTALLAS.find((x) => x.id === b.pantalla) || BODEGA_PANTALLAS[0];
   const cuerpo = { checklist: bodegaChecklist, seguimiento: bodegaSeguimiento,
-                   costos: bodegaCostos, tot: bodegaTot }[b.pantalla]();
+                   costos: bodegaCostos, tot: bodegaTot }[opcion.id]();
   return `
+  <button class="btn volver" id="bod-menu"><span class="flecha-atras">&#8592;</span>
+    Volver a las opciones de Bodega</button>
   <div class="panel">
     <div class="cab">
-      <div><h2>${ico('bodega', 'g')}Bodega - DyP</h2>
-        <div class="desc">Control de repuestos por orden. No es inventario de venta</div></div>
+      <div><h2>${ico(opcion.icono, 'g')}${esc(opcion.n)}</h2>
+        <div class="desc">${esc(opcion.desc)}</div></div>
       <div class="chips">${BODEGA_PANTALLAS.map((x) => '<button class="chip' +
         (b.pantalla === x.id ? ' activo' : '') + '" data-bod="' + x.id + '">' + esc(x.n) + '</button>').join('')}</div>
     </div>
@@ -297,9 +335,21 @@ function pBodega() {
   dobleClicPorFilas();
   const b = bodegaEstado();
 
+  // El menú de entrada, y las pestañas de arriba una vez adentro: las dos
+  // llevan a lo mismo, y el que ya sabe dónde va no tiene que volver al menú.
+  document.querySelectorAll('[data-bod-opcion]').forEach((x) => x.addEventListener('click', () => {
+    b.pantalla = x.dataset.bodOpcion; b.otId = null; b.patente = ''; render();
+  }));
   document.querySelectorAll('[data-bod]').forEach((x) => x.addEventListener('click', () => {
     b.pantalla = x.dataset.bod; b.otId = null; render();
   }));
+  /* Ojo con el nombre: `bod-volver` ya existía para el "Volver al listado" de
+     Costos. Dos elementos con el mismo id no dan error, dan algo peor —
+     `getElementById` devuelve el primero y el otro botón queda muerto—. */
+  const alMenu = document.getElementById('bod-menu');
+  if (alMenu) alMenu.addEventListener('click', () => {
+    b.pantalla = 'menu'; b.otId = null; b.patente = ''; render();
+  });
 
   const buscar = document.getElementById('bod-buscar');
   const campo = document.getElementById('bod-patente');

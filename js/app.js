@@ -366,7 +366,7 @@ function accionModulo(accion) {
     case 'fotos': {
       const r = rec();
       // Las fotos viven dentro del formulario: si estamos en el menú, se entra.
-      if (r.creadas || r.pantalla !== 'nuevo' || r.paso !== 'danos') {
+      if (r.pantalla !== 'nuevo' || r.paso !== 'danos') {
         recEntrarAlFormulario('danos'); guardarBorrador(); render();
       }
       const z = document.getElementById('recfoto-zona');

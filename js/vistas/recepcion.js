@@ -147,7 +147,7 @@ function rec() {
       obsInventario: {},
       // La firma del cliente: el PNG para guardar y los trazos para repintar.
       firma: null, firmaTrazos: [],
-      fotos: [], creadas: null
+      fotos: []
     };
   }
   // Los campos marcados en rojo por el último rechazo. Vive fuera del
@@ -206,7 +206,7 @@ function restaurarBorrador() {
     return Object.assign({
       paso: 'cliente', llave: 'rec-' + Date.now().toString(36),
       textos: {}, danos: [], inventario: {}, obsInventario: {}, fotos: [],
-      firmaTrazos: [], creadas: null, marcados: [], firma: null
+      firmaTrazos: [], marcados: [], firma: null
     }, d);
   } catch (e) { return null; }
 }
@@ -399,9 +399,8 @@ function vRecepcionMenu() {
       '</button>';
   };
 
-  // Si se acaba de guardar una recepción, su comprobante va arriba del menú.
-  return (r.creadas ? vRecepcionResultado(r) : '') + `
-  <div class="panel"${r.creadas ? ' style="margin-top:11px"' : ''}>
+  return `
+  <div class="panel">
     <div class="cab"><div><h2>${ico('recepcion', 'g')}Seleccione una opción</h2>
       <div class="desc">Las cuatro del sistema actual, con sus mismos nombres</div></div></div>
     <div class="cuerpo">
@@ -501,16 +500,6 @@ function vRecepcionBuscar(modo) {
 
 function vRecepcion() {
   const r = rec();
-  /* 🔶 GUARDADA LA RECEPCIÓN SE VUELVE AL INICIO DEL MÓDULO (15-08-2026,
-     pedido del cliente). El comprobante no desaparece: se muestra ARRIBA del
-     menú de cuatro opciones, no en una pantalla aparte.
-
-     Antes la confirmación se quedaba con la pantalla entera y para hacer
-     cualquier otra cosa —entregar una unidad, corregir una recepción— había
-     que salir del módulo y volver a entrar. Y el recepcionista sigue
-     necesitando el número de OT a la vista: es lo que anota en el papel y lo
-     que después busca. Las dos cosas a la vez. */
-  if (r.creadas) return vRecepcionMenu();
   if (r.pantalla === 'menu') return vRecepcionMenu();
   if (r.pantalla === 'editar' || r.pantalla === 'or') return vRecepcionBuscar(r.pantalla);
   // La corrección de una recepción ya guardada vive en `recepcion-editar.js`.
@@ -1302,39 +1291,16 @@ function recVerificar() {
     enumerable y lleva nombre, RUT, dirección y la firma del cliente.</div>`;
 }
 
-/* ── Resultado ─────────────────────────────────────────────────────────── */
+/* ⛔ ACÁ VIVÍA LA PANTALLA DE CONFIRMACIÓN, y se eliminó el 15-08-2026 a
+   pedido del cliente: *"saca lo que marqué con X, que no muestre eso"*.
 
-function vRecepcionResultado(r) {
-  return `
-  <div class="panel">
-    <div class="cab"><h2>${ico('check', 'g')}Recepción ingresada</h2></div>
-    <div class="cuerpo">
-      <div class="nota info">
-        <strong>Un ingreso, ${r.creadas.length} ${r.creadas.length === 1 ? 'orden' : 'órdenes'} de trabajo.</strong>
-        ${r.creadas.length > 1
-          ? 'El vehículo entró con ' + r.creadas.length + ' siniestros distintos y cada uno tiene su propia OT, ' +
-            'con su compañía y su deducible. Comparten vehículo, cliente, checklist, daños y fotos.'
-          : 'La orden quedó abierta y el contador de días partió en cero.'}
-      </div>
-      <div class="grid-envoltorio"><table class="grid">
-        <thead><tr><th>OT</th><th>Patente</th><th>Estado</th><th>Días</th><th></th></tr></thead>
-        <tbody>${r.creadas.map((c) => {
-          const o = Modelo.otPorId(c.ot_id);
-          return '<tr><td class="num"><strong>' + c.numero_ot + '</strong></td>' +
-            '<td><span class="patente">' + esc(o ? o.patente : '') + '</span></td>' +
-            '<td><span class="et ' + (o ? o.estadoClase : 'gris') + '">' + esc(o ? o.estadoNombre : '') + '</span></td>' +
-            '<td class="num">' + (o ? o.diasTotales : 0) + '</td>' +
-            '<td><button class="btn secundario" data-abrir-ot="' + c.numero_ot + '">Abrir la ficha</button></td></tr>';
-        }).join('')}</tbody>
-      </table></div>
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" id="rec-nueva">Registrar otro ingreso</button>
-        <button class="btn secundario" id="rec-comprobante">Guardar PDF del comprobante</button>
-        <button class="btn secundario" id="rec-ir-torre">Ver en la torre de control</button>
-      </div>
-    </div>
-  </div>`;
-}
+   Mostraba la OT recién creada con su patente, su estado y tres botones.
+   Guardada la recepción se vuelve derecho al menú de opciones, y el número de
+   OT se dice en el aviso —ver `guardarRecepcion`—, que es lo único de esa
+   pantalla que el recepcionista necesitaba.
+
+   El comprobante impreso NO se perdió: sigue saliendo desde la ficha de la
+   orden, que es de donde salía igual. */
 
 /* ── Cableado ──────────────────────────────────────────────────────────── */
 
@@ -1344,23 +1310,6 @@ function pRecepcion() {
   // La corrección de una recepción tiene su propio archivo y sus propios
   // enganches. Sale de acá derecho para no arrastrar los del formulario.
   if (r.pantalla === 'editar-ficha') return pRecepcionEditarFicha();
-
-  /* El comprobante de lo recién guardado. Ya NO corta acá: ahora convive con
-     el menú de opciones abajo, y las dos partes necesitan sus enganches. */
-  if (r.creadas) {
-    document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
-      abrirFicha(b.dataset.abrirOt)));
-    // "Registrar otro ingreso" va derecho al formulario: ya se eligió.
-    const nueva = document.getElementById('rec-nueva');
-    if (nueva) nueva.addEventListener('click', () => {
-      limpiarBorrador(); rec().pantalla = 'nuevo'; render();
-    });
-    const comp = document.getElementById('rec-comprobante');
-    // Ya existe la OT: el comprobante sale de ella, con su número.
-    if (comp) comp.addEventListener('click', () => abrirImpreso('recepcion', r.creadas[0].ot_id));
-    const torre = document.getElementById('rec-ir-torre');
-    if (torre) torre.addEventListener('click', () => { limpiarBorrador(); ir('torre'); });
-  }
 
   /* El menú de cuatro opciones. Cada una lleva a algo que existe; la que el rol
      no puede usar se aprieta igual y dice quién sí puede. */
@@ -1373,15 +1322,6 @@ function pRecepcion() {
         '». Se administra en Configuración → Roles y permisos.' });
     }
     if (op.id === 'entregar') return ir('entrega');
-
-    /* Elegir una opción cierra el comprobante de la recepción anterior: ya
-       está guardada y su OT quedó en la torre. Si no se limpiara acá, el
-       comprobante viejo seguiría colgado arriba de la pantalla siguiente. */
-    if (r.creadas) {
-      limpiarBorrador();
-      const n = rec();
-      n.pantalla = op.id; n.buscaEditar = ''; return render();
-    }
     // Las otras tres son pantallas de este mismo módulo.
     r.pantalla = op.id; r.buscaEditar = ''; render();
   }));
@@ -1725,22 +1665,11 @@ function recAvanzar() {
    todavía no se llegó al último paso: lleva a Verificar si está todo, y si no,
    rechaza donde falta. Vive acá y no en `app.js` porque las reglas del
    formulario son de este archivo. */
-/* 🔴 LA ÚNICA PUERTA AL FORMULARIO.
-
-   Desde que la recepción guardada vuelve al menú con su comprobante arriba,
-   cualquier camino que entre al formulario tiene que descartar ese comprobante
-   primero: mientras `creadas` esté puesto, la vista muestra el menú, y un
-   `pantalla = 'nuevo'` suelto dejaba el botón sin efecto visible — un botón
-   muerto, que es justo lo que la casa no permite.
-
-   Son cuatro los caminos —`Ingresar recepción`, `Agregar fotos`, `Nuevo
-   ingreso` y `Descartar borrador`—, así que la decisión vive acá y no
-   repartida en cada uno. */
+/* La única puerta al formulario. Son cuatro los caminos que entran —`Ingresar
+   recepción`, `Agregar fotos`, `Nuevo ingreso` y `Descartar borrador`—, y
+   pasan todos por acá para que el quinto que se agregue herede lo mismo. */
 function recEntrarAlFormulario(paso) {
-  let r = rec();
-  // La recepción anterior ya está guardada y su OT quedó en la torre: lo que
-  // se descarta es el comprobante en pantalla, no un dato.
-  if (r.creadas) { limpiarBorrador(); r = rec(); }
+  const r = rec();
   r.pantalla = 'nuevo';
   if (paso) r.paso = paso;
   return r;
@@ -1957,17 +1886,28 @@ function guardarRecepcion() {
         .catch(() => { /* sin IndexedDB la firma no se guarda; la recepción sí */ });
     }
 
-    r.creadas = res.ordenes;
-    // Se vuelve al inicio del módulo, con el comprobante arriba. La pantalla
-    // se deja en `menu` para que la barra de acciones y la de estado hablen de
-    // dónde está parado el recepcionista y no del formulario que ya cerró.
-    r.pantalla = 'menu';
-    try { localStorage.removeItem(CLAVE_BORRADOR); } catch (e) { /* nada */ }
+    /* 🔶 GUARDADA LA RECEPCIÓN SE VUELVE AL MENÚ, Y LIMPIO (15-08-2026).
+       El cliente pidió primero volver al inicio del módulo, y después que la
+       pantalla de confirmación no se mostrara: *"saca lo que marqué con X, que
+       no muestre eso"*.
+
+       Se descarta el formulario entero, no solo se cambia de pantalla: si se
+       dejaran los campos cargados, el menú saldría con el cartel «hay un
+       borrador a medio llenar» señalando una recepción que YA se guardó, y el
+       recepcionista terminaría entrando a ver qué quedó a medias. */
+    limpiarBorrador();
+    rec().pantalla = 'menu';
     render();
+
+    /* El número de OT viaja en el aviso. Es lo único del comprobante que el
+       recepcionista necesita de verdad —lo anota en el papel y con eso busca
+       después—, así que se dice en vez de mostrarse en una tabla. */
+    const nombra = res.ordenes.map((o) => o.numero_ot).join(', ');
     avisar({ ok: true, motivo: '' },
       res.repetida
-        ? 'Esta recepción ya estaba guardada: se devolvió la misma orden, no se creó otra.'
-        : res.ordenes.length + (res.ordenes.length === 1 ? ' orden creada' : ' órdenes creadas') +
-          ' desde un solo ingreso.');
+        ? 'Esta recepción ya estaba guardada: es la misma orden ' + nombra + ', no se creó otra.'
+        : (res.ordenes.length === 1
+            ? 'Recepción ingresada. Quedó la orden ' + nombra + '.'
+            : 'Recepción ingresada. Quedaron las órdenes ' + nombra + ' desde un solo ingreso.'));
   });
 }

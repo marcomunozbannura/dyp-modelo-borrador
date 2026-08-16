@@ -320,6 +320,8 @@ const Modelo = (function () {
         fechaEntregaArea: r.fecha_entrega_area, observacion: r.observacion,
         solicitadoPor: r.solicitado_por || null, recibidoPor: r.recibido_por || null,
         entregadoPor: r.entregado_por || null,
+        valeMediaId: r.vale_media_id || null, valeAt: r.vale_at || null,
+        retiradoPor: r.retirado_por || null, devoluciones: r.devoluciones || [],
         // Compatibilidad con las vistas de las tandas anteriores.
         estado: r.fecha_bodega ? 'recibido' : 'por_pedir',
         fechaPedido: r.fecha_solicitud, fechaEstimada: null, proveedor: null,
@@ -1133,12 +1135,150 @@ const Modelo = (function () {
     return { ok: true, motivo: '' };
   }
 
+  /* ── El vale de retiro ────────────────────────────────────────────────
+     Punto 7 del cliente, 15-08-2026. El repuesto llega a bodega, el
+     desabollador va a buscarlo, y **el que lo recibe sube el vale**: es el
+     documento que comprueba que efectivamente fue y lo retiró. Recién con el
+     vale arriba bodega puede marcar entregado.
+
+     Por eso el vale no es un adjunto suelto: es la CONDICIÓN para cerrar la
+     entrega. Sin él, "entregado" sería la palabra de bodega contra la del
+     taller, que es justo la discusión que esto viene a terminar. */
+  function adjuntar_vale_repuesto(repuesto_id, media_id, recibe_persona_id) {
+    const r = db.repuesto.find((x) => x.id === repuesto_id);
+    if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
+    if (!r.fecha_bodega)
+      return { ok: false, motivo: 'Ese repuesto todavía no llegó a bodega: no hay nada que retirar.' };
+    if (!media_id)
+      return { ok: false, motivo: 'Falta el vale. Es el documento que comprueba el retiro.' };
+    r.vale_media_id = media_id;
+    r.vale_at = HOY;
+    r.retirado_por = recibe_persona_id || persona_actual || null;
+    registrarEvento(r.ot_id, 'repuesto', 'Vale de retiro cargado: ' + r.descripcion);
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
   function entregar_repuesto_area(repuesto_id, fecha) {
     const r = db.repuesto.find((x) => x.id === repuesto_id);
     if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
     if (!r.fecha_bodega) return { ok: false, motivo: 'No se puede entregar al área un repuesto que todavía no llegó a bodega.' };
+    if (!r.vale_media_id)
+      return { ok: false, motivo: 'Falta subir el vale de retiro. Bodega marca entregado una vez ' +
+        'que el vale está cargado: es lo que comprueba que el repuesto salió y quién lo llevó.' };
     r.fecha_entrega_area = fecha || HOY;
     r.entregado_por = persona_actual || null;
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
+  /* ── La devolución ────────────────────────────────────────────────────
+     "Si el repuesto se devuelve, el proceso vuelve a correr entero y el
+     repuesto queda pendiente otra vez."
+
+     La devolución NO borra el ciclo anterior: lo archiva. Cada vuelta queda con
+     su fecha, su motivo y quién la hizo, igual que las estadías del vehículo.
+     Es lo que hace que el expediente pueda contar que una pieza llegó mala,
+     volvió, y se pidió de nuevo — que es exactamente lo que una compañía
+     pregunta cuando reclama por una demora. */
+  function devolver_repuesto(repuesto_id, motivo) {
+    const r = db.repuesto.find((x) => x.id === repuesto_id);
+    if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
+    if (!r.fecha_bodega)
+      return { ok: false, motivo: 'Ese repuesto todavía no ha llegado: no hay qué devolver.' };
+    if (!motivo || !String(motivo).trim())
+      return { ok: false, motivo: 'La devolución necesita motivo. Sin él, el expediente no puede ' +
+        'explicar después por qué el vehículo estuvo detenido.' };
+
+    const o = db.orden_trabajo.find((x) => x.id === r.ot_id);
+    if (o && Reglas.esTerminal(db, o.estado))
+      return { ok: false, motivo: 'La orden ' + o.numero_ot + ' ya está cerrada. Bodega no opera ' +
+        'sobre órdenes cerradas — es una regla del propio taller, y hay que preguntarle a él ' +
+        'qué quiere que pase con una devolución que llega después de entregado el vehículo.' };
+
+    r.devoluciones = r.devoluciones || [];
+    r.devoluciones.push({
+      fecha: HOY, motivo: String(motivo).trim(), por: persona_actual || null,
+      // El ciclo que se cierra queda guardado entero: no se pierde nada.
+      fecha_bodega: r.fecha_bodega, fecha_entrega_area: r.fecha_entrega_area,
+      vale_media_id: r.vale_media_id || null
+    });
+    // Y vuelve a estar pendiente: el proceso corre de nuevo desde el pedido.
+    r.fecha_bodega = null; r.fecha_entrega_area = null;
+    r.vale_media_id = null; r.vale_at = null; r.retirado_por = null;
+    r.recibido_por = null; r.entregado_por = null;
+    r.fecha_solicitud = HOY;
+
+    registrarEvento(r.ot_id, 'repuesto',
+      'Repuesto devuelto: ' + r.descripcion + ' — ' + String(motivo).trim() +
+      '. Queda pendiente y el pedido vuelve a correr.');
+    tocado();
+    return { ok: true, motivo: '', vuelta: r.devoluciones.length };
+  }
+
+  /* ── El aviso por correo ──────────────────────────────────────────────
+     Punto 4 del cliente: notificación cuando se cree y cada vez que se guarde
+     un presupuesto.
+
+     ⚠️ **Esto está MODELADO, no funcionando, y hay que decirlo así.** El modelo
+     borrador corre entero en el navegador, sin servidor detrás: no puede mandar
+     un correo y no lo va a poder. Lo que se construye acá es la COLA VISIBLE
+     —a quién se le habría mandado, con qué asunto y cuándo—, que es lo que
+     permite discutir ahora la parte que sí es de negocio: a quién se le avisa.
+     En producción esto lo despacha una función del servidor.
+
+     A quién va sale de la regla que el propio cliente dio en el punto 8: si el
+     vehículo viene por compañía, a la compañía; si es particular o empresa, al
+     cliente. Queda por confirmar si además avisa a alguien del taller, y si
+     avisa en CADA guardado o sólo al enviar — varios seguidos se vuelven ruido
+     y la gente deja de leerlos. */
+  function encolarAviso(ot_id, asunto, detalle) {
+    const o = db.orden_trabajo.find((x) => x.id === ot_id);
+    if (!o) return;
+    const v = vistaOT(o);
+    const porCompania = v.compania && v.compania !== '—';
+    db.aviso = db.aviso || [];
+    db.aviso.push({
+      id: nuevoId('av'), ot_id, fecha: HOY, seq: ++seqEvento,
+      asunto, detalle: detalle || '',
+      para: porCompania ? v.compania : v.cliente,
+      canal: porCompania ? 'compania' : 'cliente',
+      estado: 'en cola'
+    });
+  }
+
+  const avisosDe = (ot_id) => (db.aviso || []).filter((a) => a.ot_id === ot_id);
+  const avisos = () => (db.aviso || []).slice().sort((a, b) => (b.seq || 0) - (a.seq || 0));
+
+  /* ── Pérdida total ────────────────────────────────────────────────────
+     "El recepcionista no es quien decide que un vehículo es pérdida total; eso
+     lo declara el evaluador."
+
+     🔴 Y choca de frente con la regla más dura que dio el cliente, textual
+     [00:04:54]: "si yo le pongo rechazado, no puedo agarrar esa orden y ponerle
+     aceptado. Esa vez se cerró como rechazado y tengo que reingresar el
+     vehículo. Y así mantienes la invulnerabilidad del sistema."
+
+     Se construyó la **opción A**: declararla CIERRA la orden, como cualquier
+     estado terminal. Respeta su regla tal cual la defendió. La opción B —que la
+     declaración cambie el estado de la orden vigente— es más cómoda pero abre
+     la puerta a editar un estado terminal, que es justo lo que él quiso evitar.
+     **Está para que él elija**, y el cambio de una a otra es una línea. */
+  function declarar_perdida_total(ot_id, motivo) {
+    const o = db.orden_trabajo.find((x) => x.id === ot_id);
+    if (!o) return { ok: false, motivo: 'La orden no existe.' };
+    if (Reglas.esTerminal(db, o.estado))
+      return { ok: false, motivo: 'La orden ' + o.numero_ot + ' ya está cerrada.' };
+    if (!motivo || !String(motivo).trim())
+      return { ok: false, motivo: 'La declaración necesita el fundamento. Es lo que se le muestra ' +
+        'a la compañía y al cliente.' };
+
+    const antes = Reglas.nombreEstado(db, o.estado);
+    o.estado = 'perdida_total';
+    registrarEvento(ot_id, 'estado',
+      "Declarada PÉRDIDA TOTAL por el evaluador. Estado: '" + antes + "' a 'Perdida total'. " +
+      'Fundamento: ' + String(motivo).trim() +
+      '. El vehículo sale del taller y la orden queda cerrada.');
     tocado();
     return { ok: true, motivo: '' };
   }
@@ -1190,6 +1330,8 @@ const Modelo = (function () {
       neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
       enviado_at: null, resuelto_at: null
     });
+    encolarAviso(ot_id, 'Presupuesto ' + numero_or + ' creado',
+      (lineas || []).length + ' líneas · ' + fPlata(neto) + ' neto');
     (lineas || []).forEach((l, i) => db.presupuesto_linea.push(Object.assign({
       id: pid + '-l' + (i + 1), presupuesto_id: pid, orden: i + 1, proceso: 'reparar',
       descripcion: '', horas: null, cantidad: 1, precio_unitario: 0
@@ -2067,6 +2209,9 @@ const Modelo = (function () {
     cargar_repuesto: 'cargar un repuesto',
     recibir_repuesto: 'recibir un repuesto',
     entregar_repuesto_area: 'entregar un repuesto al área',
+    adjuntar_vale_repuesto: 'cargar el vale de retiro',
+    devolver_repuesto: 'la devolución del repuesto',
+    declarar_perdida_total: 'la declaración de pérdida total',
     fijar_responsable_pago: 'el responsable de pago',
     crear_presupuesto: 'crear el presupuesto',
     agregar_linea_presupuesto: 'agregar una línea',
@@ -2127,9 +2272,14 @@ const Modelo = (function () {
     cargar_repuesto: 'repuesto.cargar',
     recibir_repuesto: 'repuesto.cargar',
     entregar_repuesto_area: 'repuesto.cargar',
+    adjuntar_vale_repuesto: 'repuesto.cargar',
+    devolver_repuesto: 'repuesto.devolver',
+    declarar_perdida_total: 'perdida_total.declarar',
     fijar_responsable_pago: 'repuesto.cargar',
     agregar_costo_adicional: 'repuesto.cargar',
-    crear_presupuesto: 'presupuesto.crear',
+    // Abrir la OR es del recepcionista; ponerle los montos, de quien sabe
+    // cuánto cuesta reparar. Son dos permisos porque son dos trabajos.
+    crear_presupuesto: 'presupuesto.abrir',
     agregar_linea_presupuesto: 'presupuesto.crear',
     quitar_linea_presupuesto: 'presupuesto.crear',
     eliminar_presupuesto: 'presupuesto.crear',
@@ -2219,12 +2369,14 @@ const Modelo = (function () {
     'finalizar_etapa', 'finalizar_etapas', 'quitar_etapa', 'fijar_fecha_compromiso',
     'registrar_salida', 'registrar_reingreso', 'cambiar_estado_ot', 'registrar_entrega',
     'cargar_repuesto', 'crear_presupuesto', 'agregar_costo_adicional', 'escribir_bitacora',
+    'declarar_perdida_total',
     'abrir_detencion', 'cerrar_detencion'
   ];
   // Reciben el id de otra cosa y hay que subir hasta la orden.
   const OT_POR_TABLA = {
     recibir_repuesto: 'repuesto', entregar_repuesto_area: 'repuesto',
     fijar_responsable_pago: 'repuesto',
+    adjuntar_vale_repuesto: 'repuesto', devolver_repuesto: 'repuesto',
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
     agregar_linea_presupuesto: 'presupuesto',
@@ -2299,6 +2451,8 @@ const Modelo = (function () {
     personasParaEtapa, destinatarios, fijar_fecha_compromiso,
     registrar_salida, registrar_reingreso, cambiar_estado_ot, registrar_entrega,
     cargar_repuesto, recibir_repuesto, entregar_repuesto_area, fijar_responsable_pago,
+    adjuntar_vale_repuesto, devolver_repuesto, declarar_perdida_total,
+    avisos, avisosDe,
     crear_presupuesto, agregar_linea_presupuesto, quitar_linea_presupuesto,
     eliminar_presupuesto,
     cambiar_estado_presupuesto, nueva_version_presupuesto, generar_repuestos_desde_presupuesto,

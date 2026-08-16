@@ -647,6 +647,21 @@ fieldset.bloque legend {
   .barra-menu .mnu { display: none; }
 }
 
+
+/* ───────── Firma del cliente ─────────
+   `touch-action:none` es lo que hace que se pueda firmar con el dedo: sin eso
+   el gesto hace scroll de la página y el trazo sale cortado. */
+.firma-zona { display: flex; flex-direction: column; gap: 6px; }
+#firma-lienzo {
+  width: 100%; max-width: 620px; height: auto; aspect-ratio: 620 / 190;
+  background: #fff; border: 1px dashed var(--borde-fuerte); border-radius: 4px;
+  cursor: crosshair; touch-action: none;
+}
+#firma-lienzo.firmado { border-style: solid; border-color: var(--verde); }
+.firma-pie { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.casilla { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gris); cursor: pointer; }
+.casilla input { width: auto; margin: 0; }
+
 /* ───────── El expandible de los paneles ─────────
    Lo que se abre bajo la fila al hacer un clic. La tabla anidada de OR es el
    centro: es donde el usuario ve los presupuestos de esa OT sin abrirla. */

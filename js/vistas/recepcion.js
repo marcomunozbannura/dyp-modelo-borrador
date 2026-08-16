@@ -22,7 +22,9 @@
        se agrega al catálogo sin salir de la recepción.
      · La silueta es una sola vista, la superior. Antes ofrecía cinco pestañas
        y las cinco dibujaban lo mismo.
-     · Sin firma en pantalla: el comprobante se firma en papel.
+     · La firma del cliente se toma en pantalla (tablet, teléfono o mouse) y
+       sale impresa en el comprobante. Se había sacado el 13-08-2026 y el
+       cliente la pidió de vuelta el 15-08.
      · Las fotos se comprimen antes de guardar y el peso se muestra en
        pantalla — ver media.js.
      · El borrador se guarda solo. Un formulario de 90 campos que se pierde
@@ -35,7 +37,7 @@ const RECEPCION_PASOS = [
   { id: 'ordenes',    n: 'Solicitud de reparación' },
   { id: 'danos',      n: 'Estado descriptivo' },
   { id: 'inventario', n: 'Inventario' },
-  { id: 'cierre',     n: 'Fotografías' }
+  { id: 'cierre',     n: 'Fotografías y firma' }
 ];
 
 const CLAVE_BORRADOR = 'dyp-recepcion-borrador';
@@ -79,7 +81,10 @@ function guardarBorrador() {
       paso: r.paso, llave: r.llave, campos: r.campos, bloques: r.bloques,
       danos: r.danos, tipoDano: r.tipoDano, textos: r.textos,
       inventario: r.inventario, obsInventario: r.obsInventario,
-      fotos: r.fotos
+      fotos: r.fotos,
+      // El Blob de la firma no es serializable; los trazos sí, y con ellos
+      // se vuelve a pintar el lienzo tal cual estaba.
+      firmaTrazos: r.firmaTrazos || []
     }));
   } catch (e) { /* sin almacenamiento: el formulario sigue vivo en memoria */ }
 }
@@ -102,14 +107,22 @@ function limpiarBorrador() {
 
 /* ── Validación ────────────────────────────────────────────────────────── */
 
-/* Los obligatorios son los que el original marca con asterisco, MENOS el VIN
-   (decisión del 13-08-2026). El formulario del sistema actual lo exige, pero en
-   el taller no siempre se tiene a mano al recibir el vehículo, y un campo
-   obligatorio que no se puede llenar termina rellenándose con cualquier cosa
-   —que es peor que dejarlo vacío—. El campo sigue estando y se puede completar
-   después: lo que se sacó es el bloqueo, no el dato. */
+/* Los obligatorios son los que el original marca con asterisco.
+
+   🔴 EL VIN, y por qué es un caso aparte. El 13-08-2026 lo sacamos de los
+   obligatorios con este argumento: en el taller no siempre se tiene a mano al
+   recibir el vehículo, y un campo obligatorio que no se puede llenar termina
+   rellenándose con cualquier cosa —que es peor que dejarlo vacío—.
+
+   El 15-08-2026 el cliente pidió que fuera obligatorio. Manda él, así que lo
+   es. Pero se construyó con la salida que evita el problema que nos
+   preocupaba: obligatorio **con una casilla "no viene a la vista"** que exige
+   escribir el motivo y deja la orden marcada como incompleta hasta que alguien
+   lo cargue. Así el dato no se rellena con basura y el sistema igual no deja
+   pasar una recepción sin VIN de verdad. Las dos cosas, no una. */
 const REC_OBLIGATORIOS = [
   ['patente', 'La patente', 'vehiculo'], ['km', 'El kilometraje', 'vehiculo'],
+  ['vin', 'El VIN', 'vehiculo'],
   ['rut', 'El RUT del cliente', 'cliente'], ['nombres', 'El nombre del cliente', 'cliente'],
   ['telefono', 'El teléfono', 'cliente'], ['direccion', 'El domicilio', 'cliente']
 ];
@@ -117,8 +130,18 @@ const REC_OBLIGATORIOS = [
 function recFaltantes() {
   const r = rec();
   const faltan = REC_OBLIGATORIOS
-    .filter(([c]) => !String(r.campos[c] || '').trim())
-    .map(([, rot, paso]) => ({ rot, paso }));
+    .filter(([c]) => {
+      // El VIN se da por cumplido si se declaró POR QUÉ no está. Declararlo es
+      // un acto, no un descuido: queda escrito quién lo dijo y con qué motivo.
+      if (c === 'vin' && r.campos.vin_no_visible)
+        return !String(r.campos.vin_motivo || '').trim();
+      return !String(r.campos[c] || '').trim();
+    })
+    .map(([c, rot, paso]) => ({
+      rot: (c === 'vin' && r.campos.vin_no_visible)
+        ? 'El motivo por el que el VIN no viene a la vista' : rot,
+      paso
+    }));
   r.bloques.forEach((b, i) => {
     const t = Modelo.catalogo('tipo_ingreso').find((x) => x.id === b.tipo_ingreso_id);
     if (t && t.exige_compania && !b.compania_id)
@@ -264,6 +287,37 @@ function recCombo(clave, rotulo, filas, tabla, opciones) {
     pie + '</div>';
 }
 
+/* El VIN, con su salida declarada. Obligatorio desde el 15-08-2026, pero con
+   una casilla para cuando de verdad no está a la vista: ahí se exige el motivo
+   y la orden queda marcada como incompleta. Es la diferencia entre "no lo
+   tengo" y "puse cualquier cosa para poder seguir". */
+function recVin() {
+  const r = rec();
+  const sinVer = !!r.campos.vin_no_visible;
+
+  const casilla = '<label class="casilla" style="margin-top:5px">' +
+    '<input type="checkbox" data-vin-nover' + (sinVer ? ' checked' : '') + '>' +
+    '<span>No viene a la vista</span></label>';
+
+  if (!sinVer) {
+    return '<div class="campo"><label>VIN (número de chasis) ' +
+      '<span style="color:var(--rojo)">*</span></label>' +
+      '<input type="text" autocomplete="off" data-rec="vin" value="' + esc(r.campos.vin || '') + '" ' +
+      'placeholder="17 caracteres">' +
+      casilla + '</div>';
+  }
+
+  return '<div class="campo"><label>VIN (número de chasis) ' +
+    '<span style="color:var(--rojo)">*</span></label>' +
+    '<input type="text" data-rec="vin" value="' + esc(r.campos.vin || '') + '" disabled ' +
+    'placeholder="Declarado como no visible">' +
+    casilla +
+    '<input type="text" autocomplete="off" data-rec="vin_motivo" style="margin-top:5px" ' +
+      'value="' + esc(r.campos.vin_motivo || '') + '" placeholder="¿Por qué no está a la vista?">' +
+    '<span class="ayuda" style="color:var(--ambar)">La orden queda marcada como incompleta ' +
+    'hasta que alguien cargue el VIN.</span></div>';
+}
+
 /* ── Paso 1 · Vehículo ─────────────────────────────────────────────────── */
 
 function recVehiculo() {
@@ -283,7 +337,7 @@ function recVehiculo() {
       ayuda: r.campos.marca_id ? '' : 'Depende de la marca' })}
     ${recCombo('color_id', 'Color', Modelo.catalogo('color_vehiculo'), 'color_vehiculo', { marcador: 'Escribe el color' })}
     ${recSelect('anio', 'Año', anios, { vacio: 'Seleccionar' })}
-    ${recCampo('vin', 'VIN (número de chasis)', { ayuda: 'Opcional: se puede completar después' })}
+    ${recVin()}
     ${recCampo('km', 'Kilometraje', { tipo: 'number' })}
   </div>
 
@@ -454,22 +508,113 @@ function recInventario() {
   </table></div>`;
 }
 
-/* ── Paso 6 · Fotografías ──────────────────────────────────────────────
-   La firma en pantalla se sacó (decisión del 13-08-2026): el comprobante se
-   firma en papel y ese papel se archiva. Duplicarla acá no agregaba nada. */
+/* ── Paso 6 · Fotografías y firma ──────────────────────────────────────
+   La firma en pantalla se había sacado el 13-08-2026 con el argumento de que
+   el comprobante se firma en papel. El cliente la pidió de vuelta el
+   15-08-2026: quiere que el cliente firme en la tablet o el celular, estilo
+   Paint, y que esa firma salga en la impresión de la orden de recepción.
+
+   El modelo ya la soportaba —`recepcion.firma_media_id` y `Media.guardarBlob`
+   desde un canvas—, así que faltaba la pantalla, no el modelo. */
 
 function recCierre() {
   const r = rec();
+  const firmada = !!r.firma;
 
   return `
   <fieldset class="bloque"><legend>Fotografías de ingreso</legend>
     ${zonaFotos({ id: 'recfoto', fotos: r.fotos, titulo: 'Agregar fotos del vehículo' })}
   </fieldset>
 
+  <fieldset class="bloque" style="margin-top:12px"><legend>Firma del cliente</legend>
+    <div class="firma-zona">
+      <canvas id="firma-lienzo" width="620" height="190"
+        class="${firmada ? 'firmado' : ''}" aria-label="Zona para firmar"></canvas>
+      <div class="firma-pie">
+        <span class="ayuda">${firmada
+          ? 'Firmado. Sale impreso en el comprobante de recepción.'
+          : 'El cliente firma con el dedo en la tablet o el celular, o con el mouse.'}</span>
+        <button type="button" class="btn secundario" id="firma-borrar">Borrar y volver a firmar</button>
+      </div>
+    </div>
+  </fieldset>
+
   <div class="rejilla-campos" style="margin-top:12px">
     <div class="campo" style="grid-column:1/-1"><label>Observaciones de la recepción</label>
       <textarea rows="2" data-rec="observaciones">${esc(r.campos.observaciones)}</textarea></div>
   </div>`;
+}
+
+/* El lienzo de firma. Sin librerías: es trazo sobre canvas.
+
+   Se escucha `pointer*` y no `mouse*` porque la firma se toma en una tablet o
+   un teléfono, que es donde va a pasar de verdad. `touch-action:none` en el CSS
+   evita que el dedo haga scroll de la página mientras se firma — sin eso, la
+   pantalla se mueve y el trazo sale cortado. */
+function montarFirma() {
+  const c = document.getElementById('firma-lienzo');
+  if (!c) return;
+  const r = rec();
+  const ctx = c.getContext('2d');
+
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#111';
+
+  // Si ya había firma, se repinta: cambiar de paso no puede borrarla.
+  if (r.firmaTrazos && r.firmaTrazos.length) repintarFirma(ctx, r.firmaTrazos);
+
+  let trazando = false;
+  const punto = (ev) => {
+    const caja = c.getBoundingClientRect();
+    return { x: (ev.clientX - caja.left) * (c.width / caja.width),
+             y: (ev.clientY - caja.top) * (c.height / caja.height) };
+  };
+
+  c.addEventListener('pointerdown', (ev) => {
+    trazando = true;
+    c.setPointerCapture(ev.pointerId);
+    r.firmaTrazos = r.firmaTrazos || [];
+    r.firmaTrazos.push([punto(ev)]);
+  });
+  c.addEventListener('pointermove', (ev) => {
+    if (!trazando) return;
+    const p = punto(ev);
+    const trazo = r.firmaTrazos[r.firmaTrazos.length - 1];
+    trazo.push(p);
+    ctx.beginPath();
+    ctx.moveTo(trazo[trazo.length - 2].x, trazo[trazo.length - 2].y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+  const soltar = () => {
+    if (!trazando) return;
+    trazando = false;
+    // El PNG se guarda al vuelo: si el navegador se cierra a mitad de la
+    // recepción, la firma ya está en el borrador.
+    c.toBlob((blob) => { r.firma = blob; guardarBorrador(); }, 'image/png');
+  };
+  c.addEventListener('pointerup', soltar);
+  c.addEventListener('pointerleave', soltar);
+  c.addEventListener('pointercancel', soltar);
+
+  const borrar = document.getElementById('firma-borrar');
+  if (borrar) borrar.addEventListener('click', () => {
+    ctx.clearRect(0, 0, c.width, c.height);
+    r.firmaTrazos = []; r.firma = null;
+    guardarBorrador();
+  });
+}
+
+function repintarFirma(ctx, trazos) {
+  trazos.forEach((t) => {
+    if (t.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(t[0].x, t[0].y);
+    for (let i = 1; i < t.length; i++) ctx.lineTo(t[i].x, t[i].y);
+    ctx.stroke();
+  });
 }
 
 /* ── Resultado ─────────────────────────────────────────────────────────── */
@@ -587,6 +732,15 @@ function pRecepcion() {
     guardarBorrador(); render();
   }));
 
+  // La casilla del VIN: al marcarla se pide el motivo; al desmarcarla se borra,
+  // para que no quede un motivo colgando de un VIN que sí se cargó.
+  const noVer = document.querySelector('[data-vin-nover]');
+  if (noVer) noVer.addEventListener('change', () => {
+    r.campos.vin_no_visible = noVer.checked;
+    if (!noVer.checked) r.campos.vin_motivo = '';
+    guardarBorrador(); render();
+  });
+
   document.querySelectorAll('[data-comb]').forEach((b) => b.addEventListener('click', () => {
     r.campos.combustible = b.dataset.comb; guardarBorrador(); render();
   }));
@@ -649,6 +803,7 @@ function pRecepcion() {
   if (ninguno) ninguno.addEventListener('click', () => { r.inventario = {}; guardarBorrador(); render(); });
 
   montarFotos();
+  montarFirma();
 
   const limpiar = document.getElementById('rec-limpiar');
   if (limpiar) limpiar.addEventListener('click', () => {
@@ -720,6 +875,16 @@ function guardarRecepcion() {
 
     // Las fotos se amarran a la recepción y a todas sus órdenes.
     Modelo.adjuntar_media(res.recepcion_id, res.ordenes.map((o) => o.ot_id), r.fotos);
+
+    /* Y la firma del cliente, que va como un archivo más pero con su propio
+       momento: el impreso la busca por ahí para estamparla en el comprobante. */
+    if (r.firma) {
+      Media.guardarBlob(r.firma, { momento: 'firma', nombre: 'firma-cliente.png',
+        recepcion_id: res.recepcion_id })
+        .then((ficha) => Modelo.adjuntar_media(res.recepcion_id,
+          res.ordenes.map((o) => o.ot_id), [ficha]))
+        .catch(() => { /* sin IndexedDB la firma no se guarda; la recepción sí */ });
+    }
 
     r.creadas = res.ordenes;
     try { localStorage.removeItem(CLAVE_BORRADOR); } catch (e) { /* nada */ }

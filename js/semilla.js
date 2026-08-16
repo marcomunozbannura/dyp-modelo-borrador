@@ -37,7 +37,7 @@ const Semilla = (function () {
   const FUERA_DE_TALLER        = 10;   // reglas §C.6  — y son distintas de las 41
   const SIN_ETAPA              = 53;   // reglas §C.7  — "Pendiente" / "Sin Asignar"
   const TRABAJADORES           = 89;   // medido en el sistema real; la demo siembra 5
-  const EQUIPO_DEMO            = 6;    // cinco del taller más el dueño, cada uno con su clave
+  const EQUIPO_DEMO            = 7;    // seis del taller más el dueño, cada uno con su clave
   const TOTAL_HISTORICO        = 120;  // ~3 entregas diarias (§C.21)
   const ULTIMA_OT              = 23488;// reglas §C.13 — al 12-08-2026
   // TEMPARIO_HORA ($10.000, reglas §C.15) se eliminó el 13-08-2026 junto con
@@ -73,6 +73,14 @@ const Semilla = (function () {
     ['presupuesto.ver',      'Ver el presupuesto y sus líneas'],
     ['presupuesto.montos',   'Ver los montos de venta del presupuesto'],
     ['presupuesto.crear',    'Crear y editar presupuestos'],
+    // Abrir la OR y VALORIZARLA son dos cosas distintas, y el cliente lo dijo
+    // en las dos direcciones el 15-08-2026: "el recepcionista es quien crea la
+    // OR, siempre" y "recepcionista y evaluador son procesos separados". El
+    // recepcionista le pone el numero al trabajo; quien sabe cuanto cuesta
+    // reparar un tapabarro le pone los montos.
+    ['presupuesto.abrir',    'Abrir la OR de un trabajo, sin ponerle los montos'],
+    ['perdida_total.declarar', 'Declarar un vehiculo como perdida total'],
+    ['repuesto.devolver',    'Devolver un repuesto y dejarlo pendiente de nuevo'],
     ['repuesto.cargar',      'Cargar repuestos en bodega'],
     ['salida.registrar',     'Registrar salidas y reingresos'],
     ['entrega.registrar',    'Entregar el vehículo'],
@@ -335,7 +343,14 @@ const Semilla = (function () {
          puedes dejar afuera sin marcha atrás no es administrable. */
       { id: 'ro-5', codigo: 'admin',        nombre: 'Administración', alcance: 'todo',     total: true, vigente: true },
       { id: 'ro-6', codigo: 'dueno',        nombre: 'Dueño',          alcance: 'todo',     total: true, vigente: true },
-      { id: 'ro-7', codigo: 'aseguradora',  nombre: 'Aseguradora',    alcance: 'compania', vigente: true, externo: true }
+      { id: 'ro-7', codigo: 'aseguradora',  nombre: 'Aseguradora',    alcance: 'compania', vigente: true, externo: true },
+      /* El evaluador no existia. Lo pidio el cliente el 15-08-2026: es quien
+         valoriza el presupuesto y el UNICO que declara una perdida total.
+         Queda como rol INTERNO del taller mientras no se confirme si es
+         alguien de la casa o el liquidador de la compañia — si fuera de la
+         compañia habria que darle alcance 'compania' y tratarlo como externo,
+         que cambia el modelo de acceso completo. */
+      { id: 'ro-8', codigo: 'evaluador',    nombre: 'Evaluador',      alcance: 'todo',     vigente: true }
     ];
 
     /* La matriz. Lo importante para la demostración es el contraste entre el
@@ -408,14 +423,22 @@ const Semilla = (function () {
       recepcion:   ['torre.ver', 'taller.ver', 'repuesto.ver', 'ficha.completa',
                     'documento.ver', 'documento.cargar', 'foto.ver', 'foto.cargar',
                     'ot.crear', 'ot.editar', 'presupuesto.ver', 'presupuesto.montos',
+                    // Abre la OR, no le pone los montos. Esa es la separacion.
+                    'presupuesto.abrir',
                     'entrega.registrar', 'datos.rut_completo'],
+      evaluador:   ['torre.ver', 'taller.ver', 'repuesto.ver', 'espera.ver', 'ficha.completa',
+                    'documento.ver', 'foto.ver', 'presupuesto.ver', 'presupuesto.montos',
+                    'presupuesto.abrir', 'presupuesto.crear',
+                    // El unico que puede declararla, aparte de administracion.
+                    'perdida_total.declarar', 'historico.ver'],
       jefe_taller: ['torre.ver', 'taller.ver', 'repuesto.ver', 'espera.ver', 'ficha.completa',
                     'documento.ver', 'foto.ver', 'foto.cargar',
                     'etapa.asignar', 'etapa.finalizar', 'presupuesto.ver', 'presupuesto.montos',
-                    'presupuesto.crear', 'personal.ver', 'salida.registrar'],
+                    'presupuesto.crear', 'presupuesto.abrir', 'personal.ver', 'salida.registrar'],
       operario:    ['taller.ver', 'repuesto.ver', 'etapa.finalizar', 'presupuesto.ver'],
       bodega:      ['torre.ver', 'taller.ver', 'repuesto.ver', 'ficha.completa',
-                    'documento.ver', 'documento.cargar', 'repuesto.cargar', 'presupuesto.ver'],
+                    'documento.ver', 'documento.cargar', 'repuesto.cargar',
+                    'repuesto.devolver', 'presupuesto.ver'],
       admin:       permiso.map((p) => p.codigo),
       dueno:       permiso.map((p) => p.codigo),
       aseguradora: ['torre.ver', 'ficha.completa', 'presupuesto.ver', 'presupuesto.montos',
@@ -497,7 +520,14 @@ const Semilla = (function () {
       // El administrador también entra con usuario y clave: no hay una puerta
       // trasera sin credenciales, que es como se cuela el "entro yo nomás".
       { nombre: 'Gabriel', apellidos: 'Díaz', rol: 'ro-5', etapas: [],
-        cargo: 'Administrador', usuario: 'gabriel.diaz' }
+        cargo: 'Administrador', usuario: 'gabriel.diaz' },
+      /* El evaluador va AL FINAL, y no es un detalle de estilo: los ids de las
+         personas se generan por posición (`pe-t-N`), así que meterlo en medio
+         corría a todos los de abajo — `pe-t-6` dejaba de ser el administrador y
+         media docena de pruebas se caían con "el rol Evaluador no puede hacer
+         esto". Lo nuevo se agrega al final. */
+      { nombre: 'Evaluador',      rol: 'ro-8', etapas: [],
+        cargo: 'Evaluación y presupuestos' }
     ];
 
     const sinTildes = (t) => String(t).toLowerCase()
@@ -575,6 +605,9 @@ const Semilla = (function () {
     const vehiculo = [], recepcion = [], orden_trabajo = [], ot_etapa = [], ot_estadia = [];
     const repuesto = [], presupuesto = [], presupuesto_linea = [], bitacora = [], media = [];
     const evento = [], dano = [], recepcion_inventario = [], ot_detencion = [], costo_adicional = [];
+    // La cola de avisos por correo nace vacía: se llena al operar. Es la
+    // parte MODELADA del punto 4 — el envío real lo hace el servidor.
+    const aviso = [];
 
     const PATENTES = [];
     const L = 'BCDFGHJKLPRSTVWXYZ';
@@ -886,7 +919,7 @@ const Semilla = (function () {
       // operación
       vehiculo, recepcion, recepcion_inventario, dano, orden_trabajo,
       ot_etapa, ot_estadia, ot_detencion, costo_adicional,
-      presupuesto, presupuesto_linea, repuesto, bitacora, media, evento,
+      presupuesto, presupuesto_linea, repuesto, bitacora, media, evento, aviso,
       // idempotencia
       operacion: []
     };

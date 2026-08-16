@@ -23,6 +23,23 @@ const Pruebas = (function () {
       const res = [];
       const push = (o) => res.push(o);
 
+      /* Las pruebas parten de un estado de sesión CONOCIDO, y no del que haya
+         dejado quien estaba usando el sistema.
+
+         Sin esto dependían de con qué cuenta estuvieras: corriéndolas como
+         Pintura —que no puede cargar repuestos ni cerrar órdenes— caían nueve
+         de golpe con "falta el permiso", y parecía que el motor estaba roto
+         cuando lo que fallaba era el punto de partida. Se prueban las REGLAS,
+         no el reparto de permisos: para eso está la prueba 17. */
+      const sesionPrevia = (Modelo.personaActual() || {}).id || null;
+      const rolPrevio = (Modelo.rolActual() || {}).id || null;
+      Modelo.fijar_persona_actual(null);
+      Modelo.fijar_rol_actual('ro-6');           // dueño: ve y puede todo
+      const restaurarSesion = () => {
+        if (sesionPrevia) Modelo.fijar_persona_actual(sesionPrevia);
+        else { Modelo.fijar_persona_actual(null); if (rolPrevio) Modelo.fijar_rol_actual(rolPrevio); }
+      };
+
       const abiertaCualquiera = () => db.orden_trabajo.find((o) => Reglas.estaAbierta(db, o.estado));
 
       /* ── 1 · Una patente, una orden abierta ─────────────────────────── */
@@ -576,9 +593,7 @@ const Pruebas = (function () {
            Va con una cuenta de rol total: las dos operaciones piden permisos
            distintos —la fecha es del jefe de taller y el repuesto es de
            bodega— y acá se está probando el registro, no el reparto. */
-        const totales = Modelo.roles().filter((x) => x.total === true).map((x) => x.id);
-        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') ||
-                       db.persona.find((p) => totales.indexOf(p.rol) >= 0) || {}).id;
+        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') || {}).id;
         Modelo.fijar_persona_actual(quien);
 
         const fecha = Modelo.fijar_fecha_compromiso(o.id, new Date(2026, 8, 30));
@@ -633,6 +648,7 @@ const Pruebas = (function () {
         });
       })();
 
+      restaurarSesion();
       return res;
     });
   }

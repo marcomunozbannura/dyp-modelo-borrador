@@ -96,11 +96,10 @@ function bodegaFichaRepuestos(o) {
         '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
         '<td class="num">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td>' +
         '<td class="num">' + (r.diasEnLlegar === null ? '—' : r.diasEnLlegar + ' d') + '</td>' +
-        '<td>' + (!r.fechaBodega
-          ? '<button class="btn secundario" data-recibir="' + esc(r.id) + '">Llegó a bodega</button>'
-          : (!r.fechaEntregaArea
-            ? '<button class="btn secundario" data-entregararea="' + esc(r.id) + '">Entregar al área</button>'
-            : '<span class="et verde">completo</span>')) + '</td></tr>').join('')
+        // El ciclo del repuesto, en el orden que lo describió el cliente:
+        // llega → se sube el vale de quien lo retira → bodega marca entregado.
+        // Y si se devuelve, vuelve a correr entero desde el pedido.
+        '<td>' + accionesRepuesto(r) + '</td></tr>').join('')
         : '<tr><td colspan="8"><div class="vacio"><div class="titulo">Sin repuestos en el presupuesto</div></div></td></tr>'}</tbody>
     </table></div>
     <div class="cuerpo">
@@ -257,6 +256,42 @@ function bodegaTot() {
 
 /* ── Cableado ──────────────────────────────────────────────────────────── */
 
+
+/* Los botones del repuesto, según dónde va en su ciclo. Punto 7 del cliente,
+   15-08-2026, en sus palabras y en su orden:
+
+     1. El repuesto se asocia a OT - patente - repuesto.
+     2. Bodega marca cuando LLEGA.
+     3. Se le entrega al desabollador, que va a buscarlo.
+     4. El que lo recibe SUBE EL VALE: comprueba que fue y lo retiró.
+     5. Bodega marca ENTREGADO, una vez que el vale está subido.
+     6. Si se devuelve, el proceso vuelve a correr entero.
+
+   El vale es la CONDICIÓN para marcar entregado, no un adjunto opcional: sin
+   él, "entregado" es la palabra de bodega contra la del taller. Por eso el
+   botón de entregar no aparece hasta que el vale está arriba — y el motor lo
+   revisa igual, no sólo la pantalla. */
+function accionesRepuesto(r) {
+  const vueltas = (r.devoluciones || []).length;
+  const marca = vueltas
+    ? ' <span class="et ambar" title="Devuelto ' + vueltas + ' vez(ces)">vuelta ' + (vueltas + 1) + '</span>'
+    : '';
+
+  if (!r.fechaBodega)
+    return '<button class="btn secundario" data-recibir="' + esc(r.id) + '">Llegó a bodega</button>' + marca;
+
+  if (!r.valeMediaId)
+    return '<button class="btn secundario" data-vale="' + esc(r.id) + '">Subir el vale de retiro</button>' +
+           ' <button class="btn secundario" data-devolver="' + esc(r.id) + '">Devolver</button>' + marca;
+
+  if (!r.fechaEntregaArea)
+    return '<button class="btn secundario" data-entregararea="' + esc(r.id) + '">Marcar entregado</button>' +
+           ' <button class="btn secundario" data-devolver="' + esc(r.id) + '">Devolver</button>' + marca;
+
+  return '<span class="et verde">completo</span>' +
+         ' <button class="btn secundario" data-devolver="' + esc(r.id) + '">Devolver</button>' + marca;
+}
+
 function pBodega() {
   // Doble clic abre la orden en pestaña nueva, igual que en la torre.
   dobleClicPorFilas();
@@ -289,6 +324,39 @@ function pBodega() {
     ejecutar(() => Modelo.recibir_repuesto(x.dataset.recibir), 'Repuesto recibido en bodega, con fecha.')));
   document.querySelectorAll('[data-entregararea]').forEach((x) => x.addEventListener('click', () =>
     ejecutar(() => Modelo.entregar_repuesto_area(x.dataset.entregararea), 'Entregado al área, con fecha.')));
+
+  /* El vale. En el sistema real es la foto o el escaneo del papel que firma
+     quien retira; acá se toma con el mismo camino que las demás fotos, así que
+     el archivo queda en el expediente con su autor y su fecha. */
+  document.querySelectorAll('[data-vale]').forEach((x) => x.addEventListener('click', () => {
+    const id = x.dataset.vale;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*,application/pdf';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const b = bodegaEstado();
+      Media.guardar(f, { momento: 'documento', ot_id: b.otId })
+        .then((ficha) => {
+          Modelo.adjuntar_media(null, [b.otId], [ficha]);
+          ejecutar(() => Modelo.adjuntar_vale_repuesto(id, ficha.id),
+            'Vale cargado. Ahora se puede marcar entregado.');
+        })
+        .catch(() => avisar({ ok: false, motivo: 'No se pudo guardar el vale en este navegador.' }));
+    });
+    inp.click();
+  }));
+
+  /* La devolución NO borra el ciclo anterior: lo archiva con su motivo. Por eso
+     el motivo es obligatorio — es lo que después explica en el expediente por
+     qué el vehículo estuvo detenido. */
+  document.querySelectorAll('[data-devolver]').forEach((x) => x.addEventListener('click', () => {
+    const motivo = prompt('¿Por qué se devuelve el repuesto? Queda en el expediente y ' +
+      'es lo que explica la demora ante la compañía.');
+    if (motivo === null) return;
+    ejecutar(() => Modelo.devolver_repuesto(x.dataset.devolver, motivo),
+      'Repuesto devuelto. Queda pendiente y el pedido vuelve a correr.');
+  }));
   document.querySelectorAll('[data-pago]').forEach((x) => x.addEventListener('change', () =>
     ejecutar(() => Modelo.fijar_responsable_pago(x.dataset.pago, x.value), 'Responsable de pago guardado.')));
 

@@ -2092,6 +2092,37 @@ const Modelo = (function () {
     return { ok: true, motivo: '', adjuntadas: fichas.length };
   }
 
+  /* Ponerle nombre al documento. Pedido de Marco el 16-08-2026 mirando el
+     sistema actual, que tiene un lápiz al lado de cada archivo.
+
+     No es cosmética: el archivo llega como `escaneo_001.pdf` desde el scanner
+     del mesón, y seis meses después nadie encuentra la guía de despacho que la
+     compañía está pidiendo. El nombre es lo único que hace encontrable un
+     documento — no hay tipo, ni categoría, ni carpeta: el taller no las usa y
+     no se las vamos a inventar.
+
+     Se conserva la EXTENSIÓN original aunque el usuario la borre al escribir:
+     un `.pdf` que pierde su extensión deja de abrirse con el lector correcto,
+     y eso lo descubre el que lo necesita, no el que lo renombró. */
+  function renombrar_media(media_id, nombre) {
+    const f = db.media.find((x) => x.id === media_id);
+    if (!f) return { ok: false, motivo: 'El documento no existe.' };
+    const limpio = String(nombre == null ? '' : nombre).trim().replace(/[\/:*?"<>|]/g, '');
+    if (!limpio) return { ok: false, motivo: 'El documento necesita un nombre.' };
+    if (limpio === f.nombre) return { ok: false, motivo: 'El nombre ya decía eso.' };
+
+    const ext = (String(f.nombre || '').match(/\.[a-z0-9]{1,5}$/i) || [''])[0];
+    const antes = f.nombre;
+    f.nombre = (ext && !limpio.toLowerCase().endsWith(ext.toLowerCase())) ? limpio + ext : limpio;
+
+    const ot = f.ot_id || (f.recepcion_id
+      ? (db.orden_trabajo.find((x) => x.recepcion_id === f.recepcion_id) || {}).id : null);
+    if (ot) registrarEvento(ot, 'documento',
+      'Documento renombrado: «' + antes + '» → «' + f.nombre + '»');
+    tocado();
+    return { ok: true, motivo: '', nombre: f.nombre };
+  }
+
   function eliminar_media(media_id) {
     const f = db.media.find((x) => x.id === media_id);
     if (!f) return { ok: false, motivo: 'La imagen no existe.' };
@@ -2640,6 +2671,7 @@ const Modelo = (function () {
     escribir_bitacora: 'el mensaje de bitácora',
     apagar_alerta: 'apagar la alerta',
     eliminar_media: 'eliminar una foto',
+    renombrar_media: 'el nombre de un documento',
     /* Estas cuatro escriben y no estaban declaradas: no se podían deshacer y,
        desde el 15-08-2026, tampoco habrían dejado registro. Es exactamente el
        agujero que `conRegistro` viene a cerrar — una operación que escribe sin
@@ -2709,6 +2741,7 @@ const Modelo = (function () {
     // El pintor no tiene ninguno de los cuatro: su trabajo es cerrar la etapa.
     adjuntar_media: 'foto.cargar',
     eliminar_media: 'foto.cargar',
+    renombrar_media: 'documento.cargar',
     // La bitácora es parte de la ficha completa: escribir ahí enciende una
     // bandera en la torre, y eso lo maneja quien responde por la orden.
     escribir_bitacora: 'ficha.completa',
@@ -2800,7 +2833,7 @@ const Modelo = (function () {
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
     agregar_linea_presupuesto: 'presupuesto',
-    apagar_alerta: 'bitacora', eliminar_media: 'media'
+    apagar_alerta: 'bitacora', eliminar_media: 'media', renombrar_media: 'media'
   };
 
   function otAfectada(nombre, args) {
@@ -2882,7 +2915,7 @@ const Modelo = (function () {
     personal, guardar_persona, dar_de_baja_persona, reactivar_persona,
     fijar_habilidad,
     escribir_bitacora, apagar_alerta,
-    adjuntar_media, eliminar_media, mediaDe,
+    adjuntar_media, eliminar_media, renombrar_media, mediaDe,
     abrir_detencion, cerrar_detencion, detencionDe,
     // configuración
     guardar_catalogo, eliminar_catalogo, dar_de_baja_catalogo, reactivar_catalogo,

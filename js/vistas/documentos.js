@@ -146,7 +146,14 @@ function documentosDeOT(o) {
       <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
         <thead><tr><th>Archivo</th><th>Fecha</th><th>Peso</th>${cargaDocs ? '<th>Acción</th>' : ''}</tr></thead>
         <tbody>${docs.map((m) =>
-          '<tr><td>' + esc(m.nombre) + '</td>' +
+          '<tr><td>' + esc(m.nombre) +
+            /* El lápiz del sistema actual. El archivo llega como
+               `escaneo_001.pdf` desde el scanner del mesón y así nadie lo
+               encuentra seis meses después, que es cuando la compañía lo pide.
+               El nombre es lo único que hace encontrable un documento: no hay
+               tipo ni categoría, porque el taller no las usa. */
+            (cargaDocs ? ' <button class="enlace-volver" data-doc-nombrar="' + esc(m.id) +
+              '" title="Ponerle nombre">' + ico('editar') + '</button>' : '') + '</td>' +
           '<td class="num">' + fCorta(m.creado_at) + '</td>' +
           '<td class="num">' + Media.fPeso(m.bytes) + '</td>' +
           (cargaDocs ? '<td><button class="btn secundario" data-doc-quitar="' + esc(m.id) + '">Quitar</button></td>' : '') +
@@ -203,6 +210,19 @@ function pDocumentos() {
       render();
     }
   });
+
+  /* Ponerle nombre al documento. Llega con el nombre que traía el archivo y se
+     puede cambiar; la extensión se conserva sola aunque el usuario la borre al
+     escribir. Cada cambio queda en el expediente con el nombre viejo y el
+     nuevo: si mañana alguien discute qué documento era, ahí está. */
+  document.querySelectorAll('[data-doc-nombrar]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.docNombrar;
+    const actual = (Modelo.mediaDe(d.otId).find((m) => m.id === id) || {}).nombre || '';
+    const nuevo = prompt('Nombre del documento\n\nComo se va a buscar después: ' +
+      '"Guía de despacho N° 79074 Johnson", "Vale de retiro Castillo".', actual);
+    if (nuevo === null) return;
+    ejecutar(() => Modelo.renombrar_media(id, nuevo), 'Documento renombrado.');
+  }));
 
   document.querySelectorAll('[data-doc-quitar]').forEach((b) => b.addEventListener('click', () => {
     Media.eliminar(b.dataset.docQuitar).catch(() => null)

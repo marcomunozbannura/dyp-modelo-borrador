@@ -347,6 +347,7 @@ const Modelo = (function () {
 
       repuestos: (ix.repuestosDeOT.get(o.id) || []).map((r) => ({
         id: r.id, descripcion: r.descripcion, cantidad: r.cantidad,
+        codigoInterno: r.codigo_interno || '', codigoExterno: r.codigo_externo || '',
         responsablePago: (ix.respPago.get(r.responsable_pago_id) || {}).nombre,
         pagaTaller: !!(ix.respPago.get(r.responsable_pago_id) || {}).es_taller,
         fechaSolicitud: r.fecha_solicitud, fechaBodega: r.fecha_bodega,
@@ -1459,6 +1460,13 @@ const Modelo = (function () {
     db.repuesto.push({
       id, ot_id, presupuesto_linea_id: null, descripcion: String(descripcion).trim(),
       cantidad: cantidad || 1, responsable_pago_id: responsable_pago_id || 'rp-1',
+      /* El código con que BODEGA identifica la pieza en su estantería. Nace
+         vacío y lo escribe bodega cuando la recibe: el repuesto se pide por la
+         descripción del presupuesto —decisión del taller— y el código es para
+         encontrarlo después, no para pedirlo. El externo es el del proveedor y
+         acá no se inventa: en el sistema actual esa casilla está deshabilitada
+         y siempre vacía. */
+      codigo_interno: null, codigo_externo: null,
       fecha_solicitud: HOY, fecha_bodega: null, fecha_entrega_area: null,
       observacion: '',
       // Las tres marcas del repuesto guardan QUIÉN, no sólo cuándo: el
@@ -1472,6 +1480,22 @@ const Modelo = (function () {
   /* Los dos hitos son FECHAS, no booleanos. Con booleanos no se puede medir
      cuánto demora un repuesto, que es la mitad de la conversación con la
      compañía. */
+  /* El código interno lo escribe bodega sobre un repuesto que ya existe. Va
+     como operación propia y no colgado de `recibir_repuesto` porque se corrige
+     solo: uno se equivoca al teclear un código y no por eso el repuesto tiene
+     que volver a llegar. */
+  function fijar_codigo_repuesto(repuesto_id, codigo) {
+    const r = db.repuesto.find((x) => x.id === repuesto_id);
+    if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
+    const permiso = Reglas.puedeCargarRepuesto(db, { ot_id: r.ot_id });
+    if (!permiso.ok) return permiso;
+    const nuevo = String(codigo == null ? '' : codigo).trim() || null;
+    if (nuevo === (r.codigo_interno || null)) return { ok: false, motivo: 'El código ya decía eso.' };
+    r.codigo_interno = nuevo;
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
   function recibir_repuesto(repuesto_id, fecha) {
     const r = db.repuesto.find((x) => x.id === repuesto_id);
     if (!r) return { ok: false, motivo: 'El repuesto no existe.' };
@@ -2562,6 +2586,7 @@ const Modelo = (function () {
     cargar_repuesto: 'cargar un repuesto',
     recibir_repuesto: 'recibir un repuesto',
     entregar_repuesto_area: 'entregar un repuesto al área',
+    fijar_codigo_repuesto: 'el código interno del repuesto',
     adjuntar_vale_repuesto: 'cargar el vale de retiro',
     devolver_repuesto: 'la devolución del repuesto',
     declarar_perdida_total: 'la declaración de pérdida total',
@@ -2630,6 +2655,7 @@ const Modelo = (function () {
     cargar_repuesto: 'repuesto.cargar',
     recibir_repuesto: 'repuesto.cargar',
     entregar_repuesto_area: 'repuesto.cargar',
+    fijar_codigo_repuesto: 'repuesto.cargar',
     adjuntar_vale_repuesto: 'repuesto.cargar',
     devolver_repuesto: 'repuesto.devolver',
     declarar_perdida_total: 'perdida_total.declarar',
@@ -2734,7 +2760,7 @@ const Modelo = (function () {
   // Reciben el id de otra cosa y hay que subir hasta la orden.
   const OT_POR_TABLA = {
     recibir_repuesto: 'repuesto', entregar_repuesto_area: 'repuesto',
-    fijar_responsable_pago: 'repuesto',
+    fijar_responsable_pago: 'repuesto', fijar_codigo_repuesto: 'repuesto',
     adjuntar_vale_repuesto: 'repuesto', devolver_repuesto: 'repuesto',
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
@@ -2812,6 +2838,7 @@ const Modelo = (function () {
     programar_entrega, corregir_recepcion, correccionesDeRecepcion,
     cargar_repuesto, recibir_repuesto, entregar_repuesto_area, fijar_responsable_pago,
     adjuntar_vale_repuesto, devolver_repuesto, declarar_perdida_total,
+    fijar_codigo_repuesto,
     avisos, avisosDe,
     crear_presupuesto, agregar_linea_presupuesto, quitar_linea_presupuesto,
     eliminar_presupuesto,

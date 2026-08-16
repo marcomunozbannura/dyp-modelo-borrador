@@ -1,6 +1,6 @@
 /* Automotora DyP — Modelo Borrador · Arttmize SpA
    ────────────────────────────────────────────────────────────────────────
-   BODEGA — cuatro pantallas, y dos de ellas están rotas en el original.
+   BODEGA — dos pantallas. Eran cuatro; las otras dos no se usan (ver abajo).
 
    Bodega NO es inventario de venta: es control de repuestos por orden de
    trabajo, y solo opera sobre vehículos que están en la torre. La razón es de
@@ -45,15 +45,24 @@ const BODEGA_PANTALLAS = [
     desc: 'Qué repuestos pide cada presupuesto y cuáles ya se cargaron' },
   { id: 'seguimiento', n: 'Seguimiento Repuestos', icono: 'repuesto',
     desc: 'Pedido, llegada a bodega y entrega al área, con sus fechas' },
-  { id: 'costos',      n: 'Costos de Reparación', icono: 'presupuesto',
-    desc: 'Los costos adicionales que no estaban en el presupuesto' },
-  { id: 'tot',         n: 'Valorizar TOT', icono: 'recepcion',
-    desc: 'Los trabajos que se mandan a terceros' }
 ];
+
+/* 🔶 SE FUERON COSTOS DE REPARACIÓN Y VALORIZAR TOT (16-08-2026, Marco).
+
+   No es que no se alcanzaran: **no se usan**. `Costos de Reparación` el taller
+   no lo ocupa hoy —va en la misma línea de la decisión del 13-08 de sacar
+   costos y utilidad por orden, porque el taller no los lleva— y
+   `Valorizar TOT` **en el sistema real ni siquiera abre**: cuelga el
+   navegador, verificado en dos intentos independientes.
+
+   Replicar una pantalla que nadie usa cuesta lo mismo que una que sí, y además
+   ensucia: el que entra a Bodega tiene que ver las dos cosas que hace, no
+   cuatro de las que dos no llevan a ninguna parte. Si el taller dice que las
+   necesita, están en el historial de git y vuelven. */
 
 function bodegaEstado() {
   // Se entra por el menú, no por una pantalla cualquiera. Igual que Recepción.
-  ui.bodega = ui.bodega || { pantalla: 'menu', patente: '', otId: null, busqueda: '' };
+  ui.bodega = ui.bodega || { pantalla: 'menu', patente: '', otId: null, busqueda: '', presupuestoId: null };
   return ui.bodega;
 }
 
@@ -77,8 +86,7 @@ function vBodega() {
   if (b.pantalla === 'menu') return vBodegaMenu();
 
   const opcion = BODEGA_PANTALLAS.find((x) => x.id === b.pantalla) || BODEGA_PANTALLAS[0];
-  const cuerpo = { checklist: bodegaChecklist, seguimiento: bodegaSeguimiento,
-                   costos: bodegaCostos, tot: bodegaTot }[opcion.id]();
+  const cuerpo = { checklist: bodegaChecklist, seguimiento: bodegaSeguimiento }[opcion.id]();
   return `
   <button class="btn volver" id="bod-menu"><span class="flecha-atras">&#8592;</span>
     Volver a las opciones de Bodega</button>
@@ -97,20 +105,129 @@ function vBodega() {
 
 function bodegaChecklist() {
   const b = bodegaEstado();
-  const o = b.otId ? Modelo.otPorId(b.otId) : null;
+  /* Con un presupuesto elegido se pasa a su hoja de repuestos; si no, al
+     buscador. Es el mismo camino del sistema actual: patente → presupuesto →
+     repuestos de ESE presupuesto. */
+  if (b.presupuestoId) {
+    const o = Modelo.torre().find((x) => x.presupuestos.some((p) => p.id === b.presupuestoId));
+    const p = o && o.presupuestos.find((x) => x.id === b.presupuestoId);
+    if (o && p) return bodegaRepuestosPresupuesto(o, p);
+  }
+
+  const q = String(b.patente || '').trim().toUpperCase();
+  const encontradas = q ? Modelo.torre().filter((o) =>
+    o.patente.indexOf(q) >= 0 || String(o.numeroOT).indexOf(q) >= 0) : [];
+
+  // Una fila POR PRESUPUESTO, no por vehículo: una OT puede tener varias OR y
+  // cada una pide sus propios repuestos.
+  const filas = [];
+  encontradas.forEach((o) => o.presupuestos.forEach((p) => filas.push({ o, p })));
+
+  const tabla = `
+    <h3 style="font-size:13px;margin:14px 0 6px">Resultados de la patente &ldquo;${esc(q)}&rdquo;</h3>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>OT</th><th>Patente</th><th>Presupuesto</th><th>Reparación</th>
+        <th class="num">Repuestos</th><th>Acción</th></tr></thead>
+      <tbody>${filas.map(({ o, p }) => '<tr><td class="num">' + o.numeroOT + '</td>' +
+        '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
+        '<td class="cod">' + esc(p.numeroOR) + '</td>' +
+        '<td class="num">' + esc(p.idReparacion || '—') + '</td>' +
+        '<td class="num">' + o.repuestos.length + '</td>' +
+        '<td><button class="btn secundario" data-bod-presu="' + esc(p.id) + '">' +
+          'Ver Repuestos de Presupuesto</button></td></tr>').join('')}
+      </tbody></table></div>`;
+
+  const vacio = (t, x) => '<div class="vacio"><div class="titulo">' + t + '</div>' +
+    (x ? '<div class="texto">' + x + '</div>' : '') + '</div>';
 
   return `
   <div class="rejilla-campos">
     <div class="campo"><label>Buscar unidad para ver los repuestos del presupuesto</label>
-      <input id="bod-patente" value="${esc(b.patente)}" placeholder="Patente"></div>
-    <div class="campo"><label>&nbsp;</label><button class="btn" id="bod-buscar">Buscar patente</button></div>
+      <input id="bod-patente" value="${esc(b.patente)}" placeholder="Patente u OT" autocomplete="off"></div>
+    <div class="campo"><label>&nbsp;</label><button class="btn" id="bod-buscar">Buscar por patente</button></div>
   </div>
 
-  ${o ? bodegaFichaRepuestos(o) : (b.patente
-    ? '<div class="vacio"><div class="titulo">Sin resultados para “' + esc(b.patente) + '”</div>' +
-      '<div class="texto">Bodega solo muestra vehículos que están en la torre: es a propósito, ' +
-      'para que nadie cargue un repuesto olvidado después de cerrada la OT.</div></div>'
-    : '<div class="vacio"><div class="titulo">Escribe una patente</div></div>')}`;
+  ${!q ? vacio('Escribe una patente', 'Bodega solo muestra vehículos que están en la torre: es a ' +
+      'propósito, para que nadie cargue un repuesto olvidado después de cerrada la OT.')
+    : (!encontradas.length ? vacio('Sin resultados para &ldquo;' + esc(q) + '&rdquo;')
+      : (!filas.length ? vacio('Esa unidad todavía no tiene presupuesto',
+          'Los repuestos salen de la OR. Se abre en Recepción → Agregar OR y la valoriza el evaluador.')
+        : tabla))}`;
+}
+
+/* ── La hoja de repuestos de UN presupuesto ────────────────────────────
+   Las piezas que se digitaron en el presupuesto, con su código, su proveedor y
+   las dos casillas que marca bodega: **OK Bodega** cuando la pieza llegó y
+   **Entregado** cuando se la llevó el área.
+
+   Las dos casillas son los dos hitos CON FECHA que el motor ya tenía: marcar
+   escribe la fecha de hoy y deja el hecho con su autor. En el original son un
+   sí/no, y por eso allá no se puede responder cuánto demoró un repuesto — que
+   es la mitad de la conversación con la compañía.
+
+   Entregado no se puede marcar antes que OK Bodega: no se entrega lo que no ha
+   llegado. La casilla viene deshabilitada y dice por qué. */
+function bodegaRepuestosPresupuesto(o, p) {
+  const pagos = Modelo.catalogo('responsable_pago');
+  const llegados = o.repuestos.filter((r) => r.fechaBodega).length;
+
+  const fila = (r) => '<tr>' +
+    '<td><input data-cod="' + esc(r.id) + '" value="' + esc(r.codigoInterno || '') +
+      '" placeholder="El de bodega"></td>' +
+    // Deshabilitado a propósito: en el sistema actual está gris y vacío. No se
+    // inventa un dato que allá nadie llena.
+    '<td><input value="' + esc(r.codigoExterno || '') + '" disabled ' +
+      'title="En el sistema actual esta casilla está deshabilitada y vacía"></td>' +
+    '<td class="num">' + r.cantidad + '</td>' +
+    '<td>' + esc(r.descripcion) + '</td>' +
+    '<td><select data-pago="' + esc(r.id) + '">' + pagos.map((x) =>
+      '<option value="' + esc(x.id) + '"' + (x.nombre === r.responsablePago ? ' selected' : '') +
+      '>' + esc(x.nombre) + '</option>').join('') + '</select></td>' +
+    '<td style="text-align:center"><input type="checkbox" data-ok="' + esc(r.id) + '"' +
+      (r.fechaBodega ? ' checked' : '') + ' title="' +
+      (r.fechaBodega ? 'Llegó el ' + esc(fCorta(r.fechaBodega)) : 'Marcar cuando llegue') + '"></td>' +
+    /* Entregado pide DOS cosas antes: que la pieza haya llegado y que esté
+       cargado el vale de retiro. La segunda la pidió el cliente —es lo que
+       comprueba quién se llevó el repuesto— y el motor la exige igual. La
+       casilla lo dice ANTES de apretarla en vez de rebotar después: un botón
+       que se puede apretar y siempre falla enseña a no confiar en la
+       pantalla. El vale se sube en la ficha de abajo. */
+    '<td style="text-align:center"><input type="checkbox" data-ent="' + esc(r.id) + '"' +
+      (r.fechaEntregaArea ? ' checked' : '') +
+      (r.fechaBodega && (r.valeMediaId || r.fechaEntregaArea) ? '' : ' disabled') + ' title="' +
+      (r.fechaEntregaArea ? 'Entregado el ' + esc(fCorta(r.fechaEntregaArea))
+        : (!r.fechaBodega ? 'No se puede entregar lo que todavía no llegó'
+          : (!r.valeMediaId ? 'Falta subir el vale de retiro, abajo en la ficha'
+            : 'Marcar al entregarlo al área'))) + '"></td></tr>';
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px">
+    <h3 style="margin:0;font-size:15px">Repuestos Presupuesto Orden N° ${esc(p.numeroOR)}</h3>
+    <button class="btn secundario" id="bod-a-buscar">Volver a Bodega de Repuestos</button>
+  </div>
+
+  <div class="panel">
+    <div class="cab"><div><h2>Repuestos</h2>
+      <div class="desc">OT ${o.numeroOT} · ${esc(o.patente)} · ${esc(o.cliente)}</div></div>
+      <span class="et ${llegados === o.repuestos.length ? 'verde' : 'ambar'}">${llegados} de
+        ${o.repuestos.length} en bodega</span></div>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th>Código interno</th><th>Código externo</th><th class="num" style="width:70px">Cantidad</th>
+        <th>Descripción</th><th style="width:160px">Proveedor</th>
+        <th style="width:90px">OK Bodega</th><th style="width:90px">Entregado</th></tr></thead>
+      <tbody>${o.repuestos.length ? o.repuestos.map(fila).join('')
+        : '<tr><td colspan="7"><div class="vacio"><div class="titulo">Este presupuesto no generó ' +
+          'repuestos</div><div class="texto">Los repuestos salen de las líneas de proceso ' +
+          '<strong>Cambio</strong>. Si el presupuesto es sólo mano de obra, no hay nada que pedir.' +
+          '</div></div></td></tr>'}</tbody>
+    </table></div>
+    <div class="cuerpo">
+      <div class="nota">Las casillas guardan al marcarlas —cada una escribe su fecha y queda en el
+        expediente con quién la marcó—, así que ahí <strong>no hay que apretar Guardar</strong>.
+        El código interno sí: se escribe y se guarda.</div>
+      <div style="margin-top:9px"><button class="btn" id="bod-guardar-cod">Guardar</button></div>
+    </div>
+  </div>`;
 }
 
 function bodegaFichaRepuestos(o) {
@@ -164,8 +281,9 @@ function bodegaSeguimiento() {
   const conPend = filas.filter((o) => o.repuestos.some((r) => !r.fechaBodega));
 
   const lista = (o, pendientes) => o.repuestos.filter((r) => pendientes ? !r.fechaBodega : r.fechaBodega)
-    .map((r) => esc(r.descripcion) + ' <span class="et gris">' + esc(r.responsablePago || 's/d') + '</span>')
-    .join('<br>') || '<span style="color:var(--gris-2)">—</span>';
+    .map((r) => (pendientes ? '<span style="color:var(--rojo)">' : '<span>') + esc(r.descripcion) +
+      ' (' + esc((r.responsablePago || 's/d').toLowerCase()) + ')</span>')
+    .join(', ') || '<span style="color:var(--gris-2)">—</span>';
 
   return `
   <div class="indicadores" style="margin-bottom:11px">
@@ -204,92 +322,6 @@ function bodegaSeguimiento() {
   </table></div>
   <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
 `;
-}
-
-/* ── Costos adicionales ────────────────────────────────────────────────── */
-
-function bodegaCostos() {
-  const b = bodegaEstado();
-  const o = b.otId ? Modelo.otPorId(b.otId) : null;
-  const filas = Modelo.torre();
-  const pagos = Modelo.catalogo('responsable_pago');
-
-  if (o) {
-    const costos = Modelo.costosDe(o.id);
-    const total = costos.reduce((s, c) => s + c.monto, 0);
-    const delTaller = costos.filter((c) => c.pagaTaller).reduce((s, c) => s + c.monto, 0);
-    return `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:11px">
-      <button class="btn secundario" id="bod-volver">Volver al listado</button>
-      <strong>OT ${o.numeroOT} · ${esc(o.patente)}</strong>
-      <span style="flex:1"></span>
-      <span class="et gris">Total ${fMonto(total)}</span>
-      <span class="et roja">Lo pone DyP: ${fMonto(delTaller)}</span>
-    </div>
-    <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>Fecha</th><th>Descripción</th><th>Quién paga</th><th>Monto</th></tr></thead>
-      <tbody>${costos.length ? costos.map((c) =>
-        '<tr><td class="num">' + fCorta(c.fecha) + '</td><td>' + esc(c.descripcion) + '</td>' +
-        '<td><span class="et ' + (c.pagaTaller ? 'roja' : 'gris') + '">' + esc(c.responsable) + '</span></td>' +
-        '<td class="num">' + fMonto(c.monto) + '</td></tr>').join('')
-        : '<tr><td colspan="4"><div class="vacio"><div class="titulo">Sin costos adicionales</div></div></td></tr>'}</tbody>
-    </table></div>
-    <fieldset class="bloque" style="margin-top:11px"><legend>Agregar costo</legend>
-      <div class="rejilla-campos">
-        <div class="campo"><label>Descripción</label><input id="ca-desc" placeholder="Flete, grúa, insumos…"></div>
-        <div class="campo"><label>Monto</label><input type="number" id="ca-monto"></div>
-        <div class="campo"><label>Quién paga</label><select id="ca-pago">${pagos.map((x) =>
-          '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>').join('')}</select></div>
-        <div class="campo"><label>&nbsp;</label><button class="btn" id="ca-agregar">Agregar</button></div>
-      </div>
-    </fieldset>
-`;
-  }
-
-  return `
-  <div class="grid-envoltorio"><table class="grid">
-    <thead><tr><th>OT</th><th>Cliente</th><th>Patente</th><th>Marca</th><th>Modelo</th>
-      <th>Costos</th><th>Los pone DyP</th><th>Acción</th></tr></thead>
-    <tbody>${filas.slice(0, 60).map((o2) => {
-      const c = Modelo.costosDe(o2.id);
-      const taller = c.filter((x) => x.pagaTaller).reduce((s, x) => s + x.monto, 0);
-      return '<tr class="fila" data-ot="' + esc(o2.numeroOT) + '"><td class="num"><strong>' + o2.numeroOT + '</strong></td>' +
-        '<td>' + esc(o2.cliente) + '</td>' +
-        '<td><span class="patente">' + esc(o2.patente) + '</span></td>' +
-        '<td>' + esc(o2.marca || '—') + '</td><td>' + esc(o2.modelo || '—') + '</td>' +
-        '<td class="num">' + (c.length ? fMonto(c.reduce((s, x) => s + x.monto, 0)) : '—') + '</td>' +
-        '<td class="num">' + (taller ? '<span style="color:var(--rojo)">' + fMonto(taller) + '</span>' : '—') + '</td>' +
-        '<td><button class="btn secundario" data-costos-ot="' + esc(o2.id) + '">Ver / cargar</button></td></tr>';
-    }).join('')}</tbody>
-  </table></div>
-  <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>`;
-}
-
-/* ── Valorizar TOT · declarada, no construida ──────────────────────────── */
-
-function bodegaTot() {
-  return `
-  <div class="vacio">
-    ${ico('alerta')}
-    <div class="titulo">No sabemos qué hace Valorizar TOT</div>
-    <div class="texto" style="max-width:640px;margin:0 auto;text-align:left">
-      En el sistema actual <strong>cuelga el navegador</strong>. Dos intentos independientes, con 3 y
-      5 segundos de espera: en los dos el motor de renderizado dejó de responder y hubo que abandonar
-      la pestaña. Ninguna otra de las 39 pantallas hace esto. <em>El comportamiento es el hallazgo.</em>
-      <br><br>
-      Y no es una pantalla menor: <span class="cod">Venta ToT</span> es <strong>una de las tres
-      líneas de venta</strong> que muestra el Histórico, junto a mano de obra y repuestos. Sin
-      saber qué la alimenta, esa columna queda a medias.
-      <br><br>
-      La deducción —no confirmada— es que <strong>ToT sean trabajos a terceros</strong>, por su
-      correspondencia con la sección <span class="cod">Externos</span> del presupuesto y con esta
-      pantalla de Bodega. Pero es una deducción, y construir sobre ella sería inventar.
-      <br><br>
-      <strong>Es la pregunta 5:</strong> ¿qué hace Valorizar TOT y qué es "ToT"?
-      Mientras tanto, el bloque <span class="cod">Externos</span> del presupuesto ya captura el
-      trabajo a terceros con su venta y su costo.
-    </div>
-  </div>`;
 }
 
 /* ── Cableado ──────────────────────────────────────────────────────────── */
@@ -338,8 +370,44 @@ function pBodega() {
   // El menú de entrada, y las pestañas de arriba una vez adentro: las dos
   // llevan a lo mismo, y el que ya sabe dónde va no tiene que volver al menú.
   document.querySelectorAll('[data-bod-opcion]').forEach((x) => x.addEventListener('click', () => {
-    b.pantalla = x.dataset.bodOpcion; b.otId = null; b.patente = ''; render();
+    b.pantalla = x.dataset.bodOpcion; b.otId = null; b.patente = ''; b.presupuestoId = null; render();
   }));
+
+  /* La hoja de repuestos de un presupuesto: entrar, volver, marcar las dos
+     casillas y guardar los códigos. */
+  document.querySelectorAll('[data-bod-presu]').forEach((x) => x.addEventListener('click', () => {
+    b.presupuestoId = x.dataset.bodPresu; render();
+  }));
+  const aBuscar = document.getElementById('bod-a-buscar');
+  if (aBuscar) aBuscar.addEventListener('click', () => { b.presupuestoId = null; render(); });
+
+  document.querySelectorAll('[data-ok]').forEach((x) => x.addEventListener('change', () => {
+    if (!x.checked) { render(); return avisar({ ok: false, motivo: 'La llegada a bodega no se ' +
+      'desmarca: es un hecho con fecha. Si la pieza se va, se registra la devolución.' }); }
+    ejecutar(() => Modelo.recibir_repuesto(x.dataset.ok, HOY), 'Repuesto recibido en bodega.');
+  }));
+  document.querySelectorAll('[data-ent]').forEach((x) => x.addEventListener('change', () => {
+    if (!x.checked) { render(); return avisar({ ok: false, motivo: 'La entrega al área no se ' +
+      'desmarca: es un hecho con fecha.' }); }
+    ejecutar(() => Modelo.entregar_repuesto_area(x.dataset.ent, HOY), 'Repuesto entregado al área.');
+  }));
+
+  const guardarCod = document.getElementById('bod-guardar-cod');
+  if (guardarCod) guardarCod.addEventListener('click', () => {
+    const campos = [...document.querySelectorAll('[data-cod]')];
+    let n = 0, malo = null;
+    campos.forEach((c) => {
+      const r = Modelo.fijar_codigo_repuesto(c.dataset.cod, c.value);
+      if (r.ok) n++;
+      // "El código ya decía eso" no es un error que valga la pena mostrar.
+      else if (!/ya decía/.test(r.motivo)) malo = r;
+    });
+    if (malo) return avisar(malo);
+    render();
+    avisar({ ok: true, motivo: '' }, n
+      ? plural(n, 'código guardado', 'códigos guardados') + '.'
+      : 'No había ningún código que cambiar.');
+  });
   document.querySelectorAll('[data-bod]').forEach((x) => x.addEventListener('click', () => {
     b.pantalla = x.dataset.bod; b.otId = null; render();
   }));

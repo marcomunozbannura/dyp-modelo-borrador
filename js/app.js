@@ -305,6 +305,9 @@ function accionModulo(accion) {
 
     case 'nuevo':
       if (ui.vista === 'personal') { const b = document.getElementById('per-nuevo'); if (b) b.click(); return; }
+      // El botón dice "Nuevo ingreso", así que entra derecho al formulario y no
+      // al menú de opciones: el usuario ya eligió al apretarlo.
+      rec().pantalla = 'nuevo';
       return ir('recepcion');
 
     case 'abrir': {
@@ -339,7 +342,16 @@ function accionModulo(accion) {
 
     case 'limpiar':
       if (ui.vista === 'historico') { const b = document.getElementById('h-limpiar'); if (b) b.click(); return; }
-      if (ui.vista === 'recepcion') { const b = document.getElementById('rec-limpiar'); if (b) b.click(); return; }
+      if (ui.vista === 'recepcion') {
+        const b = document.getElementById('rec-limpiar');
+        if (b) return b.click();
+        // Desde el menú no hay botón a la vista: se entra al formulario, que es
+        // donde vive el borrador, en vez de no hacer nada.
+        rec().pantalla = 'nuevo'; render();
+        const b2 = document.getElementById('rec-limpiar');
+        if (b2) b2.click();
+        return;
+      }
       return;
 
     case 'guardar':
@@ -353,7 +365,10 @@ function accionModulo(accion) {
 
     case 'fotos': {
       const r = rec();
-      if (r.paso !== 'danos') { r.paso = 'danos'; guardarBorrador(); render(); }
+      // Las fotos viven dentro del formulario: si estamos en el menú, se entra.
+      if (r.pantalla !== 'nuevo' || r.paso !== 'danos') {
+        r.pantalla = 'nuevo'; r.paso = 'danos'; guardarBorrador(); render();
+      }
       const z = document.getElementById('recfoto-zona');
       if (z) z.scrollIntoView({ block: 'center' });
       return;
@@ -860,6 +875,9 @@ const ESTADO_BARRA = {
   historico: () => '<strong>' + Modelo.historico({ todo: true }).length + '</strong> vehículos entregados',
   recepcion: () => {
     const r = rec();
+    // En el menú de opciones todavía no hay nada que contar.
+    if (r.pantalla === 'menu') return '<strong>' + RECEPCION_OPCIONES.length + '</strong> opciones';
+    if (r.pantalla === 'editar' || r.pantalla === 'or') return 'Buscar por patente';
     // Cuántos ítems del checklist se revisaron de verdad. Contar "presentes"
     // escondía que la mayoría podía estar sin mirar.
     const total = Modelo.catalogo('inventario_item').length;

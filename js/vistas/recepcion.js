@@ -56,6 +56,28 @@ const RECEPCION_PASOS = [
 
 const CLAVE_BORRADOR = 'dyp-recepcion-borrador';
 
+/* ── El menú del recepcionista ─────────────────────────────────────────
+   🟰 SE COPIA DEL ORIGINAL (`miembros.php?ver=recepcionista`). Apretar
+   `Recepción` no abre un formulario: abre estas cuatro opciones, con su icono
+   redondo y su rótulo. El recepcionista ya tiene el gesto internalizado y no
+   hay ninguna razón para cambiárselo.
+
+   Los cuatro llevan a algo que existe. `Editar Recepción` es el único que no
+   está construido del todo —editar una recepción ya guardada exige política de
+   versiones, y esa decisión es del taller— así que lleva a lo que HOY sí se
+   puede hacer y dice con todas las letras qué falta. No se dibuja un botón que
+   no haga nada, pero tampoco se esconde una opción que el original tiene. */
+const RECEPCION_OPCIONES = [
+  { id: 'nuevo',    icono: 'recepcion', rot: 'Nuevo Ingreso',   permiso: 'ot.crear',
+    desc: 'Recibir un vehículo: cliente, vehículo, solicitud, estado y verificación' },
+  { id: 'entregar', icono: 'check',     rot: 'Entregar Unidad', permiso: 'entrega.registrar',
+    desc: 'Buscar por patente y cerrar el ciclo' },
+  { id: 'editar',   icono: 'documento', rot: 'Editar Recepción', permiso: 'ot.editar',
+    desc: 'Abrir una recepción ya hecha' },
+  { id: 'or',       icono: 'nuevo',     rot: 'Agregar OR',      permiso: 'presupuesto.abrir',
+    desc: 'Abrir una orden de reparación sobre un vehículo en taller' }
+];
+
 /* El VIN de un vehículo tiene DIECISIETE caracteres. No es una convención
    nuestra: es la norma ISO 3779 y la usa todo el mundo. Un VIN de 16 o de 18
    es un error de tipeo, y encontrarlo al recibir el auto cuesta cero — dos
@@ -102,6 +124,13 @@ function rec() {
   // Los campos marcados en rojo por el último rechazo. Vive fuera del
   // borrador: es el resultado de apretar un botón, no un dato del ingreso.
   if (!ui.recepcion.marcados) ui.recepcion.marcados = [];
+  /* En qué pantalla del módulo estamos: el menú de cuatro opciones, el
+     formulario, o el buscador de `Editar Recepción`. Tampoco va al borrador —
+     entrar a Recepción siempre muestra el menú, como en el original, aunque
+     haya un ingreso a medio llenar. Que el borrador siga ahí se avisa en la
+     propia opción. */
+  if (!ui.recepcion.pantalla) ui.recepcion.pantalla = 'menu';
+  if (!ui.recepcion.buscaEditar) ui.recepcion.buscaEditar = '';
   return ui.recepcion;
 }
 
@@ -285,9 +314,125 @@ const recMarcado = (clave) => rec().marcados.indexOf(clave) >= 0;
 
 /* ── La vista ──────────────────────────────────────────────────────────── */
 
+/* El menú de cuatro opciones, copiado del original. Cada tarjeta es un botón
+   grande: es una pantalla que se usa de pie, en el mesón, muchas veces al día. */
+function vRecepcionMenu() {
+  const r = rec();
+  const hayBorrador = !!(String(r.campos.patente || '').trim() ||
+    String(r.campos.rut || '').trim() || r.danos.length || r.fotos.length);
+
+  const tarjeta = (o) => {
+    const puede = Modelo.puede(o.permiso);
+    /* La opción que el rol no puede usar NO se esconde ni se apaga: se aprieta
+       igual y dice quién sí puede. Esconderla dejaría al recepcionista con un
+       menú distinto al que conoce, y apagarla no enseña nada. */
+    return '<button class="opcion-rec' + (puede ? '' : ' ajena') + '" data-opcion="' + o.id + '">' +
+      '<span class="circulo">' + ico(o.icono, 'g') + '</span>' +
+      '<span class="rot">' + esc(o.rot) + '</span>' +
+      '<span class="desc">' + esc(o.desc) + '</span>' +
+      (o.id === 'nuevo' && hayBorrador
+        ? '<span class="et ambar">hay un borrador a medio llenar</span>' : '') +
+      (puede ? '' : '<span class="et gris">no es de este perfil</span>') +
+      '</button>';
+  };
+
+  return `
+  <div class="panel">
+    <div class="cab"><div><h2>${ico('recepcion', 'g')}Seleccione una opción</h2>
+      <div class="desc">Las cuatro del sistema actual, con sus mismos nombres</div></div></div>
+    <div class="cuerpo">
+      <div class="opciones-rec">${RECEPCION_OPCIONES.map(tarjeta).join('')}</div>
+    </div>
+  </div>`;
+}
+
+/* Las dos opciones que trabajan sobre una orden YA EXISTENTE comparten el mismo
+   buscador por patente que usa Entrega, porque es el gesto que el taller tiene
+   internalizado: el vehículo está ahí y lo que se sabe es la patente.
+
+   `Editar Recepción` abre la ficha, que es donde hoy se cambia lo que se puede
+   cambiar. ⚠️ Editar los DATOS de una recepción ya guardada —cliente, vehículo,
+   checklist, daños— no está construido, y no por falta de tiempo: una recepción
+   es lo que el cliente firmó. Cambiarla después obliga a decidir si se versiona,
+   quién puede y qué pasa con el comprobante ya impreso. Es del taller decidirlo.
+
+   `Agregar OR` abre la orden de reparación ahí mismo. 🔴 Y ésta es la única
+   puerta que tiene el recepcionista para hacerlo: el cliente dijo «el
+   recepcionista es quien crea la OR, siempre», el motor se lo permite
+   —`crear_presupuesto` pide `presupuesto.abrir`— pero el MÓDULO Presupuesto
+   pide `presupuesto.crear`, que es del evaluador. Abrir la OR y valorizarla son
+   dos actos distintos, y esto construye el primero sin darle el segundo. */
+const REC_BUSCADOR = {
+  editar: { icono: 'documento', rot: 'Editar Recepción', accion: 'Abrir la ficha',
+            desc: 'Busca por patente, igual que Entrega' },
+  or:     { icono: 'nuevo',     rot: 'Agregar OR',       accion: 'Abrir OR',
+            desc: 'Sobre qué vehículo se abre la orden de reparación' }
+};
+
+function vRecepcionBuscar(modo) {
+  const r = rec();
+  const cfg = REC_BUSCADOR[modo];
+  const q = String(r.buscaEditar || '').trim().toUpperCase();
+  const encontradas = q ? Modelo.torre().filter((o) => o.patente.indexOf(q) >= 0) : [];
+
+  return `
+  <div class="panel">
+    <div class="cab"><div><h2>${ico(cfg.icono, 'g')}${esc(cfg.rot)}</h2>
+      <div class="desc">${esc(cfg.desc)}</div></div>
+      <div><button class="btn secundario" id="rec-volver">Volver a las opciones</button></div>
+    </div>
+    <div class="cuerpo">
+      <div class="rejilla-campos">
+        <div class="campo"><label>Patente</label>
+          <input id="rec-buscar-patente" value="${esc(r.buscaEditar)}" placeholder="AABB11"
+            autocomplete="off"></div>
+      </div>
+
+      ${q ? (encontradas.length ? `
+      <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
+        <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Ingreso</th><th>Estado</th>
+          ${modo === 'or' ? '<th>OR abiertas</th>' : ''}<th></th></tr></thead>
+        <tbody>${encontradas.map((o) => '<tr><td class="num">' + o.numeroOT + '</td>' +
+          '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
+          '<td>' + esc(o.cliente) + '</td>' +
+          '<td>' + fFecha(o.fechaIngreso) + '</td>' +
+          '<td><span class="et ' + o.estadoClase + '">' + esc(o.estadoNombre) + '</span></td>' +
+          (modo === 'or'
+            ? '<td>' + (o.presupuestos.length
+                ? o.presupuestos.map((p) => '<span class="cod">' + esc(p.numeroOR) + '</span>').join(' ')
+                : '<span class="et gris">ninguna</span>') + '</td>'
+            : '') +
+          '<td><button class="btn secundario" data-' +
+            (modo === 'or' ? 'abrir-or' : 'abrir-ot') + '="' + o.numeroOT + '">' +
+            esc(cfg.accion) + '</button></td></tr>').join('')}
+        </tbody>
+      </table></div>` : `
+      <div class="nota" style="margin-top:11px">Ninguna orden abierta con esa patente.
+        Si el vehículo ya se entregó, está en el Histórico.</div>`) : ''}
+
+      ${modo === 'editar' ? `
+      <div class="nota info" style="margin-top:12px">${ico('info')}
+        <strong>Qué se edita hoy y qué no.</strong> Desde la ficha se cambia el estado, el
+        responsable, las etapas, las fotos y los documentos. <strong>Los datos de la recepción
+        —cliente, vehículo, checklist y daños— todavía no.</strong> No es falta de tiempo: la
+        recepción es lo que el cliente firmó, y cambiarla después obliga a decidir si se versiona,
+        quién puede hacerlo y qué pasa con el comprobante ya impreso. Es una decisión del taller y
+        está anotada como pregunta abierta.
+      </div>` : `
+      <div class="nota info" style="margin-top:12px">${ico('info')}
+        <strong>Abrir la OR no es valorizarla.</strong> Acá se abre la orden de reparación sobre el
+        vehículo —que es lo que hace el recepcionista— y queda en cero, esperando que el evaluador
+        le ponga las líneas y los montos. Una OT puede tener <strong>varias OR</strong>.
+      </div>`}
+    </div>
+  </div>`;
+}
+
 function vRecepcion() {
   const r = rec();
   if (r.creadas) return vRecepcionResultado(r);
+  if (r.pantalla === 'menu') return vRecepcionMenu();
+  if (r.pantalla === 'editar' || r.pantalla === 'or') return vRecepcionBuscar(r.pantalla);
 
   /* El borrador se restaura de `localStorage`, y de ahí puede volver con un
      paso que ya no existe —una versión anterior del formulario, o el archivo
@@ -308,7 +453,8 @@ function vRecepcion() {
     <div class="cab">
       <div><h2>${ico('recepcion', 'g')}Nuevo ingreso</h2>
         <div class="desc">Cinco pasos. No se avanza con el paso incompleto; volver atrás se puede
-          siempre. El borrador se guarda solo.</div></div>
+          siempre. El borrador se guarda solo.
+          <button class="enlace-volver" id="rec-volver">← Volver a las opciones</button></div></div>
       <div class="chips">
         ${RECEPCION_PASOS.map((p, k) => '<button class="chip' +
           (p.id === r.paso ? ' activo' : (recAlcanzable(k) ? '' : ' pendiente')) +
@@ -981,14 +1127,61 @@ function pRecepcion() {
   if (r.creadas) {
     document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
       abrirFicha(b.dataset.abrirOt)));
+    // "Registrar otro ingreso" va derecho al formulario: ya se eligió.
     const nueva = document.getElementById('rec-nueva');
-    if (nueva) nueva.addEventListener('click', () => { limpiarBorrador(); render(); });
+    if (nueva) nueva.addEventListener('click', () => {
+      limpiarBorrador(); rec().pantalla = 'nuevo'; render();
+    });
     const comp = document.getElementById('rec-comprobante');
     // Ya existe la OT: el comprobante sale de ella, con su número.
     if (comp) comp.addEventListener('click', () => abrirImpreso('recepcion', r.creadas[0].ot_id));
     const torre = document.getElementById('rec-ir-torre');
     if (torre) torre.addEventListener('click', () => { limpiarBorrador(); ir('torre'); });
     return;
+  }
+
+  /* El menú de cuatro opciones. Cada una lleva a algo que existe; la que el rol
+     no puede usar se aprieta igual y dice quién sí puede. */
+  document.querySelectorAll('[data-opcion]').forEach((b) => b.addEventListener('click', () => {
+    const op = RECEPCION_OPCIONES.find((x) => x.id === b.dataset.opcion);
+    if (!op) return;
+    if (!Modelo.puede(op.permiso)) {
+      return avisar({ ok: false, motivo: '«' + op.rot + '» no es de este perfil. El rol ' +
+        (Modelo.rolActual().nombre || '—') + ' no tiene el permiso «' + op.permiso +
+        '». Se administra en Configuración → Roles y permisos.' });
+    }
+    if (op.id === 'entregar') return ir('entrega');
+    // Las otras tres son pantallas de este mismo módulo.
+    r.pantalla = op.id; r.buscaEditar = ''; render();
+  }));
+
+  // Volver al menú, desde el formulario o desde el buscador.
+  const volver = document.getElementById('rec-volver');
+  if (volver) volver.addEventListener('click', () => { r.pantalla = 'menu'; render(); });
+
+  // El buscador de `Editar Recepción`.
+  const buscar = document.getElementById('rec-buscar-patente');
+  if (buscar) {
+    buscar.addEventListener('input', () => {
+      r.buscaEditar = buscar.value.toUpperCase();
+      render();
+      const otra = document.getElementById('rec-buscar-patente');
+      if (otra) { otra.focus(); otra.setSelectionRange(otra.value.length, otra.value.length); }
+    });
+    document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
+      abrirFicha(b.dataset.abrirOt)));
+
+    /* Abrir la OR desde acá. Es el mismo procedimiento del motor que usa el
+       módulo de presupuesto, así que la regla y el permiso los revisa él: si un
+       día alguien no puede, lo rechaza con su motivo y no con un botón gris. */
+    document.querySelectorAll('[data-abrir-or]').forEach((b) => b.addEventListener('click', () => {
+      const o = Modelo.torre().find((x) => String(x.numeroOT) === b.dataset.abrirOr);
+      if (!o) return avisar({ ok: false, motivo: 'Esa orden ya no está abierta.' });
+      const res = Modelo.crear_presupuesto(o.id, { lineas: [] });
+      if (!avisar(res, 'OR ' + (res.numero_or || '') + ' abierta sobre la OT ' + o.numeroOT +
+        '. Queda en cero: la valoriza el evaluador.')) return;
+      render();
+    }));
   }
 
   /* Navegación entre pasos. Las pastillas dejan volver a cualquier paso
@@ -1212,6 +1405,8 @@ function recAvanzar() {
    formulario son de este archivo. */
 function recIrAVerificar() {
   const r = rec();
+  // Desde el menú, `Ingresar recepción` entra al formulario: es lo que se pidió.
+  if (r.pantalla !== 'nuevo') { r.pantalla = 'nuevo'; render(); }
   const faltan = recFaltantes();
   if (faltan.length) {
     r.paso = faltan[0].paso;

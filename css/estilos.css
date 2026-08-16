@@ -592,6 +592,44 @@ fieldset.bloque legend {
 .nota-dano { margin: -1px 0 6px 12px; }
 .nota-dano input { width: 100%; font-size: 11px; }
 
+/* ───────── El menú de opciones de Recepción ─────────
+   Copiado del original: cuatro opciones, cada una con su icono en un círculo
+   gris y su rótulo debajo. Es la excepción a la densidad del resto del sistema,
+   y a propósito: esta pantalla se usa de pie, en el mesón, muchas veces al día,
+   y el gesto tiene que ser un manotazo, no apuntar a una fila de 26 px. */
+.opciones-rec { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.opcion-rec {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 20px 14px; cursor: pointer; text-align: center;
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 4px;
+  font-family: inherit; color: var(--tinta);
+}
+.opcion-rec:hover { border-color: var(--acento); background: var(--acento-bg); }
+.opcion-rec:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+.opcion-rec .circulo {
+  width: 62px; height: 62px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--neutro-bg); border: 1px solid var(--borde-fuerte); color: var(--gris);
+}
+.opcion-rec:hover .circulo { background: var(--acento-solido); border-color: var(--acento-solido); color: #fff; }
+.opcion-rec .circulo .ico { width: 26px; height: 26px; flex-basis: 26px; stroke-width: 1.4; }
+.opcion-rec .rot { font-size: 14px; font-weight: 600; }
+.opcion-rec .desc { font-size: 11px; color: var(--gris); line-height: 1.4; }
+/* La opción que este perfil no puede usar. Se ve apagada pero se aprieta: la
+   regla explica de quién es, no la esconde ni la deshabilita. */
+.opcion-rec.ajena { opacity: .6; }
+.opcion-rec.ajena:hover { border-color: var(--borde-fuerte); background: var(--superficie); }
+.opcion-rec.ajena:hover .circulo { background: var(--neutro-bg); border-color: var(--borde-fuerte); color: var(--gris); }
+
+/* Vuelta al menú desde el formulario: un enlace, no un botón — no compite con
+   Anterior ni con Siguiente, que son los que mueven el trabajo. */
+.enlace-volver {
+  background: none; border: none; padding: 0 0 0 8px; margin-left: 6px;
+  border-left: 1px solid var(--borde); color: var(--acento-texto);
+  font-family: inherit; font-size: inherit; cursor: pointer;
+}
+.enlace-volver:hover { text-decoration: underline; }
+
 /* Formularios tipo ficha */
 .rejilla-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); gap: 8px; }
 .campo { display: flex; flex-direction: column; gap: 2px; }

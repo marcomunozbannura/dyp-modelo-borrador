@@ -285,7 +285,10 @@ const Modelo = (function () {
       // la orden, no un dato que falta por descuido.
       vinPendiente: !!veh.vin_pendiente, vinMotivo: veh.vin_motivo || null,
       cliente: nombreDe(cli),
-      rut: cli.rut, telefono: cli.telefono, direccion: cli.direccion,
+      rut: cli.rut, telefono: cli.telefono, direccion: cli.direccion, correo: cli.correo,
+      // Los ids de los tres catálogos del vehículo, además de sus nombres:
+      // Editar Recepción necesita saber cuál viene seleccionado.
+      marcaId: veh.marca_id, modeloId: veh.modelo_id, colorId: veh.color_id,
       compania: comp ? comp.codigo : '—', companiaId: o.compania_id,
       origenIngreso: (ix.tipo_ingreso.get(o.tipo_ingreso_id) || {}).codigo,
       origenIngresoNombre: (ix.tipo_ingreso.get(o.tipo_ingreso_id) || {}).nombre,
@@ -380,6 +383,10 @@ const Modelo = (function () {
       inventario: (ix.inventarioDeRec.get(o.recepcion_id) || []).map((i) => {
         const est = estadoInventario(i);
         return {
+          // El id del ítem, no sólo su nombre: Editar Recepción manda las
+          // correcciones del checklist como `item_id → estado`, y buscar por
+          // nombre es lo que se rompe el día que alguien corrige una tilde.
+          itemId: i.item_id,
           item: (ix.inventario_item.get(i.item_id) || {}).nombre,
           codigo: (ix.inventario_item.get(i.item_id) || {}).codigo,
           estado: est.codigo, estadoNombre: est.nombre, estadoClase: est.clase,
@@ -1174,6 +1181,143 @@ const Modelo = (function () {
       Reglas.nombreEstado(db, nuevo_estado) + "'" + (observacion ? '. Obs: ' + observacion : ''));
     tocado();
     return { ok: true, motivo: '' };
+  }
+
+  /* ── Corregir una recepción ya guardada ───────────────────────────────
+     Pedido de Marco el 15-08-2026. Faltaba, y no por tiempo: una recepción es
+     lo que el cliente firmó, y para poder cambiarla había que decidir tres
+     cosas. Se construyó con estas respuestas, y las tres quedan anotadas para
+     que el taller las confirme:
+
+     1 · ¿Se versiona o se edita encima? → **Se versiona.** Es la misma regla
+         que el cliente defendió para el presupuesto —"se versiona, no se
+         edita"— y acá pesa más todavía: hay una firma. La recepción queda con
+         un número de versión y cada corrección se guarda entera —qué campo,
+         qué decía antes, qué dice ahora, quién, cuándo y por qué—, así que el
+         documento original siempre se puede reconstruir.
+     2 · ¿Quién puede? → **Quien tiene `ot.editar`**: recepción y
+         administración. El caso real es la recepción arreglando su propio
+         error de tipeo el mismo día, y mandarla a pedirle permiso a otro por
+         un dígito del RUT es lo que hace que la gente deje de corregir.
+     3 · ¿Y el comprobante ya firmado? → **El impreso dice qué versión es** y
+         lista las correcciones. El papel firmado sigue siendo el original y no
+         se toca; lo que cambia es que el sistema ya no miente sobre él.
+
+     🔶 EL MOTIVO ES OBLIGATORIO. Es lo único que separa una corrección de una
+     alteración: sin motivo, el registro dice que alguien cambió el RUT y no
+     por qué, que es justo lo que no sirve para responderle a una compañía. */
+  function corregir_recepcion(ot_id, cambios, motivo) {
+    const o = db.orden_trabajo.find((x) => x.id === ot_id);
+    if (!o) return { ok: false, motivo: 'La orden de trabajo no existe.' };
+    if (Reglas.esTerminal(db, o.estado))
+      return { ok: false, motivo: 'La orden ' + o.numero_ot + ' ya está cerrada. Corregir la ' +
+        'recepción de un vehículo entregado cambia un documento que ya se usó para facturar: ' +
+        'esa decisión es del taller y todavía no está tomada.' };
+    if (!String(motivo || '').trim())
+      return { ok: false, motivo: 'Hay que escribir el motivo de la corrección. Sin motivo el ' +
+        'registro dice qué se cambió pero no por qué, y así no le sirve a nadie.' };
+
+    const r = db.recepcion.find((x) => x.id === o.recepcion_id);
+    if (!r) return { ok: false, motivo: 'Esta orden no tiene recepción registrada.' };
+    const veh = db.vehiculo.find((x) => x.id === r.vehiculo_id);
+    const cli = db.persona.find((x) => x.id === r.cliente_id);
+    const c = cambios || {};
+
+    /* La patente es la llave con la que el taller busca el auto. Si se corrige
+       hacia una que ya tiene orden abierta quedan dos órdenes vivas sobre el
+       mismo vehículo, que es la primera regla del sistema. */
+    if (c.vehiculo && c.vehiculo.patente && veh && c.vehiculo.patente !== veh.patente) {
+      const otra = db.vehiculo.find((x) => x.id !== veh.id && x.patente === c.vehiculo.patente);
+      const abierta = otra && db.orden_trabajo.find((x) => x.vehiculo_id === otra.id &&
+        Reglas.estaAbierta(db, x.estado));
+      if (abierta) return { ok: false, motivo: 'La patente ' + c.vehiculo.patente +
+        ' ya tiene la orden ' + abierta.numero_ot + ' abierta. Una patente, una orden.' };
+    }
+
+    // Qué cambió de verdad. Lo que se manda igual a lo que ya había no es una
+    // corrección y no ensucia el registro.
+    const hechos = [];
+    const anotar = (rotulo, antes, despues) => {
+      const a = antes == null ? '' : String(antes);
+      const d = despues == null ? '' : String(despues);
+      if (a === d) return false;
+      hechos.push({ campo: rotulo, antes: a, despues: d });
+      return true;
+    };
+
+    const CLIENTE = { nombres: 'Nombre del cliente', rut: 'RUT', telefono: 'Teléfono',
+      correo: 'Correo', direccion: 'Dirección' };
+    if (c.cliente && cli) Object.keys(CLIENTE).forEach((k) => {
+      if (c.cliente[k] === undefined) return;
+      if (anotar(CLIENTE[k], cli[k], c.cliente[k])) cli[k] = c.cliente[k];
+    });
+
+    const VEHICULO = { patente: 'Patente', vin: 'VIN', anio: 'Año' };
+    if (c.vehiculo && veh) {
+      Object.keys(VEHICULO).forEach((k) => {
+        if (c.vehiculo[k] === undefined) return;
+        if (anotar(VEHICULO[k], veh[k], c.vehiculo[k])) veh[k] = c.vehiculo[k];
+      });
+      // Los tres que son catálogo se anotan por su NOMBRE, no por su id: el
+      // registro lo lee una persona, no la base de datos.
+      [['marca_id', 'Marca', 'marca'], ['modelo_id', 'Modelo', 'modelo'],
+       ['color_id', 'Color', 'color_vehiculo']].forEach(([k, rotulo, tabla]) => {
+        if (c.vehiculo[k] === undefined) return;
+        const nom = (id) => { const f = (db[tabla] || []).find((x) => x.id === id); return f ? f.nombre : ''; };
+        if (anotar(rotulo, nom(veh[k]), nom(c.vehiculo[k]))) veh[k] = c.vehiculo[k];
+      });
+    }
+
+    const RECEP = { km: 'Kilometraje', combustible: 'Combustible', observaciones: 'Observaciones' };
+    if (c.recepcion) Object.keys(RECEP).forEach((k) => {
+      if (c.recepcion[k] === undefined) return;
+      if (anotar(RECEP[k], r[k], c.recepcion[k])) r[k] = c.recepcion[k];
+    });
+
+    if (c.inventario) {
+      const validos = INV_ESTADOS.map((e) => e.codigo);
+      const nombreEstado = (cod) => (INV_ESTADOS.find((e) => e.codigo === cod) || {}).nombre || cod;
+      Object.keys(c.inventario).forEach((item_id) => {
+        const fila = db.recepcion_inventario.find((x) => x.recepcion_id === r.id && x.item_id === item_id);
+        const nuevo = c.inventario[item_id];
+        if (!fila || validos.indexOf(nuevo) < 0) return;
+        const it = db.inventario_item.find((x) => x.id === item_id);
+        if (anotar('Checklist · ' + ((it && it.nombre) || item_id),
+          nombreEstado(fila.estado), nombreEstado(nuevo))) fila.estado = nuevo;
+      });
+    }
+
+    if (!hechos.length)
+      return { ok: false, motivo: 'No hay nada que corregir: todo llegó igual a como estaba.' };
+
+    db.recepcion_correccion = db.recepcion_correccion || [];
+    const version = db.recepcion_correccion.filter((x) => x.recepcion_id === r.id).length + 2;
+    r.version = version;
+    db.recepcion_correccion.push({
+      id: nuevoId('rc'), recepcion_id: r.id, ot_id, version, fecha: HOY,
+      persona_id: persona_actual || null, motivo: String(motivo).trim(), cambios: hechos
+    });
+
+    registrarEvento(ot_id, 'modificacion', 'Recepción corregida (versión ' + version + '): ' +
+      hechos.map((h) => h.campo + ': «' + (h.antes || '—') + '» → «' + (h.despues || '—') + '»').join(' · ') +
+      ' — ' + String(motivo).trim());
+    tocado();
+    return { ok: true, motivo: '', version, cambios: hechos.length };
+  }
+
+  /* Las correcciones de una recepción, de la más nueva a la más vieja, con el
+     nombre de quien la hizo ya resuelto: el impreso y la ficha la muestran, y
+     ninguno de los dos tiene por qué saber cómo se llega desde un id a una
+     persona. */
+  function correccionesDeRecepcion(recepcion_id) {
+    return (db.recepcion_correccion || [])
+      .filter((x) => x.recepcion_id === recepcion_id)
+      .sort((a, b) => b.version - a.version)
+      .map((x) => {
+        const p = x.persona_id ? db.persona.find((y) => y.id === x.persona_id) : null;
+        return { id: x.id, version: x.version, fecha: x.fecha, motivo: x.motivo,
+                 quien: p ? nombreDe(p) : 'Sin registrar', cambios: x.cambios };
+      });
   }
 
   /* ── Programar la entrega ─────────────────────────────────────────────
@@ -2345,6 +2489,7 @@ const Modelo = (function () {
     cambiar_estado_ot: 'el cambio de estado',
     registrar_entrega: 'la entrega',
     programar_entrega: 'la fecha de entrega programada',
+    corregir_recepcion: 'la correccion de la recepcion',
     cargar_repuesto: 'cargar un repuesto',
     recibir_repuesto: 'recibir un repuesto',
     entregar_repuesto_area: 'entregar un repuesto al área',
@@ -2411,6 +2556,8 @@ const Modelo = (function () {
     // Programar la entrega es del mesón, no del taller: por eso NO pide
     // `etapa.asignar` como su gemela `fijar_fecha_compromiso`.
     programar_entrega: 'entrega.registrar',
+    // Corregir la recepcion es de quien la hizo: recepcion y administracion.
+    corregir_recepcion: 'ot.editar',
     cargar_repuesto: 'repuesto.cargar',
     recibir_repuesto: 'repuesto.cargar',
     entregar_repuesto_area: 'repuesto.cargar',
@@ -2510,7 +2657,7 @@ const Modelo = (function () {
     'asignar_etapas', 'asignar_responsable_ot', 'tomar_etapa', 'soltar_etapa',
     'finalizar_etapa', 'finalizar_etapas', 'quitar_etapa', 'fijar_fecha_compromiso',
     'registrar_salida', 'registrar_reingreso', 'cambiar_estado_ot', 'registrar_entrega',
-    'programar_entrega',
+    'programar_entrega', 'corregir_recepcion',
     'cargar_repuesto', 'crear_presupuesto', 'agregar_costo_adicional', 'escribir_bitacora',
     'declarar_perdida_total',
     'abrir_detencion', 'cerrar_detencion'
@@ -2593,7 +2740,7 @@ const Modelo = (function () {
     tomar_etapa, soltar_etapa, miTrabajo, asignar_responsable_ot,
     personasParaEtapa, destinatarios, fijar_fecha_compromiso,
     registrar_salida, registrar_reingreso, cambiar_estado_ot, registrar_entrega,
-    programar_entrega,
+    programar_entrega, corregir_recepcion, correccionesDeRecepcion,
     cargar_repuesto, recibir_repuesto, entregar_repuesto_area, fijar_responsable_pago,
     adjuntar_vale_repuesto, devolver_repuesto, declarar_perdida_total,
     avisos, avisosDe,

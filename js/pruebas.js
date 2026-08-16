@@ -798,6 +798,52 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 30 · 🔴 CORREGIR LA RECEPCIÓN NO BORRA LO QUE DECÍA ─────────────
+         Editar Recepción se construyó el 15-08-2026 sobre una decisión que hay
+         que confirmar con el taller: **se versiona, no se pisa**. Es la misma
+         regla que el cliente defendió para el presupuesto, y acá pesa más
+         porque hay una firma de por medio.
+
+         Si esta prueba se cae, la corrección dejó de guardar lo anterior y el
+         comprobante ya no puede decir qué cambió: eso no es un detalle de
+         interfaz, es perder el respaldo frente a la compañía. */
+      (function () {
+        restaurarSesion();
+        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') || {}).id;
+        Modelo.fijar_persona_actual(quien);
+
+        const o = Modelo.torre()[0];
+        const rutAntes = o ? o.rut : null;
+
+        // Sin motivo no se guarda: es lo único que separa corregir de alterar.
+        const sinMotivo = o ? Modelo.corregir_recepcion(o.id, { cliente: { rut: '9.999.999-9' } }, '')
+                            : { ok: true };
+        const conMotivo = o ? Modelo.corregir_recepcion(o.id, { cliente: { rut: '9.999.999-9' } },
+          'RUT mal digitado en el mesón') : { ok: false };
+
+        const luego = o ? Modelo.otPorId(o.id) : null;
+        const corr = luego && luego.recepcion ? Modelo.correccionesDeRecepcion(luego.recepcion.id) : [];
+        const guardado = corr.length ? corr[0] : null;
+        const conservaLoViejo = !!guardado && guardado.cambios.some((c) =>
+          c.campo === 'RUT' && c.antes === rutAntes && c.despues === '9.999.999-9');
+
+        push({
+          nombre: '🔴 Corregir la recepción la versiona: guarda qué decía, quién y por qué',
+          intento: o ? ('Corregir el RUT de la OT ' + o.numeroOT + ' sin motivo, y después con motivo')
+                     : 'No había ninguna orden viva',
+          esperado: 'Sin motivo rebota · con motivo queda la versión 2 con el valor anterior y su autor',
+          paso: !sinMotivo.ok && conMotivo.ok && conservaLoViejo &&
+                !!guardado && guardado.version === 2 && !!guardado.quien && !!guardado.motivo,
+          detalle: !o ? 'La torre vino vacía.'
+            : (sinMotivo.ok ? 'DEJÓ GUARDAR SIN MOTIVO, no debería.'
+              : (!conMotivo.ok ? ('Rebotó con motivo: ' + conMotivo.motivo)
+                : (!guardado ? 'No quedó registrada la corrección.'
+                  : 'v' + guardado.version + ' por ' + guardado.quien + ' — ' +
+                    guardado.cambios.map((c) => c.campo + ': «' + c.antes + '» → «' + c.despues + '»').join(' · ') +
+                    (conservaLoViejo ? '' : '  ·  NO CONSERVÓ el valor anterior.'))))
+        });
+      })();
+
       restaurarSesion();
       return res;
     });
@@ -830,7 +876,14 @@ const Pruebas = (function () {
       ['Caracteres de un VIN',             VIN_LARGO,                     17],
       // El tempario se eliminó el 13-08-2026 y con él su cifra de control.
       // Queda ésta en su lugar: que no haya quedado ni un rastro de la tabla.
-      ['Catálogos configurables',          Modelo.CATALOGOS.length,       9]
+      ['Catálogos configurables',          Modelo.CATALOGOS.length,       9],
+      /* 🔴 Ninguna patente repetida. La semilla las repetía —el mismo auto a
+         nombre de dos personas— y no lo cachó nadie hasta que el cliente lo vio
+         en pantalla. Un dato inventado puede ser cualquier cosa menos
+         contradictorio. Se cuenta acá para que si la fórmula se vuelve a tocar,
+         la cifra se caiga antes que la reunión. */
+      ['Patentes distintas entre los vehículos',
+        new Set(db.vehiculo.map((v) => v.patente)).size, db.vehiculo.length]
     ];
     return esperado.map(([nombre, real, ref]) => ({
       nombre, real, referencia: ref, paso: real === ref

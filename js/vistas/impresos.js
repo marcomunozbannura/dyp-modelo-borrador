@@ -46,6 +46,9 @@ const CSS_IMPRESO = `
 .impreso .cab-doc{display:flex;justify-content:space-between;align-items:flex-start;
   border-bottom:2.5px solid #292D78;padding-bottom:8px}
 .impreso .cab-doc .der{text-align:right;font-size:10px;color:#444}
+.impreso .aviso-impreso{border:1px solid #292D78;background:#eef0f7;padding:6px 8px;margin-top:9px;
+  font-size:10px;line-height:1.45}
+.impreso .aviso-impreso ul{margin:4px 0 0;padding-left:16px}
 .impreso .rej{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 10px}
 .impreso .rej.dos{grid-template-columns:repeat(2,1fr)}
 .impreso .c{border-bottom:1px dotted #bbb;padding:2px 0;display:flex;justify-content:space-between;gap:6px}
@@ -296,7 +299,26 @@ function impresoRecepcion(o) {
   const firma = o.firmaSrc
     ? { src: o.firmaSrc }
     : (o.id ? Modelo.mediaDe(o.id).find((m) => m.momento === 'firma') : null);
-  return cabeceraImpreso(o, 'Comprobante de recepción') + `
+  /* 🔶 QUÉ VERSIÓN ES ESTE COMPROBANTE (15-08-2026).
+     Desde que la recepción se puede corregir, el papel tiene que decir cuál
+     es. Si no, quedan dos comprobantes de la misma recepción con datos
+     distintos y ninguno de los dos dice cuál manda. El original firmado sigue
+     siendo el original: acá se declara qué se corrigió después, con su fecha,
+     su autor y su motivo. Sin correcciones no aparece nada. */
+  const correcciones = (o.recepcion && o.recepcion.id && Modelo.correccionesDeRecepcion)
+    ? Modelo.correccionesDeRecepcion(o.recepcion.id) : [];
+  const version = correcciones.length ? correcciones[0].version : 1;
+
+  return cabeceraImpreso(o, 'Comprobante de recepción' + (version > 1 ? ' · versión ' + version : '')) +
+  (correcciones.length ? `
+  <div class="aviso-impreso">
+    <strong>Este comprobante es la versión ${version}.</strong> El documento que firmó el cliente es
+    la versión 1 y no se modificó. Lo corregido después:
+    <ul>${correcciones.slice().reverse().map((c) => '<li>v' + c.version + ' · ' + esc(fFecha(c.fecha)) +
+      ' · ' + esc(c.quien) + ' — ' + c.cambios.map((x) => esc(x.campo) + ': «' +
+      esc(x.antes || '—') + '» → «' + esc(x.despues || '—') + '»').join('; ') +
+      ' (' + esc(c.motivo) + ')</li>').join('')}</ul>
+  </div>` : '') + `
   <h2>Datos del cliente y del vehículo</h2>
   <div class="rej">
     ${campoImpreso('Cliente', esc(o.cliente))}

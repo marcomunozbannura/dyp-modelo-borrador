@@ -426,7 +426,7 @@ function vRecepcionMenu() {
    pide `presupuesto.crear`, que es del evaluador. Abrir la OR y valorizarla son
    dos actos distintos, y esto construye el primero sin darle el segundo. */
 const REC_BUSCADOR = {
-  editar: { icono: 'documento', rot: 'Editar Recepción', accion: 'Abrir la ficha',
+  editar: { icono: 'documento', rot: 'Editar Recepción', accion: 'Corregir la recepción',
             desc: 'Busca por patente, igual que Entrega' },
   or:     { icono: 'nuevo',     rot: 'Agregar OR',       accion: 'Abrir OR',
             desc: 'Sobre qué vehículo se abre la orden de reparación' }
@@ -466,7 +466,7 @@ function vRecepcionBuscar(modo) {
                 : '<span class="et gris">ninguna</span>') + '</td>'
             : '') +
           '<td><button class="btn secundario" data-' +
-            (modo === 'or' ? 'abrir-or' : 'abrir-ot') + '="' + o.numeroOT + '">' +
+            (modo === 'or' ? 'abrir-or' : 'editar-rec') + '="' + o.numeroOT + '">' +
             esc(cfg.accion) + '</button></td></tr>').join('')}
         </tbody>
       </table></div>` : `
@@ -475,12 +475,11 @@ function vRecepcionBuscar(modo) {
 
       ${modo === 'editar' ? `
       <div class="nota info" style="margin-top:12px">${ico('info')}
-        <strong>Qué se edita hoy y qué no.</strong> Desde la ficha se cambia el estado, el
-        responsable, las etapas, las fotos y los documentos. <strong>Los datos de la recepción
-        —cliente, vehículo, checklist y daños— todavía no.</strong> No es falta de tiempo: la
-        recepción es lo que el cliente firmó, y cambiarla después obliga a decidir si se versiona,
-        quién puede hacerlo y qué pasa con el comprobante ya impreso. Es una decisión del taller y
-        está anotada como pregunta abierta.
+        <strong>La recepción se corrige versionándola.</strong> Se cambia el cliente, el vehículo,
+        los datos de la recepción y el checklist; lo que estaba queda guardado con quién lo cambió,
+        cuándo y por qué, y el comprobante impreso dice qué versión es. El papel que firmó el
+        cliente no se toca. <strong>Los daños de la silueta y la firma todavía no se editan acá</strong>,
+        y eso está declarado, no resuelto a medias.
       </div>` : `
       <div class="nota info" style="margin-top:12px">${ico('info')}
         <strong>Abrir la OR no es valorizarla.</strong> Acá se abre la orden de reparación sobre el
@@ -496,6 +495,8 @@ function vRecepcion() {
   if (r.creadas) return vRecepcionResultado(r);
   if (r.pantalla === 'menu') return vRecepcionMenu();
   if (r.pantalla === 'editar' || r.pantalla === 'or') return vRecepcionBuscar(r.pantalla);
+  // La corrección de una recepción ya guardada vive en `recepcion-editar.js`.
+  if (r.pantalla === 'editar-ficha') return vRecepcionEditarFicha();
 
   /* El borrador se restaura de `localStorage`, y de ahí puede volver con un
      paso que ya no existe —una versión anterior del formulario, o el archivo
@@ -1316,6 +1317,10 @@ function vRecepcionResultado(r) {
 function pRecepcion() {
   const r = rec();
 
+  // La corrección de una recepción tiene su propio archivo y sus propios
+  // enganches. Sale de acá derecho para no arrastrar los del formulario.
+  if (r.pantalla === 'editar-ficha') return pRecepcionEditarFicha();
+
   if (r.creadas) {
     document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
       abrirFicha(b.dataset.abrirOt)));
@@ -1360,8 +1365,16 @@ function pRecepcion() {
       const otra = document.getElementById('rec-buscar-patente');
       if (otra) { otra.focus(); otra.setSelectionRange(otra.value.length, otra.value.length); }
     });
-    document.querySelectorAll('[data-abrir-ot]').forEach((b) => b.addEventListener('click', () =>
-      abrirFicha(b.dataset.abrirOt)));
+    /* Corregir la recepción. Se carga la orden UNA vez, al entrar: si se
+       recargara en cada pintado, cada tecla que escribe el usuario se perdería
+       con el render siguiente. */
+    document.querySelectorAll('[data-editar-rec]').forEach((b) => b.addEventListener('click', () => {
+      const o = Modelo.torre().find((x) => String(x.numeroOT) === b.dataset.editarRec);
+      if (!o) return avisar({ ok: false, motivo: 'Esa orden ya no está abierta.' });
+      editRecCargar(o);
+      r.pantalla = 'editar-ficha';
+      render();
+    }));
 
     /* Abrir la OR desde acá. Es el mismo procedimiento del motor que usa el
        módulo de presupuesto, así que la regla y el permiso los revisa él: si un

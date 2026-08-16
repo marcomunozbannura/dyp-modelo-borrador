@@ -671,11 +671,32 @@ const Semilla = (function () {
     // parte MODELADA del punto 4 — el envío real lo hace el servidor.
     const aviso = [];
 
+    /* 🔴 UNA PATENTE, UN VEHÍCULO, UNA PERSONA.
+
+       La fórmula anterior repetía sin que se notara: las cuatro letras
+       ciclaban cada 18 y el número cada 90, y 90 es múltiplo de 18, así que
+       `PATENTES[i]` y `PATENTES[i+90]` eran LA MISMA PATENTE. Con 222 órdenes,
+       cada patente salía dos o tres veces, cada una con otro dueño. Lo vio el
+       cliente el 15-08-2026 en Entrega: `KFVZ17` figuraba a nombre de Daniela
+       Herrera y de Ximena Bravo, las dos listas para entregar.
+
+       No era sólo feo: contradecía la primera regla del motor —una patente no
+       puede tener dos órdenes abiertas— justo en la pantalla donde se muestra
+       que esa regla existe. Un dato de demostración que se contradice a sí
+       mismo hace perder la reunión.
+
+       Ahora el índice recorre las letras en base 18, que no se sincroniza con
+       el ciclo de 90 del número, y además se comprueba una por una: la que
+       repita se descarta. */
     const PATENTES = [];
     const L = 'BCDFGHJKLPRSTVWXYZ';
-    for (let i = 0; i < 400; i++) {
-      PATENTES.push(L[i % 18] + L[(i * 3) % 18] + L[(i * 7) % 18] + L[(i * 5) % 18] +
-        String(10 + (i % 90)));
+    const patentesVistas = {};
+    for (let i = 0; PATENTES.length < 400; i++) {
+      const p = L[i % 18] + L[Math.floor(i / 18) % 18] + L[Math.floor(i / 324) % 18] +
+        L[Math.floor(i / 5832) % 18] + String(10 + (i % 90));
+      if (patentesVistas[p]) continue;
+      patentesVistas[p] = true;
+      PATENTES.push(p);
     }
 
     let nOT = ULTIMA_OT - (TOTAL_TORRE + TOTAL_HISTORICO) + 1;
@@ -745,7 +766,11 @@ const Semilla = (function () {
         id: veh_id, patente: pat, marca_id: ma.id,
         modelo_id: mos.length ? mos[idx % mos.length].id : null,
         anio: 2015 + (idx % 11), color_id: color_vehiculo[idx % color_vehiculo.length].id,
-        vin: 'VIN-DEMO-' + numero_ot
+        /* 17 caracteres, que es lo que exige la norma y lo que exige el propio
+           formulario de ingreso. Decía `VIN-DEMO-23278` —catorce— y el sistema
+           quedaba pidiendo en la recepción algo que sus propios datos no
+           cumplían. Sin I, O ni Q, que un VIN real tampoco usa. */
+        vin: ('VDYPDEM' + numero_ot).padEnd(17, '0')
       });
 
       const cli_id = nuevoCliente(idx);
@@ -995,6 +1020,10 @@ const Semilla = (function () {
       parametro,
       // operación
       vehiculo, recepcion, recepcion_inventario, dano, orden_trabajo,
+      // Las correcciones de una recepción ya guardada. Nace vacía: la semilla
+      // no inventa correcciones, y una recepción sin correcciones es la
+      // versión 1. Ver `corregir_recepcion` en el modelo.
+      recepcion_correccion: [],
       ot_etapa, ot_estadia, ot_detencion, costo_adicional,
       presupuesto, presupuesto_linea, repuesto, bitacora, media, evento, aviso,
       // idempotencia

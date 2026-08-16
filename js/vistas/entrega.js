@@ -77,7 +77,13 @@ function vEntrega() {
         String(x.numeroOT).indexOf(e.patente) >= 0)
     : [];
 
+  /* El paso atrás, porque Entrega dejó de ser un módulo del menú el 15-08-2026
+     —"ya lo tenemos en Recepción"— y sin esto se llega acá y no hay por dónde
+     salir salvo el menú lateral. Es el mismo botón de las otras opciones de
+     Recepción, en el mismo lugar. */
   return `
+  <button class="btn volver" id="ent-volver"><span class="flecha-atras">&#8592;</span>
+    Volver a las opciones de Recepción</button>
   <div class="panel">
     <div class="cab"><div><h2>${ico('check', 'g')}Buscar unidad para entrega</h2>
       <div class="desc">El cierre del ciclo. Se escribe la patente del vehículo que se va a entregar</div></div>
@@ -325,6 +331,14 @@ function pEntrega() {
      entrega se hace acá, en la fila, sin salir a ninguna parte. */
   dobleClicPorFilas('tr.fila[data-ot]', { soloFlecha: true, detalle: detalleEntrega });
   const e = entregaEstado();
+
+  const volver = document.getElementById('ent-volver');
+  if (volver) volver.addEventListener('click', () => {
+    e.patente = ''; e.otId = null;
+    rec().pantalla = 'menu';
+    ir('recepcion');
+  });
+
   const campo = document.getElementById('ent-patente');
   const buscar = () => { e.patente = campo.value.trim().toUpperCase(); e.otId = null; render(); };
   const btn = document.getElementById('ent-buscar');

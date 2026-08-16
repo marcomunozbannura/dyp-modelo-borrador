@@ -93,7 +93,14 @@ const MENU = [
   { id: 'recepcion', nombre: 'Recepción',      icono: 'recepcion' },
   { id: 'torre',     nombre: 'Torre de control', icono: 'torre',   cuenta: () => Modelo.torre().length },
   { id: 'taller',    nombre: 'Taller',         icono: 'taller' },
-  { id: 'entrega',   nombre: 'Entrega',        icono: 'check' },
+  /* 🔶 ENTREGA SALIÓ DEL MENÚ (15-08-2026, pedido de Marco): "ya lo tenemos en
+     Recepción". Entregar Unidad es una de las cuatro opciones de Recepción y
+     tenerlo además como módulo aparte era el mismo trabajo en dos puertas — de
+     esas dos, una siempre queda desactualizada.
+
+     La VISTA sigue existiendo y `#vista=entrega` sigue llevando ahí: sacarla
+     del menú no es motivo para romper un enlace que alguien pudo dejar
+     guardado. Lo que cambió es de dónde se llega. */
   { grupo: 'Seguimiento' },
   { id: 'repuestos',   nombre: 'Repuestos',   icono: 'repuesto',    cuenta: () => Modelo.metricas().repuestosPendientes },
   { id: 'detenidos',   nombre: 'Esperas',     icono: 'espera',      cuenta: () => Modelo.metricas().conRepuestoPendiente },
@@ -141,7 +148,7 @@ const MODULOS = {
   taller:      { ruta: ['Operación diaria', 'Taller'],
                  acciones: [['refrescar', 'Actualizar', 'refrescar', 'F5'],
                             ['exportar', 'Exportar', 'exportar']] },
-  entrega:     { ruta: ['Operación diaria', 'Entrega'],
+  entrega:     { ruta: ['Recepción', 'Entregar Unidad'],
                  acciones: [['buscar', 'Buscar patente', 'buscar'],
                             ['refrescar', 'Actualizar', 'refrescar', 'F5']] },
   repuestos:   { ruta: ['Seguimiento', 'Repuestos'],
@@ -877,7 +884,11 @@ function ir(vista) {
   }
 
   ui.vista = vista;
-  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === vista));
+  /* Entrega ya no tiene ítem propio en el menú: se llega desde Recepción, así
+     que estando ahí el que se ilumina es Recepción. Sin esto el menú queda sin
+     nada marcado y uno no sabe en qué parte del sistema está. */
+  const marcado = vista === 'entrega' ? 'recepcion' : vista;
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === marcado));
   const c = document.getElementById('contenido');
   if (c) c.scrollTop = 0;
   render();

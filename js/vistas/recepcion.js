@@ -142,6 +142,9 @@ function rec() {
       // item_id → 'presente' | 'no_presente' | 'danado' | 'sin_verificar'.
       // Lo que no está en el mapa es `sin_verificar`: nadie lo miró todavía.
       inventario: {},
+      // item_id → la nota del recepcionista. Solo se pide en los ítems que
+      // quedaron `no presente` o `dañado`, que son los que después se discuten.
+      obsInventario: {},
       // La firma del cliente: el PNG para guardar y los trazos para repintar.
       firma: null, firmaTrazos: [],
       fotos: [], creadas: null
@@ -168,7 +171,7 @@ function guardarBorrador() {
     localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({
       paso: r.paso, llave: r.llave, campos: r.campos, bloques: r.bloques,
       danos: r.danos, textos: r.textos,
-      inventario: r.inventario,
+      inventario: r.inventario, obsInventario: r.obsInventario,
       fotos: r.fotos,
       // El Blob de la firma no es serializable; los trazos sí, y con ellos
       // se vuelve a pintar el lienzo tal cual estaba.
@@ -202,7 +205,7 @@ function restaurarBorrador() {
 
     return Object.assign({
       paso: 'cliente', llave: 'rec-' + Date.now().toString(36),
-      textos: {}, danos: [], inventario: {}, fotos: [],
+      textos: {}, danos: [], inventario: {}, obsInventario: {}, fotos: [],
       firmaTrazos: [], creadas: null, marcados: [], firma: null
     }, d);
   } catch (e) { return null; }
@@ -1006,14 +1009,23 @@ function recDanos() {
          quedó el checklist. Con los botones se marca de un toque y el estado se
          lee de lejos por su color y su icono, que es lo que hace el original.
 
-         Y se fue la columna de observación por ítem: es la misma decisión que
-         en los daños. Lo que hay que contar se cuenta una vez, arriba, en la
-         casilla de Observaciones. */''}
+         🔶 LA OBSERVACIÓN POR ÍTEM VUELVE (15-08-2026), pero no como estaba.
+         Antes era una casilla fija en las 28 filas, y 28 casillas vacías piden
+         que las llenes. Ahora aparece SOLO donde hay algo que explicar: cuando
+         el ítem quedó `no presente` o `dañado`.
+
+         Es la diferencia entre un dato y un reclamo. «Radio: presente» no
+         necesita nota. «Cenicero: no presente» y «Encendedor: dañado» sí — son
+         las dos que un mes después alguien va a discutir, y ahí la nota del
+         recepcionista es la única prueba de qué se vio en el mesón.
+
+         Si ya hay algo escrito, la casilla se sigue mostrando aunque el estado
+         cambie: una nota escrita no se esconde sola. */''}
     <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>Elemento</th><th style="width:290px">Estado</th></tr></thead>
+      <thead><tr><th>Elemento</th><th style="width:250px">Estado</th><th>Observación</th></tr></thead>
       <tbody>${items.map((it) => {
         const v = r.inventario[it.id] || 'sin_verificar';
-        return '<tr><td>' + esc(it.nombre) +
+        return '<tr data-fila-inv="' + esc(it.id) + '"><td>' + esc(it.nombre) +
           ' <span class="cod" style="font-size:10.5px;color:var(--gris-2)">' + esc(it.codigo) + '</span></td>' +
           '<td><span class="inv-botones">' +
             estados.map((e) => '<button type="button" class="inv-btn ' + e.clase +
@@ -1021,7 +1033,8 @@ function recDanos() {
               '" data-estado="' + esc(e.codigo) + '" title="' + esc(e.nombre) + '" ' +
               'aria-label="' + esc(it.nombre + ': ' + e.nombre) + '">' +
               ico(e.icono) + '</button>').join('') +
-          '</span></td></tr>';
+          '</span></td>' +
+          '<td class="celda-obs-inv">' + recObsInv(it, v) + '</td></tr>';
       }).join('')}</tbody>
     </table></div>
     <div class="pie-nota">🔶 Dejó de ser un sí/no. <strong>Sin verificar no es lo mismo que no presente</strong>:
@@ -1029,6 +1042,41 @@ function recDanos() {
       <strong>dañado no es lo mismo que faltante</strong>: son dos reclamos distintos. Lo que nadie toca
       queda en <em>sin verificar</em>, nunca en <em>no presente</em>.</div>
   </fieldset>`;
+}
+
+/* Los dos estados que piden explicación. `presente` no necesita nota, y
+   `sin_verificar` menos todavía: nadie lo miró, no hay nada que contar. */
+const INV_PIDE_NOTA = ['no_presente', 'danado'];
+
+/* La celda de observación de un ítem. Devuelve la casilla cuando corresponde,
+   y si no, un guión — la columna no queda vacía y se ve que ahí no hay nada
+   que anotar, que no es lo mismo que "falta llenarlo". */
+function recObsInv(it, estado) {
+  const r = rec();
+  const texto = String(r.obsInventario[it.id] || '');
+  if (INV_PIDE_NOTA.indexOf(estado) < 0 && !texto.trim()) {
+    return '<span class="obs-inv-vacia" aria-hidden="true">—</span>';
+  }
+  return '<input data-obsinv="' + esc(it.id) + '" value="' + esc(texto) + '" ' +
+    'placeholder="' + (estado === 'danado' ? 'Qué daño tiene' : 'Por qué no está') + '" ' +
+    'aria-label="' + esc('Observación de ' + it.nombre) + '">';
+}
+
+/* Los ítems que tienen algo escrito, con su estado al lado. Se usa en
+   Verificar: la nota sin el estado no se entiende —«se lo llevó el cliente» no
+   dice si el ítem falta o está dañado— y el estado sin la nota no sirve de
+   prueba. Van juntos o no van. */
+function recItemsConNota() {
+  const r = rec();
+  const estados = Modelo.inventarioEstados();
+  return Modelo.catalogo('inventario_item')
+    .filter((it) => String(r.obsInventario[it.id] || '').trim())
+    .map((it) => {
+      const cod = r.inventario[it.id] || 'sin_verificar';
+      const e = estados.find((x) => x.codigo === cod) || estados[estados.length - 1];
+      return { nombre: it.nombre, nota: String(r.obsInventario[it.id]).trim(),
+               estadoNombre: e.nombre, clase: e.clase };
+    });
 }
 
 function recInvConteo() {
@@ -1168,8 +1216,20 @@ function recVerificar() {
       ${d('Daños marcados', r.danos.length ? String(r.danos.length) : nada)}
       ${d('Fotografías', r.fotos.length ? String(r.fotos.length) : nada)}
       ${d('Inventario', recInvResumen(c))}
+      ${d('Ítems con observación', recItemsConNota().length
+        ? String(recItemsConNota().length) : nada)}
     </fieldset>
   </div>
+
+  ${/* Lo anotado en el checklist, escrito completo. En Verificar no basta con
+       decir "3 ítems con observación": el cliente está firmando esto, y lo que
+       tiene que poder leer es QUÉ dice cada una. */''}
+  ${recItemsConNota().length ? `
+  <fieldset class="bloque" style="margin-top:10px"><legend>Observaciones del inventario</legend>
+    ${recItemsConNota().map((x) => `<div class="dato-largo">
+      <span class="k">${esc(x.nombre)} <span class="et ${x.clase}">${esc(x.estadoNombre)}</span></span>
+      <span class="v">${esc(x.nota)}</span></div>`).join('')}
+  </fieldset>` : ''}
 
   ${/* Las piezas que quedaron rayadas. No es una tabla de daños con tipo y
        comentario —eso se sacó— sino el resumen de dónde se marcó, que es lo que
@@ -1532,8 +1592,32 @@ function pRecepcion() {
       otro.classList.toggle('activo', otro === b));
     const rot = document.getElementById('n-inv');
     if (rot) rot.innerHTML = recInvResumen(recInvConteo());
+
+    /* La casilla de observación aparece o desaparece según el estado nuevo, y
+       se redibuja solo esa celda. Si el ítem pasó a pedir nota, el foco se va
+       ahí: el recepcionista acaba de decir que algo falta o está dañado, y lo
+       siguiente que quiere hacer es contar qué. */
+    const fila = document.querySelector('[data-fila-inv="' + id + '"]');
+    const celda = fila && fila.querySelector('.celda-obs-inv');
+    if (celda) {
+      const item = Modelo.catalogo('inventario_item').find((x) => x.id === id);
+      const yaEstaba = !!celda.querySelector('[data-obsinv]');
+      celda.innerHTML = recObsInv(item, b.dataset.estado);
+      const casilla = celda.querySelector('[data-obsinv]');
+      if (casilla) {
+        casilla.addEventListener('input', () => {
+          r.obsInventario[id] = casilla.value; guardarBorrador();
+        });
+        if (!yaEstaba) casilla.focus();
+      }
+    }
     guardarBorrador();
   }));
+  // Las casillas que ya venían pintadas de arranque.
+  document.querySelectorAll('[data-obsinv]').forEach((el) => el.addEventListener('input', () => {
+    r.obsInventario[el.dataset.obsinv] = el.value; guardarBorrador();
+  }));
+
   const todos = document.getElementById('inv-todos');
   if (todos) todos.addEventListener('click', () => {
     Modelo.catalogo('inventario_item').forEach((i) => { r.inventario[i.id] = 'presente'; });
@@ -1743,7 +1827,8 @@ function recComprobanteBorrador() {
     inventario: items.map((it) => {
       const cod = r.inventario[it.id] || 'sin_verificar';
       const e = estados.find((x) => x.codigo === cod) || estados[estados.length - 1];
-      return { item: it.nombre, codigo: it.codigo, estado: e.codigo, estadoNombre: e.nombre };
+      return { item: it.nombre, codigo: it.codigo, estado: e.codigo, estadoNombre: e.nombre,
+               observacion: r.obsInventario[it.id] || '' };
     }),
     // Las fotos todavía no cuelgan de ninguna OT: van directo desde el borrador.
     fotosIngreso: r.fotos,
@@ -1772,7 +1857,7 @@ function guardarRecepcion() {
     combustible: Number(r.campos.combustible),
     // El checklist va como mapa `item_id → estado`, no como arreglo posicional:
     // así no depende del orden en que el catálogo devuelva los ítems.
-    inventario: r.inventario,
+    inventario: r.inventario, obsInventario: r.obsInventario,
     danos: r.danos.map((d) => ({
       vista: d.vista, severidad: d.severidad, x: d.x, y: d.y,
       descripcion: d.descripcion || '',

@@ -691,6 +691,13 @@ fieldset.bloque legend {
 .inv-btn.activo.gris  { background: var(--neutro-bg); border-color: var(--borde-fuerte); color: var(--gris); }
 .inv-btn.activo .ico { stroke-width: 2.1; }
 
+/* La observación por ítem aparece solo donde hay algo que explicar. Donde no
+   la hay va un guión apagado: la columna no queda hueca y se ve que ahí no hay
+   nada que anotar, que no es lo mismo que "falta llenarlo". */
+.celda-obs-inv { width: 40%; }
+.celda-obs-inv input { width: 100%; }
+.obs-inv-vacia { color: var(--gris-2); opacity: .5; padding-left: 3px; }
+
 .inventario { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 4px; }
 .inv-item {
   display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--borde);

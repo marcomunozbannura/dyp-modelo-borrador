@@ -59,30 +59,45 @@ function vEntrega() {
   const o = e.otId ? Modelo.otPorId(e.otId) : null;
   const vivas = Modelo.torre();
   const listos = vivas.filter(estaListo);
-  /* Sin búsqueda se muestran LAS LISTAS, no una pantalla vacía. Era un
-     `datalist` que sólo aparecía al escribir, y para eso hay que saber de
-     antemano qué patente se busca — el recepcionista muchas veces llega al
-     revés: mira qué hay listo y de ahí elige. La búsqueda queda para filtrar
-     o para llegar a una que no está en la lista. */
+  /* 🔶 SIN LISTA: ACÁ SE BUSCA POR PATENTE Y NADA MÁS (15-08-2026, pedido de
+     Marco, y es el tercer ajuste sobre lo mismo).
+
+     Pasó por las tres formas: primero un `datalist` que sólo aparecía al
+     teclear, después la lista completa de las listas para entregar desplegada
+     al entrar, y ahora ninguna. La razón es la del sistema actual y es buena:
+     el auto está adelante y lo que se sabe es la patente. Una tabla de
+     cincuenta y tres autos abierta en la pantalla que CIERRA órdenes es una
+     fila de más para equivocarse — se entrega el que se buscó, no el que
+     quedó cerca del dedo.
+
+     La cuenta de arriba se queda: es un número, no una lista, y responde
+     "¿cuántos hay listos?" sin poner ninguno al alcance del clic. */
   const coincidencias = e.patente
     ? vivas.filter((x) => x.patente.indexOf(e.patente) >= 0 ||
         String(x.numeroOT).indexOf(e.patente) >= 0)
-    : listos;
+    : [];
 
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('check', 'g')}Buscar unidad para entrega</h2>
-      <div class="desc">El cierre del ciclo. Abajo salen las unidades listas; la patente sirve para filtrar</div></div>
+      <div class="desc">El cierre del ciclo. Se escribe la patente del vehículo que se va a entregar</div></div>
       <span class="et ${listos.length ? 'verde' : 'gris'}">${listos.length} listas para entregar</span></div>
     <div class="cuerpo">
       <div class="rejilla-campos">
         <div class="campo"><label>Patente u OT</label>
           <input id="ent-patente" autocomplete="off"
-            value="${esc(e.patente)}" placeholder="Filtrar por patente o número de OT">
-          <span class="ayuda">La lista completa está más abajo. Escribir acá la filtra, o llega a
-            una que todavía no está lista — aparece igual, marcada con lo que le falta</span></div>
+            value="${esc(e.patente)}" placeholder="Patente o número de OT">
+          <span class="ayuda">Se busca entre las órdenes vivas. Si el vehículo todavía no está
+            listo aparece igual, marcado con lo que le falta</span></div>
         <div class="campo"><label>&nbsp;</label><button class="btn" id="ent-buscar">Buscar patente</button></div>
       </div>
+
+      ${!e.patente
+        ? '<div class="vacio"><div class="titulo">Escribe la patente</div>' +
+          '<div class="texto">Hay <strong>' + listos.length + '</strong> unidades listas para ' +
+          'entregar. No se listan acá a propósito: ésta es la pantalla que cierra órdenes, y se ' +
+          'entrega el vehículo que se buscó.</div></div>'
+        : ''}
 
       ${e.patente && !coincidencias.length
         ? '<div class="vacio"><div class="titulo">Sin resultados para “' + esc(e.patente) + '”</div>' +
@@ -90,9 +105,8 @@ function vEntrega() {
         : ''}
 
       ${coincidencias.length ? `
-      <h3 style="font-size:13px;margin:14px 0 4px">${e.patente
-        ? 'Resultados de la patente &ldquo;' + esc(e.patente) + '&rdquo;'
-        : 'Vehículos listos para entregar'}</h3>
+      <h3 style="font-size:13px;margin:14px 0 4px">Resultados de la patente
+        &ldquo;${esc(e.patente)}&rdquo;</h3>
       <div class="ayuda" style="margin:0 0 7px">La flecha de la izquierda abre el detalle.
         Con fecha de hoy el botón <strong>entrega</strong> y cierra la orden; con una fecha
         más adelante cambia a <strong>Programar</strong>, que compromete el día y deja la orden abierta</div>

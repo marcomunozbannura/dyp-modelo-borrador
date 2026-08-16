@@ -11,10 +11,12 @@
      · la hace **quien tiene `ot.editar`** —recepción y administración—;
      · el papel firmado no se toca: el **impreso dice qué versión es**.
 
-   Lo que se corrige acá: cliente, vehículo, los datos de la recepción y el
-   checklist de los 28 ítems. ⚠️ Los **daños dibujados en la silueta** no se
-   editan todavía: se corrigen volviendo a marcarlos, que es otra pantalla y
-   está declarado como pendiente, no resuelto a medias.
+   Se corrige con **las mismas pantallas del ingreso y en el mismo orden** —el
+   pedido de Marco fue textual: "editar sobre lo creado y no editar sobre algo
+   nuevo"—: datos del cliente, datos del vehículo y estado descriptivo, este
+   último con su dibujo, su casilla única de observaciones, el tablero, las
+   fotos y el inventario. Lo único que no se vuelve a pedir es la **firma**, y
+   eso lo decide el taller, no nosotros.
 
    Vive en su propio archivo a propósito. `recepcion.js` lo está trabajando
    Benjamín en paralelo y dos manos en el mismo archivo terminan en conflicto;
@@ -50,6 +52,12 @@ function editRecCargar(o) {
      mientras el recepcionista raya y borra, la orden de verdad no se toca
      hasta que aprieta guardar — y si se arrepiente, «Descartar lo escrito»
      vuelve a la silueta que estaba firmada. */
+  /* Las fotos del ingreso, como las trae el modelo. Van al mismo `zonaFotos`
+     del formulario y por eso se ven igual. No son copia de trabajo: una foto
+     se guarda al soltarla —es un adjunto, no un campo— y por eso se lee del
+     modelo cada vez que se entra. */
+  e.fotos = Modelo.mediaDe(o.id).filter((m) => m.momento === 'ingreso');
+
   e.danos = (o.danos || []).map((d) => ({
     vista: d.vista, zona: d.zona, zonaNombre: d.zonaNombre,
     severidad: d.severidad, x: d.x, y: d.y,
@@ -58,16 +66,36 @@ function editRecCargar(o) {
   }));
 }
 
+/* 🔶 LAS MISMAS PANTALLAS DEL INGRESO, CON LOS MISMOS NOMBRES (15-08-2026).
+
+   Marco: "no debiese cambiar esa visual desde que él edita a cuando él lo
+   ingresó por primera vez; la idea es editar sobre lo creado y no editar sobre
+   algo nuevo". Tenía cinco pestañas inventadas —Cliente, Vehículo, Recepción,
+   Checklist, Daños— y el ingreso tiene cinco pasos con otros nombres y otro
+   reparto. Ahora son los mismos pasos del formulario:
+
+     1 · Datos del cliente   2 · Datos del vehículo   4 · Estado descriptivo
+
+   El paso 3 (Solicitud de reparación) no está: compañía, siniestro y tipo de
+   ingreso son de la ORDEN, no de la recepción, y se cambian en la ficha. El 5
+   es Verificar, que es para antes de crear.
+
+   `Estado descriptivo` quedó tal cual el del ingreso: el dibujo a la
+   izquierda, y a la derecha la casilla única de observaciones, el tablero
+   —kilometraje y combustible— y las fotos, con el inventario abajo. No es
+   parecido: es el mismo bloque, con las mismas clases y los mismos textos. */
 const EDIT_REC_BLOQUES = [
-  { id: 'cliente',    rot: 'Cliente' },
-  { id: 'vehiculo',   rot: 'Vehículo' },
-  { id: 'recepcion',  rot: 'Recepción' },
-  { id: 'inventario', rot: 'Checklist' },
-  { id: 'danos',      rot: 'Daños' }
+  { id: 'cliente',  rot: '1 · Datos del cliente' },
+  { id: 'vehiculo', rot: '2 · Datos del vehículo' },
+  { id: 'estado',   rot: '4 · Estado descriptivo' }
 ];
 
 function vRecepcionEditarFicha() {
   const e = editRec();
+  // Las pestañas cambiaron de nombre el 15-08-2026: una sesión abierta desde
+  // antes puede traer un bloque que ya no existe, y eso dejaba la pantalla en
+  // blanco en vez de mostrar algo.
+  if (!EDIT_REC_BLOQUES.some((b) => b.id === e.bloque)) e.bloque = 'cliente';
   const o = e.otId ? Modelo.otPorId(e.otId) : null;
   if (!o) {
     return '<div class="panel"><div class="cuerpo"><div class="vacio">' +
@@ -102,9 +130,7 @@ function vRecepcionEditarFicha() {
 
       <div class="tabs" style="margin:12px 0 10px">${EDIT_REC_BLOQUES.map(pestana).join('')}</div>
 
-      ${e.bloque === 'inventario' ? vEditRecInventario()
-        : e.bloque === 'danos' ? vEditRecDanos()
-        : vEditRecCampos(e)}
+      ${e.bloque === 'estado' ? vEditRecEstado() : vEditRecCampos(e)}
 
       <div class="rejilla-campos" style="margin-top:12px">
         <div class="campo" style="grid-column:1/-1">
@@ -176,35 +202,81 @@ function vEditRecCampos(e) {
       '</div>';
   }
 
-  if (e.bloque === 'vehiculo') {
-    return '<div class="rejilla-campos" style="margin-top:11px">' +
-      campo('patente', 'Patente', 'maxlength="' + PATENTE_LARGO + '" autocomplete="off"') +
-      campo('vin', 'VIN', 'maxlength="' + VIN_LARGO + '" autocomplete="off"') +
-      cat('marca_id', 'Marca', 'marca') +
-      cat('modelo_id', 'Modelo', 'modelo') +
-      cat('color_id', 'Color', 'color_vehiculo') +
-      campo('anio', 'Año', 'type="number" min="1950" max="2035"') +
-      '</div>';
-  }
-
-  // Recepción: kilometraje, combustible y observaciones.
-  const combustible = [];
-  for (let i = 0; i <= 8; i++) combustible.push(i);
+  // Datos del vehículo, los mismos campos del paso 2 del ingreso.
   return '<div class="rejilla-campos" style="margin-top:11px">' +
-    campo('km', 'Kilometraje', 'type="number" min="0"') +
-    '<div class="campo"><label>Combustible</label><select data-edrec="combustible">' +
-      '<option value="">Sin registrar</option>' +
-      combustible.map((n) => '<option value="' + n + '"' +
-        (String(c.combustible) === String(n) ? ' selected' : '') + '>' + n + '/8</option>').join('') +
-      '</select></div>' +
-    '<div class="campo" style="grid-column:1/-1"><label>Observaciones de la recepción</label>' +
-      '<textarea rows="3" data-edrec="observaciones">' + esc(c.observaciones || '') + '</textarea></div>' +
+    campo('patente', 'Patente', 'maxlength="' + PATENTE_LARGO + '" autocomplete="off"') +
+    campo('vin', 'VIN', 'maxlength="' + VIN_LARGO + '" autocomplete="off"') +
+    cat('marca_id', 'Marca', 'marca') +
+    cat('modelo_id', 'Modelo', 'modelo') +
+    cat('color_id', 'Color', 'color_vehiculo') +
+    campo('anio', 'Año', 'type="number" min="1950" max="2035"') +
     '</div>';
 }
 
 /* El checklist, con los mismos cuatro estados que el ingreso. `sin_verificar`
    se ofrece igual: si un ítem se marcó por error, poder devolverlo a "nadie lo
    miró" es tan necesario como marcarlo. */
+/* ── 4 · Estado descriptivo, el mismo del ingreso ──────────────────────
+   Mismo `estado-descriptivo`, mismo `ed-dibujo`, mismo `ed-lado`, mismos
+   rótulos y mismos pies de nota. Lo único que cambia son los `data-`: acá
+   son `data-edrec*` porque el estado que se edita es el de esta pantalla y no
+   el borrador del formulario. */
+function vEditRecEstado() {
+  const e = editRec();
+  const items = Modelo.catalogo('inventario_item');
+
+  return `
+  <div class="estado-descriptivo" style="margin-top:11px">
+    <div class="ed-dibujo">
+      <div class="lienzo">${svgSilueta()}</div>
+      <div class="ed-barra">
+        <span class="ayuda">Raya sobre el auto con el dedo o el mouse. Cada trazo es un daño.</span>
+        <span style="display:flex;gap:6px">
+          <button class="btn secundario" id="edrec-dano-deshacer">Deshacer el último</button>
+          <button class="btn secundario" id="edrec-dano-borrar">Borrar todo</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="ed-lado">
+      <div class="campo">
+        <label>Observaciones</label>
+        <textarea rows="5" data-edrec="observaciones"
+          placeholder="Qué trae el vehículo: dónde está el daño, de qué tipo, si ya venía…">${
+          esc(e.campos.observaciones || '')}</textarea>
+        <span class="ayuda">Una sola casilla para todo lo marcado.</span>
+      </div>
+
+      <fieldset class="bloque" style="margin-top:12px"><legend>Tablero</legend>
+        <div class="rejilla-campos">
+          <div class="campo"><label>Kilometraje <span style="color:var(--rojo)">*</span></label>
+            <input type="number" min="0" data-edrec="km" value="${esc(e.campos.km == null ? '' : e.campos.km)}">
+            <span class="ayuda">Como se lee al recibirlo</span></div>
+        </div>
+        <h4 class="rot-chico" style="margin-top:10px">Nivel de combustible</h4>
+        <div class="chips">
+          ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => '<button class="chip' +
+            (String(e.campos.combustible) === String(n) ? ' activo' : '') +
+            '" data-edrec-comb="' + n + '">' + n + '/8' +
+            (n === 8 ? ' lleno' : n === 0 ? ' vacío' : '') + '</button>').join('')}
+        </div>
+        <div class="pie-nota">Nueve posiciones, como el original. Nuestro diseño decía ocho.</div>
+      </fieldset>
+
+      <fieldset class="bloque" style="margin-top:12px"><legend>Fotografías de ingreso</legend>
+        ${zonaFotos({ id: 'edrecfoto', fotos: e.fotos, titulo: 'Agregar fotografías' })}
+        <div class="pie-nota">Las fotos se guardan al soltarlas y no esperan el botón de abajo: son
+          adjuntos, no campos, y cada una queda registrada con quién la subió.</div>
+      </fieldset>
+    </div>
+  </div>
+
+  <fieldset class="bloque" style="margin-top:12px">
+    <legend>Inventario del vehículo · los ${items.length} ítems</legend>
+    ${vEditRecInventario()}
+  </fieldset>`;
+}
+
 function vEditRecInventario() {
   const e = editRec();
   const estados = Modelo.inventarioEstados();
@@ -230,78 +302,6 @@ function vEditRecInventario() {
     '<tbody>' + items.map(fila).join('') + '</tbody></table></div>';
 }
 
-/* ── Los daños de la silueta ───────────────────────────────────────────
-   El pendiente que quedó declarado el 15-08-2026 y que se cierra acá.
-
-   Se raya igual que en el ingreso —el mismo dibujo, el mismo gesto— pero con
-   los handlers escritos en este archivo y no reutilizando los de
-   `recepcion.js`: aquéllos están amarrados al borrador del formulario
-   (`rec().danos`, `guardarBorrador()`), y hacerlos genéricos era meter mano en
-   el archivo que Benjamín está trabajando. Lo que sí se reutiliza es lo que ya
-   es común: el SVG, la ubicación por coordenada y el trazado.
-
-   La corrección reemplaza la lista ENTERA, porque así es el gesto: se raya y
-   se borra lo que se rayó de más. Lo que había queda guardado completo en la
-   fila de corrección, con sus trazos, así que la silueta firmada se puede
-   volver a dibujar. */
-function vEditRecDanos() {
-  const e = editRec();
-  const n = e.danos.length;
-
-  /* 🔶 LA LISTA ES PARA MIRAR, NO PARA ESCRIBIR (15-08-2026, corrección de
-     Marco). Tenía una casilla de observación POR MARCA, y eso es exactamente
-     lo que el cliente mandó sacar del ingreso —tres veces— cuando se sacaron
-     el tipo de daño y el comentario por trazo: la recepción se hace en el
-     mesón con el cliente esperando, y redactar una línea después de cada raya
-     es más trabajo del que ahorra.
-
-     Se escribe en UNA sola casilla, la de abajo, que es la misma que ya tiene
-     la recepción: volver a rayar corrige la observación que ya existe, no
-     abre comentarios nuevos. Lo que la lista muestra —zona, vista y lo que se
-     hubiera escrito antes— es de sólo lectura. */
-  const lista = n
-    ? '<div class="grid-envoltorio"><table class="grid">' +
-      '<thead><tr><th style="width:34px">#</th><th>Dónde cayó la marca</th>' +
-      '<th>Lo que se anotó</th><th style="width:84px"></th></tr></thead><tbody>' +
-      e.danos.map((d, i) => '<tr><td class="num">' + (i + 1) + '</td>' +
-        '<td>' + esc(d.zonaNombre || 'Sin zona identificada') +
-          '<div class="ayuda" style="margin:2px 0 0">' +
-          esc(SILUETA_NOMBRE_VISTA[d.vista] || d.vista || '—') + '</div></td>' +
-        '<td>' + (d.descripcion
-          ? esc(d.descripcion)
-          : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
-        '<td><button class="btn secundario" data-edrec-quitar="' + i + '">Quitar</button></td></tr>').join('') +
-      '</tbody></table></div>'
-    : '<div class="nota">La recepción quedó <strong>sin marcas</strong> en la silueta. Si el auto ' +
-      'entró con daños y no se marcaron, se marcan acá.</div>';
-
-  return `
-  <div class="estado-descriptivo" style="margin-top:11px">
-    <div class="ed-dibujo">
-      <div class="lienzo">${svgSilueta()}</div>
-      <div class="ed-barra">
-        <span class="ayuda">Raya sobre el auto para agregar una marca. <span id="n-marcas-ed">${
-          n ? plural(n, 'marca', 'marcas') : 'sin marcas'}</span></span>
-        <span style="display:flex;gap:6px">
-          <button class="btn secundario" id="edrec-dano-deshacer">Deshacer el último</button>
-          <button class="btn secundario" id="edrec-dano-borrar">Borrar todo</button>
-        </span>
-      </div>
-    </div>
-    <div class="ed-lado">
-      <div class="campo">
-        <label>Observaciones</label>
-        <textarea rows="5" data-edrec="observaciones"
-          placeholder="Qué trae el vehículo: dónde está el daño, de qué tipo, si ya venía…">${
-          esc(e.campos.observaciones || '')}</textarea>
-        <span class="ayuda">Es la misma casilla de la recepción, no una nueva. Rayar de nuevo
-          corrige lo que dice acá</span>
-      </div>
-      ${lista}
-    </div>
-  </div>`;
-}
-
 /* Redibuja las marcas dentro del SVG. Es la misma idea que `pintarDanos()` del
    ingreso, sobre la copia de trabajo de esta pantalla. */
 function pintarDanosEditor() {
@@ -316,7 +316,7 @@ function pintarDanosEditor() {
   if (n) n.textContent = e.danos.length ? plural(e.danos.length, 'marca', 'marcas') : 'sin marcas';
 }
 
-function pEditRecDanos() {
+function pEditRecEstado() {
   const e = editRec();
   const svg = document.querySelector('.lienzo svg');
   if (!svg) return;
@@ -383,10 +383,34 @@ function pEditRecDanos() {
 
   pintarDanosEditor();
 
-  document.querySelectorAll('[data-edrec-quitar]').forEach((b) => b.addEventListener('click', () => {
-    e.danos.splice(Number(b.dataset.edrecQuitar), 1);
+  // El combustible son los mismos nueve botones del ingreso.
+  document.querySelectorAll('[data-edrec-comb]').forEach((b) => b.addEventListener('click', () => {
+    e.campos.combustible = b.dataset.edrecComb;
     render();
   }));
+
+  /* Las fotos usan el mismo montador que el formulario. Se guardan al soltarlas
+     y no esperan el botón de la corrección: `adjuntar_media` y `eliminar_media`
+     son operaciones propias, con su permiso y su hecho en el expediente. */
+  montarZonaFotos({
+    id: 'edrecfoto', momento: 'ingreso',
+    alSubir: (fichas) => {
+      const o = Modelo.otPorId(e.otId);
+      if (!o) return;
+      ejecutar(() => Modelo.adjuntar_media(o.recepcion ? o.recepcion.id : null, [o.id], fichas),
+        plural(fichas.length, 'fotografía agregada', 'fotografías agregadas') + ' a la recepción.',
+        () => { e.fotos = Modelo.mediaDe(o.id).filter((m) => m.momento === 'ingreso'); render(); });
+    },
+    alQuitar: (i) => {
+      const f = e.fotos[i];
+      if (!f) return;
+      ejecutar(() => Modelo.eliminar_media(f.id), 'Fotografía quitada.', () => {
+        const o = Modelo.otPorId(e.otId);
+        e.fotos = o ? Modelo.mediaDe(o.id).filter((m) => m.momento === 'ingreso') : [];
+        render();
+      });
+    }
+  });
 
   /* La casilla de observaciones de esta pestaña no se engancha acá: lleva
      `data-edrec="observaciones"` —es literalmente el mismo campo que en la
@@ -418,7 +442,7 @@ function pRecepcionEditarFicha() {
     e.bloque = b.dataset.edrecBloque; render();
   }));
 
-  if (e.bloque === 'danos') pEditRecDanos();
+  if (e.bloque === 'estado') pEditRecEstado();
 
   /* Se guarda en el estado a cada tecla, no al pintar: el usuario puede saltar
      entre los cuatro bloques antes de guardar y no puede perder lo escrito en
@@ -467,6 +491,11 @@ function pRecepcionEditarFicha() {
     if (c.vin !== (o.vin || '') && c.vin && c.vin.length !== VIN_LARGO)
       return avisar({ ok: false, motivo: 'El VIN tiene ' + c.vin.length + ' caracteres y son ' +
         VIN_LARGO + ' (norma ISO 3779).' });
+    // El kilometraje es obligatorio en el ingreso y lo sigue siendo acá: una
+    // corrección no puede dejar la recepción peor de como estaba.
+    if (String(c.km).trim() === '')
+      return avisar({ ok: false, motivo: 'El kilometraje es obligatorio, igual que al recibir el ' +
+        'vehículo. Si no se sabe, se deja el que estaba.' });
 
     const cambios = {
       cliente: { nombres: c.nombres, rut: c.rut, telefono: c.telefono,

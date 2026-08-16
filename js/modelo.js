@@ -1642,12 +1642,37 @@ const Modelo = (function () {
      cliente. Queda por confirmar si además avisa a alguien del taller, y si
      avisa en CADA guardado o sólo al enviar — varios seguidos se vuelven ruido
      y la gente deja de leerlos. */
-  function encolarAviso(ot_id, asunto, detalle) {
+  /* Un monto en pesos, para el texto del aviso. El `fMonto` de las vistas vive
+     en `app.js`, que carga al final: el motor no puede depender de él. */
+  const montoTexto = (n) => '$' + Math.round(n || 0).toLocaleString('es-CL');
+
+  /* `interno` = no sale del taller. Es lo que corresponde para el aviso de que
+     se abrió una OR: adentro sirve para saber que hay trabajo esperando
+     valorización, y afuera no se le anuncia a nadie un presupuesto vacío. */
+  function encolarAviso(ot_id, asunto, detalle, interno) {
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     if (!o) return;
     const v = vistaOT(o);
-    const porCompania = v.compania && v.compania !== '—';
     db.aviso = db.aviso || [];
+
+    if (interno) {
+      db.aviso.push({
+        id: nuevoId('av'), ot_id, fecha: HOY, seq: ++seqEvento,
+        asunto, detalle: detalle || '', para: 'Taller', canal: 'interno', estado: 'en cola'
+      });
+      return;
+    }
+
+    /* A quién se avisa DEPENDE DEL ORIGEN de la orden: por compañía va a la
+       compañía; particular o empresa, al cliente. El parámetro
+       `aviso_presupuesto_destino` lo puede forzar desde Configuración sin tocar
+       código — a quién se le avisa es una decisión del taller que todavía no
+       está respondida (pregunta 6), y el sistema no se bloquea esperándola. */
+    const forzado = (db.parametro.find((x) => x.clave === 'aviso_presupuesto_destino') || {}).valor;
+    const porCompania = forzado === 'compania' ? true
+      : forzado === 'cliente' ? false
+      : !!(v.compania && v.compania !== '—');
+
     db.aviso.push({
       id: nuevoId('av'), ot_id, fecha: HOY, seq: ++seqEvento,
       asunto, detalle: detalle || '',
@@ -1746,8 +1771,13 @@ const Modelo = (function () {
       neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
       enviado_at: null, resuelto_at: null
     });
+    /* INTERNO. Al abrir la OR todavía no hay líneas ni monto: antes esto salía
+       con `canal: compania` anunciándole a SURA un presupuesto de "0 líneas ·
+       $0 neto" (F-2). Adentro sí sirve — dice que hay trabajo esperando que lo
+       valoricen—; afuera, no. */
     encolarAviso(ot_id, 'Presupuesto ' + numero_or + ' creado',
-      (lineas || []).length + ' líneas · ' + fPlata(neto) + ' neto');
+      (lineas || []).length + ' líneas · ' + fPlata(neto) + ' neto · esperando valorización',
+      true);
     (lineas || []).forEach((l, i) => db.presupuesto_linea.push(Object.assign({
       id: pid + '-l' + (i + 1), presupuesto_id: pid, orden: i + 1, proceso: 'reparar',
       descripcion: '', horas: null, cantidad: 1, precio_unitario: 0
@@ -1857,8 +1887,37 @@ const Modelo = (function () {
     if (estado === 'enviado') p.enviado_at = HOY;
     if (['aprobado', 'rechazado'].includes(estado)) p.resuelto_at = HOY;
     registrarEvento(p.ot_id, 'modificacion', 'Presupuesto ' + p.numero_or + ': ' + estado);
+
+    /* 🔴 APROBAR PIDE LOS REPUESTOS A BODEGA (F-1 de la auditoría).
+       `generar_repuestos_desde_presupuesto` existía, funcionaba y NO LA LLAMABA
+       NADIE. El único camino que quedaba era que el bodeguero volviera a
+       escribir a mano lo que el presupuestador ya había escrito: la
+       redigitación, que es el dolor #1 que el cliente nos describió de su
+       sistema actual, reproducido dentro del nuestro.
+
+       ⚠️ Su rechazo NO puede voltear la aprobación. Devuelve `{ok:false}`
+       cuando el presupuesto es sólo mano de obra y cuando los repuestos ya
+       estaban pedidos, y ninguna de las dos cosas es motivo para no aprobar.
+       Por eso se ignora el resultado a propósito y sólo se cuenta lo creado. */
+    let pedidos = 0;
+    if (estado === 'aprobado') {
+      const gen = generar_repuestos_desde_presupuesto(pid);
+      if (gen && gen.ok) pedidos = gen.creados || 0;
+    }
+
+    /* 🔴 EL AVISO SALE CUANDO IMPORTA (F-2). Antes se disparaba sólo al CREAR
+       la OR, y le anunciaba a la compañía un presupuesto de "0 líneas · $0
+       neto". El envío —el momento con valor de negocio— no disparaba nada. */
+    if (['enviado', 'aprobado', 'rechazado'].includes(estado)) {
+      const cuantas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).length;
+      encolarAviso(p.ot_id, 'Presupuesto ' + p.numero_or + ' ' + estado,
+        cuantas + (cuantas === 1 ? ' línea · ' : ' líneas · ') + montoTexto(p.neto) + ' neto' +
+        (pedidos ? ' · ' + pedidos + (pedidos === 1 ? ' repuesto pedido' : ' repuestos pedidos') +
+          ' a bodega' : ''));
+    }
+
     tocado();
-    return { ok: true, motivo: '' };
+    return { ok: true, motivo: '', repuestos: pedidos };
   }
 
   /* La versión nueva copia las líneas y deja la anterior intacta. */
@@ -1879,8 +1938,26 @@ const Modelo = (function () {
       version: previos.length + 1, estado: 'borrador', neto: 0, iva: 0, total: 0,
       enviado_at: null, resuelto_at: null
     });
+    /* 🔴 EL LINAJE DE LA LÍNEA (F-1 de la auditoría del 16-08-2026).
+
+       La versión nueva copia las líneas con ids nuevos. La idempotencia de
+       `generar_repuestos_desde_presupuesto` se apoya en `presupuesto_linea_id`,
+       así que para el sistema la línea "paragolpes delantero" de la v2 era OTRA
+       línea: aprobar la v2 pedía el mismo paragolpes por segunda vez, y el
+       bodeguero se enteraba cuando llegaban los dos.
+
+       Cada copia guarda de dónde viene, apuntando siempre a la RAÍZ y no a la
+       inmediata, para no tener que recorrer la cadena hacia atrás en cada
+       consulta. Se descartaron dos caminos antes de éste: comparar por
+       descripción es frágil —basta que la v2 diga "paragolpes del."— y además
+       bloquea el caso legítimo de necesitar dos piezas iguales; y marcar el
+       presupuesto entero como "ya pedido" deja sin pedir las líneas que la v2
+       AGREGA. */
     db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).forEach((l, i) =>
-      db.presupuesto_linea.push(Object.assign({}, l, { id: nid + '-l' + (i + 1), presupuesto_id: nid })));
+      db.presupuesto_linea.push(Object.assign({}, l, {
+        id: nid + '-l' + (i + 1), presupuesto_id: nid,
+        origen_linea_id: l.origen_linea_id || l.id
+      })));
     recalcularPresupuesto(nid);
     tocado();
     return { ok: true, motivo: '', presupuesto_id: nid, numero_or };
@@ -1897,9 +1974,23 @@ const Modelo = (function () {
     const lineas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid && l.proceso === 'cambio');
     if (!lineas.length)
       return { ok: false, motivo: 'Este presupuesto no tiene líneas de proceso Cambio: no hay repuestos que pedir.' };
+    /* La idempotencia mira TODO EL LINAJE, no la línea suelta: si la pieza ya
+       se pidió en una versión anterior de este mismo presupuesto, no se vuelve
+       a pedir. Ver el comentario del linaje en `nueva_version_presupuesto`. */
+    const raizDe = (l) => l.origen_linea_id || l.id;
+    const yaPedida = (l) => {
+      const mia = raizDe(l);
+      return db.repuesto.some((r) => {
+        if (!r.presupuesto_linea_id) return false;
+        if (r.presupuesto_linea_id === l.id) return true;
+        const suya = db.presupuesto_linea.find((x) => x.id === r.presupuesto_linea_id);
+        return !!suya && raizDe(suya) === mia;
+      });
+    };
+
     let n = 0;
     lineas.forEach((l) => {
-      if (db.repuesto.some((r) => r.presupuesto_linea_id === l.id)) return;   // idempotente
+      if (yaPedida(l)) return;   // idempotente, por linaje
       db.repuesto.push({
         id: nuevoId('rep'), ot_id: p.ot_id, presupuesto_linea_id: l.id,
         descripcion: l.descripcion, cantidad: l.cantidad,

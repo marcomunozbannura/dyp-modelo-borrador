@@ -967,6 +967,87 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 34 · 🔴 APROBAR UN PRESUPUESTO PIDE SUS REPUESTOS A BODEGA ──────
+         F-1 de la auditoría del 16-08-2026, y es el hallazgo que más duele:
+         `generar_repuestos_desde_presupuesto` existía, funcionaba y **nadie la
+         llamaba**. El único camino que quedaba era que el bodeguero volviera a
+         escribir a mano lo que el presupuestador ya había escrito — la
+         redigitación, que es el dolor #1 que el cliente nos describió de su
+         sistema actual, reproducido dentro del nuestro.
+
+         Se prueba el camino completo SIN llamar la función a mano. */
+      (function () {
+        restaurarSesion();
+        const admin = db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl');
+        Modelo.fijar_persona_actual(admin ? admin.id : null);
+
+        const o = db.orden_trabajo.find((x) => Reglas.estaAbierta(db, x.estado) &&
+          !db.repuesto.some((r) => r.ot_id === x.id));
+        if (!o) return push({ nombre: '🔴 Aprobar un presupuesto pide sus repuestos a bodega',
+          intento: '—', esperado: '—', paso: false,
+          detalle: 'No se encontró una orden abierta y sin repuestos en la semilla.' });
+
+        const cre = Modelo.crear_presupuesto(o.id, { lineas: [] });
+        const pid = cre.presupuesto_id;
+        const lin = Modelo.agregar_linea_presupuesto(pid, {
+          proceso: 'cambio', descripcion: 'Paragolpes delantero', cantidad: 1, precio_unitario: 180000 });
+        const env = Modelo.cambiar_estado_presupuesto(pid, 'enviado');
+        const apr = Modelo.cambiar_estado_presupuesto(pid, 'aprobado');
+
+        const pedidos = db.repuesto.filter((r) => r.ot_id === o.id);
+        const ligado = pedidos.filter((r) => r.presupuesto_linea_id).length;
+
+        push({
+          nombre: '🔴 Aprobar un presupuesto pide sus repuestos a bodega',
+          intento: 'En la OT ' + o.numero_ot + ': crear la OR, agregarle una línea de proceso ' +
+                   'Cambio, enviarla y aprobarla — sin pedir los repuestos a mano',
+          esperado: 'Un repuesto pendiente, ligado a la línea de presupuesto que lo originó',
+          paso: cre.ok && lin.ok && env.ok && apr.ok && pedidos.length === 1 && ligado === 1,
+          detalle: !apr.ok ? ('La aprobación falló: ' + apr.motivo)
+            : (pedidos.length + ' repuesto(s), ' + ligado + ' ligado(s) a su línea' +
+              (pedidos.length ? ' · ' + pedidos.map((r) => r.descripcion).join(', ')
+                : '  ·  NADIE los pidió: el bodeguero tendría que escribirlos de nuevo a mano.'))
+        });
+      })();
+
+      /* ── 35 · El aviso sale al ENVIAR, no al crear una OR vacía ──────────
+         F-2. La cola se disparaba sólo al crear la OR, y lo que le anunciaba a
+         la compañía era un presupuesto de "0 líneas · $0 neto". El momento con
+         valor de negocio —el envío— no disparaba nada. */
+      (function () {
+        restaurarSesion();
+        const admin = db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl');
+        Modelo.fijar_persona_actual(admin ? admin.id : null);
+
+        const o = db.orden_trabajo.find((x) => Reglas.estaAbierta(db, x.estado));
+        const antes = Modelo.avisosDe(o.id).length;
+
+        const cre = Modelo.crear_presupuesto(o.id, { lineas: [] });
+        const pid = cre.presupuesto_id;
+        const alCrear = Modelo.avisosDe(o.id).slice(0, Modelo.avisosDe(o.id).length - antes);
+        const externosAlCrear = alCrear.filter((a) => a.canal === 'compania' || a.canal === 'cliente');
+
+        Modelo.agregar_linea_presupuesto(pid, {
+          proceso: 'cambio', descripcion: 'Óptico derecho', cantidad: 1, precio_unitario: 240000 });
+        Modelo.cambiar_estado_presupuesto(pid, 'enviado');
+
+        const todos = Modelo.avisosDe(o.id);
+        const alEnviar = todos.filter((a) => /envia/i.test(a.asunto || ''));
+        const conMonto = alEnviar.filter((a) => !/\$0\b/.test(a.detalle || '') && /\$/.test(a.detalle || ''));
+
+        push({
+          nombre: 'El aviso a la compañía sale al enviar, no al crear la OR vacía',
+          intento: 'Crear una OR en la OT ' + o.numero_ot + ' y contar avisos externos; después ' +
+                   'agregarle una línea y enviarla',
+          esperado: 'Crear no genera aviso externo · enviar sí, y su detalle trae el monto real',
+          paso: !externosAlCrear.length && alEnviar.length > 0 && conMonto.length > 0,
+          detalle: 'Al crear: ' + externosAlCrear.length + ' aviso(s) externo(s)' +
+            (externosAlCrear.length ? ' — «' + externosAlCrear[0].detalle + '», NO debería' : '') +
+            '  ·  Al enviar: ' + alEnviar.length + ' aviso(s)' +
+            (alEnviar.length ? ' — «' + alEnviar[0].detalle + '» para ' + alEnviar[0].para : '')
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

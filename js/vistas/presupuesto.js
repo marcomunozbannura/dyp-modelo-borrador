@@ -346,6 +346,13 @@ function vPresupuestoDetalle(o, pr) {
     ${editable ? '<button class="btn" data-presu-estado="enviado">Enviar a la compañía</button>' : ''}
     ${pr.estado === 'enviado' ? '<button class="btn" data-presu-estado="aprobado">Marcar aprobado</button>' +
       '<button class="btn secundario" data-presu-estado="rechazado">Marcar rechazado</button>' : ''}
+    ${/* 🔶 PEDIR REPUESTOS ANTES DE LA APROBACIÓN (F-1 de la auditoría). Al
+         aprobar se piden solos; este botón es para el caso que describió el
+         cliente: bodega encarga las piezas mientras el auto está afuera
+         esperando, sin haber vuelto la respuesta de la compañía. No está
+         deshabilitado nunca — se aprieta y la regla explica si no había nada
+         que pedir o si ya estaban pedidos. */''}
+    <button class="btn secundario" id="presu-pedir">Pedir repuestos a bodega</button>
     <button class="btn secundario" id="presu-version">Crear versión nueva</button>
     ${Modelo.puede('presupuesto.montos')
       ? '<button class="btn secundario" id="presu-pdf" data-pr="' + esc(pr.id) + '">' +
@@ -509,8 +516,25 @@ function pPresupuesto() {
     const o = Modelo.otPorId(p.otId);
     const actual = p.presupuestoId ? o.presupuestos.find((x) => x.id === p.presupuestoId)
                                    : o.presupuestos[o.presupuestos.length - 1];
-    ejecutar(() => Modelo.cambiar_estado_presupuesto(actual.id, b.dataset.presuEstado), 'Presupuesto actualizado.');
+    /* Al aprobar se piden los repuestos solos, así que el mensaje lo dice: si
+       el usuario no ve que pasó, va a ir a escribirlos a mano a bodega — que es
+       exactamente lo que esto viene a evitar. */
+    ejecutar(() => Modelo.cambiar_estado_presupuesto(actual.id, b.dataset.presuEstado),
+      (r) => 'Presupuesto ' + b.dataset.presuEstado + '.' + (r && r.repuestos
+        ? ' Se pidieron ' + r.repuestos + (r.repuestos === 1 ? ' repuesto' : ' repuestos') +
+          ' a bodega.' : ''));
   }));
+
+  const pedir = document.getElementById('presu-pedir');
+  if (pedir) pedir.addEventListener('click', () => {
+    const o = Modelo.otPorId(p.otId);
+    const actual = p.presupuestoId ? o.presupuestos.find((x) => x.id === p.presupuestoId)
+                                   : o.presupuestos[o.presupuestos.length - 1];
+    if (!actual) return avisar({ ok: false, motivo: 'Esta orden todavía no tiene presupuesto.' });
+    ejecutar(() => Modelo.generar_repuestos_desde_presupuesto(actual.id),
+      (r) => 'Se pidieron ' + (r.creados || 0) +
+        ((r.creados || 0) === 1 ? ' repuesto' : ' repuestos') + ' a bodega.');
+  });
 
   /* La pregunta del cliente: ¿este trabajo requiere repuestos? Si no, la
      columna no se dibuja. */

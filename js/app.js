@@ -790,9 +790,14 @@ function avisar(resultado, textoOk) {
    Ojo: la ficha de una OT se puede estar mostrando por dirección (`#ot=`) o
    porque alguien la abrió desde adentro. Hay que refrescar la que está a la
    vista, no la que dice la dirección. */
+/* `textoOk` puede ser una FUNCIÓN que recibe el resultado. Sirve cuando el
+   mensaje depende de lo que pasó y no sólo de que haya pasado: "se pidieron 3
+   repuestos a bodega" no se puede escribir antes de saber cuántos fueron, y
+   contarlo es justo lo que evita que alguien los vaya a escribir de nuevo a
+   mano. */
 function ejecutar(fn, textoOk, despues) {
   const r = fn();
-  avisar(r, textoOk);
+  avisar(r, typeof textoOk === 'function' ? textoOk(r) : textoOk);
   if (r.ok) {
     if (ui.registroOT) modoRegistro(ui.registroOT); else render();
     if (despues) despues(r);

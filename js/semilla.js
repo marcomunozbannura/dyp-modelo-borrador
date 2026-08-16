@@ -642,6 +642,19 @@ const Semilla = (function () {
           { valor: 'estadia_actual', nombre: 'Estadía actual (el reloj vuelve a cero al reingresar)' }
         ],
         ayuda: 'En la reunión se pidió que vuelva a cero. Los dos números se calculan siempre; esto elige cuál es el KPI.' },
+      /* A quién se le avisa cuando se envía o se resuelve un presupuesto. Queda
+         configurable a propósito: es una decisión del taller que todavía no
+         está respondida —la pregunta 6— y el sistema no se bloquea esperándola.
+         Por omisión sigue al origen de la orden, que es lo razonable. */
+      { clave: 'aviso_presupuesto_destino', nombre: 'A quién se avisa del presupuesto',
+        valor: 'auto', tipo: 'opcion',
+        opciones: [
+          { valor: 'auto',     nombre: 'Según el origen: compañía si vino por compañía, si no el cliente' },
+          { valor: 'compania', nombre: 'Siempre a la compañía' },
+          { valor: 'cliente',  nombre: 'Siempre al cliente' }
+        ],
+        ayuda: 'El aviso sale al enviar y al resolverse, con las líneas y el monto reales. ' +
+               'El modelo borrador NO manda correo: la cola está modelada y el envío es del servidor.' },
       { clave: 'correlativo_ot', nombre: 'Próximo número de OT', valor: ULTIMA_OT + 1, tipo: 'numero',
         ayuda: 'Correlativo de cinco dígitos, sin año ni local. Al 12-08-2026 el sistema real iba por ' + ULTIMA_OT + '.' },
       { clave: 'iva', nombre: 'IVA', valor: 19, tipo: 'numero', ayuda: 'Porcentaje aplicado al neto del presupuesto.' },

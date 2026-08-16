@@ -35,15 +35,9 @@ const FICHA_TABS = [
 const tabsVisibles = () => FICHA_TABS.filter((t) => !t.permiso || Modelo.puede(t.permiso));
 
 function fichaEstado() {
-  /* La pestaña de arranque puede venir pedida en la dirección
-     (`#ot=23506&tab=etapas`), que es como el listado de Taller manda a asignar
-     etapas. Solo se respeta la PRIMERA vez: después manda lo que el usuario
-     haya apretado, o volvería a saltar a Etapas en cada repintado. */
   if (!ui.ficha) {
-    const pedida = typeof PARAM_TAB === 'string' ? PARAM_TAB : null;
     ui.ficha = {
-      tab: FICHA_TABS.some((t) => t.id === pedida) ? pedida : 'ficha',
-      modoEtapas: null,
+      tab: 'ficha', modoEtapas: null,
       // Los dos arrancan sin elegir, como el original: `Seleccionar`.
       bitacora: { asunto: null, destinatario: null, mensaje: '' }
     };
@@ -52,6 +46,22 @@ function fichaEstado() {
   // misma pestaña del navegador— vuelve a la primera que sí puede ver.
   if (!tabsVisibles().some((t) => t.id === ui.ficha.tab)) ui.ficha.tab = 'ficha';
   return ui.ficha;
+}
+
+/* Lo que la DIRECCIÓN pide: en qué pestaña abrir la orden y en qué modo dentro
+   de ella. Es como el listado de Taller manda a asignar etapas —su botón dice
+   `Asignar etapas` y tiene que abrir eso, tenga la orden etapas o no—.
+
+   Se aplica al ABRIR la orden y no en cada repintado: si no, apretar cualquier
+   otra pestaña rebotaría a Etapas para siempre, porque el ancla sigue diciendo
+   lo mismo. */
+function fichaAplicarDireccion() {
+  const f = fichaEstado();
+  const tab = typeof PARAM_TAB === 'function' ? PARAM_TAB() : null;
+  const modo = typeof PARAM_MODO === 'function' ? PARAM_MODO() : null;
+  if (tab && FICHA_TABS.some((t) => t.id === tab)) f.tab = tab;
+  if (modo === 'asignar' || modo === 'finalizar') f.modoEtapas = modo;
+  return f;
 }
 
 function refrescarFicha() {

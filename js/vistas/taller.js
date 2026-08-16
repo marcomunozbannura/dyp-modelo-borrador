@@ -28,15 +28,17 @@
      aparece la OT 23505 en «Fuera de taller / Espera repuesto»: la orden sigue
      viva y hay que poder trabajarla aunque el auto no esté ocupando un box.
 
+   · Que la acción sea UNA SOLA y se llame igual en todas las filas:
+     `Asignar etapas`. Se probó cambiándole el rótulo según la orden y el
+     cliente lo corrigió — *"aquí solo se puede asignar etapas"*. Ver
+     `TALLER_ACCION` más abajo.
+
    ── Qué se corrige ───────────────────────────────────────────────────────
 
-   🔴 El original rotula SIEMPRE `Asignar Etapas`, aunque la orden ya las
-      tenga asignadas y lo que corresponda sea cerrarlas. El enrutamiento por
-      detrás sí distingue —pedir `taller-etapas-v2` sobre una OT sin etapas
-      devuelve `taller-habilitar-etapas`—, o sea que el sistema sabe a dónde
-      va y el rótulo no lo dice. Acá el rótulo dice a dónde lleva:
-      `Asignar etapas` cuando no hay ninguna, `Finalizar etapas` cuando ya las
-      hay. Es la misma regla del original, escrita en el botón.
+   🔴 La columna `Días` es la REPARACIÓN ACUMULADA, no los días desde el
+      último cambio de estado que muestra el original. Ese número es el bug de
+      C-1, y copiarlo justo en la pantalla donde se decide el trabajo del día
+      sería replicar el defecto en el peor lugar posible.
    ──────────────────────────────────────────────────────────────────────── */
 
 const TALLER_APARTADOS = [
@@ -64,10 +66,20 @@ function tallerOrdenes() {
     .sort((a, b) => (a.enTaller === b.enTaller ? b.numeroOT - a.numeroOT : (a.enTaller ? -1 : 1)));
 }
 
-/* La regla de enrutamiento del original, dicha en el rótulo del botón. */
-const tallerAccionDe = (o) => (o.etapasAsignadas.length
-  ? { modo: 'finalizar', rot: 'Finalizar etapas', permiso: 'etapa.finalizar' }
-  : { modo: 'asignar', rot: 'Asignar etapas', permiso: 'etapa.asignar' });
+/* 🟰 DESDE ACÁ SOLO SE ASIGNA. Instrucción del cliente el 15-08-2026:
+   *"aquí solo se puede asignar etapas"*.
+
+   La versión anterior cambiaba el rótulo según la orden —`Asignar` cuando no
+   tenía ninguna, `Finalizar` cuando ya tenía— para que el botón delatara a
+   dónde llevaba. El taller lo quiere como el original: **una sola acción, con
+   el mismo nombre en las 102 filas**.
+
+   Y ya que el rótulo es fijo, el destino también: el botón dice `Asignar
+   etapas` y abre la pantalla de asignar, siempre. Dejarlo caer a veces en
+   `Finalizar` sería el mismo desajuste de antes, al revés. Cerrar etapas sigue
+   estando a un clic con el conmutador `Asignar | Finalizar` de esa pantalla, y
+   además es lo que cada operario ve en `Mi trabajo`. */
+const TALLER_ACCION = { rot: 'Asignar etapas', permiso: 'etapa.asignar' };
 
 function vTaller() {
   const t = tallerEstado();
@@ -97,9 +109,8 @@ function vTallerListado() {
   // que reconocer el auto, y para eso están marca y modelo.
   const verCliente = Modelo.puede('ficha.completa');
 
-  const fila = (o) => {
-    const acc = tallerAccionDe(o);
-    return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '">' +
+  const fila = (o) =>
+    '<tr class="fila" data-ot="' + esc(o.numeroOT) + '">' +
       '<td class="num"><strong>' + o.numeroOT + '</strong></td>' +
       '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
       '<td>' + (verCliente ? esc(o.cliente) : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
@@ -122,11 +133,10 @@ function vTallerListado() {
       '<td>' + (o.fechaCompromiso ? fCorta(o.fechaCompromiso)
         : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
       '<td><button class="btn secundario chico" data-etapasde="' + esc(o.numeroOT) + '">' +
-        ico('check') + esc(acc.rot) + '</button></td>' +
+        ico('check') + esc(TALLER_ACCION.rot) + '</button></td>' +
       '<td style="text-align:center"><button class="btn secundario chico" data-datosde="' + esc(o.numeroOT) + '" ' +
         'title="Abrir la orden ' + o.numeroOT + '" aria-label="Abrir la orden ' + o.numeroOT + '">' +
         ico('buscar') + '</button></td></tr>';
-  };
 
   return `
   <div class="filtros" style="margin-bottom:10px">
@@ -216,18 +226,17 @@ function pTaller() {
      no a la ficha para que después alguien busque la pestaña. */
   document.querySelectorAll('[data-etapasde]').forEach((b) => b.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    const o = Modelo.otPorNumero(b.dataset.etapasde);
-    const acc = o ? tallerAccionDe(o) : null;
-
     /* La regla la rechaza el motor, no el botón: sin el permiso se aprieta
        igual y se dice quién sí puede. Esconderlo dejaría al operario con una
        columna vacía sin saber por qué. */
-    if (acc && !Modelo.puede(acc.permiso)) {
-      return avisar({ ok: false, motivo: '«' + acc.rot + '» no es de este perfil. El rol ' +
-        (Modelo.rolActual().nombre || '—') + ' no tiene el permiso «' + acc.permiso +
+    if (!Modelo.puede(TALLER_ACCION.permiso)) {
+      return avisar({ ok: false, motivo: '«' + TALLER_ACCION.rot + '» no es de este perfil. El rol ' +
+        (Modelo.rolActual().nombre || '—') + ' no tiene el permiso «' + TALLER_ACCION.permiso +
         '». Se administra en Configuración → Roles y permisos.' });
     }
-    abrirFicha(b.dataset.etapasde, 'etapas');
+    // `asignar` explícito: el botón dice eso y tiene que abrir eso, tenga la
+    // orden etapas o no.
+    abrirFicha(b.dataset.etapasde, 'etapas', 'asignar');
   }));
 
   document.querySelectorAll('[data-datosde]').forEach((b) => b.addEventListener('click', (ev) => {

@@ -1176,6 +1176,33 @@ const Modelo = (function () {
     return { ok: true, motivo: '' };
   }
 
+  /* ── Programar la entrega ─────────────────────────────────────────────
+     Comprometer una fecha FUTURA con el cliente sin cerrar la orden. Pedido
+     del cliente el 15-08-2026 sobre la pantalla de entrega.
+
+     Escribe la misma `fecha_compromiso` que `fijar_fecha_compromiso` pone
+     desde la pantalla de etapas, pero es una operación aparte por una razón
+     práctica: quien acuerda la fecha con el dueño del auto es la recepción, y
+     la recepción no asigna etapas. Con un solo permiso había que elegir entre
+     abrirle las etapas al mesón o dejar al mesón sin poder comprometer una
+     fecha. Son dos actos distintos y llevan dos permisos distintos.
+
+     Y no cierra nada: la orden sigue viva, el vehículo sigue en la torre y el
+     reloj sigue corriendo. Una fecha prometida no es una entrega. */
+  function programar_entrega(ot_id, fecha, observacion) {
+    const o = db.orden_trabajo.find((x) => x.id === ot_id);
+    if (!o) return { ok: false, motivo: 'La orden de trabajo no existe.' };
+    if (Reglas.esTerminal(db, o.estado))
+      return { ok: false, motivo: 'La orden ' + o.numero_ot + ' ya está cerrada: se entregó, no se programa.' };
+    if (!fecha) return { ok: false, motivo: 'Hay que indicar la fecha comprometida.' };
+    o.fecha_compromiso = fecha;
+    registrarEvento(ot_id, 'modificacion', 'Entrega programada para el ' +
+      fecha.toLocaleDateString('es-CL') +
+      (String(observacion || '').trim() ? ' — ' + String(observacion).trim() : ''));
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
   function registrar_entrega(ot_id, { estado, fecha, observacion }) {
     const e = Reglas.estadoPorCodigo(db, estado);
     if (!e) return { ok: false, motivo: 'El estado de entrega no existe en el catálogo.' };
@@ -2317,6 +2344,7 @@ const Modelo = (function () {
     registrar_reingreso: 'el reingreso',
     cambiar_estado_ot: 'el cambio de estado',
     registrar_entrega: 'la entrega',
+    programar_entrega: 'la fecha de entrega programada',
     cargar_repuesto: 'cargar un repuesto',
     recibir_repuesto: 'recibir un repuesto',
     entregar_repuesto_area: 'entregar un repuesto al área',
@@ -2380,6 +2408,9 @@ const Modelo = (function () {
     registrar_salida: 'salida.registrar',
     registrar_reingreso: 'salida.registrar',
     registrar_entrega: 'entrega.registrar',
+    // Programar la entrega es del mesón, no del taller: por eso NO pide
+    // `etapa.asignar` como su gemela `fijar_fecha_compromiso`.
+    programar_entrega: 'entrega.registrar',
     cargar_repuesto: 'repuesto.cargar',
     recibir_repuesto: 'repuesto.cargar',
     entregar_repuesto_area: 'repuesto.cargar',
@@ -2479,6 +2510,7 @@ const Modelo = (function () {
     'asignar_etapas', 'asignar_responsable_ot', 'tomar_etapa', 'soltar_etapa',
     'finalizar_etapa', 'finalizar_etapas', 'quitar_etapa', 'fijar_fecha_compromiso',
     'registrar_salida', 'registrar_reingreso', 'cambiar_estado_ot', 'registrar_entrega',
+    'programar_entrega',
     'cargar_repuesto', 'crear_presupuesto', 'agregar_costo_adicional', 'escribir_bitacora',
     'declarar_perdida_total',
     'abrir_detencion', 'cerrar_detencion'
@@ -2561,6 +2593,7 @@ const Modelo = (function () {
     tomar_etapa, soltar_etapa, miTrabajo, asignar_responsable_ot,
     personasParaEtapa, destinatarios, fijar_fecha_compromiso,
     registrar_salida, registrar_reingreso, cambiar_estado_ot, registrar_entrega,
+    programar_entrega,
     cargar_repuesto, recibir_repuesto, entregar_repuesto_area, fijar_responsable_pago,
     adjuntar_vale_repuesto, devolver_repuesto, declarar_perdida_total,
     avisos, avisosDe,

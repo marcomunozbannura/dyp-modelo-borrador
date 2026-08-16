@@ -727,6 +727,42 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 28 · 🔴 PROGRAMAR LA ENTREGA NO ES HABER ENTREGADO ──────────────
+         Pedido del cliente el 15-08-2026: poder poner una fecha de entrega
+         futura. El riesgo está a la vista — que "programar" termine cerrando
+         la orden y el auto desaparezca de la torre estando todavía en el
+         taller, con el cliente esperando que lo llamen el jueves.
+
+         Se prueban las dos mitades del mismo hecho: la fecha queda escrita, y
+         la orden sigue viva, en la torre y sin estado final. */
+      (function () {
+        restaurarSesion();
+        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') || {}).id;
+        Modelo.fijar_persona_actual(quien);
+
+        const o = Modelo.torre()[0];
+        const cuando = new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 5, 15, 0);
+        const r = o ? Modelo.programar_entrega(o.id, cuando, 'Comprometido con el cliente') : { ok: false };
+        const luego = o ? Modelo.otPorId(o.id) : null;
+        const enTorre = o ? Modelo.torre().some((x) => x.id === o.id) : false;
+
+        const quedoLaFecha = !!luego && !!luego.fechaCompromiso &&
+          luego.fechaCompromiso.getTime() === cuando.getTime();
+
+        push({
+          nombre: '🔴 Programar la entrega deja la fecha, no cierra la orden',
+          intento: o ? ('Programar la OT ' + o.numeroOT + ' para el ' +
+                   cuando.toLocaleDateString('es-CL')) : 'No había ninguna orden viva que programar',
+          esperado: 'La fecha comprometida queda escrita · la orden sigue abierta y en la torre',
+          paso: r.ok && quedoLaFecha && !!luego && !luego.esFinal && enTorre,
+          detalle: !o ? 'La torre vino vacía.' : (!r.ok ? ('Rebotó: ' + r.motivo) :
+            'Fecha comprometida: ' + (luego.fechaCompromiso
+              ? luego.fechaCompromiso.toLocaleDateString('es-CL') : 'NO QUEDÓ') +
+            ' · Estado: ' + luego.estadoNombre + (luego.esFinal ? ' (FINAL, no debería)' : ' (abierta)') +
+            ' · En la torre: ' + (enTorre ? 'sí' : 'NO, se la llevó'))
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

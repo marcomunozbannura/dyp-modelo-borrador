@@ -764,6 +764,14 @@ table.grid tr.fila-desplegable.abierta td.flecha-col .flecha { transform: rotate
 table.grid tr.fila-desplegable { cursor: pointer; }
 table.grid tr.fila-desplegable:hover > td { background: var(--seleccion); }
 
+/* Filas que se abren SÓLO con la flecha: las tablas cuyas celdas llevan campos
+   —Entregar Unidad tiene fecha, tipo de entrega y observaciones—. Ahí la fila
+   no es un botón y no tiene por qué parecerlo: el dedo va a la flecha. */
+table.grid tr.fila-desplegable.solo-flecha { cursor: default; }
+table.grid tr.fila-desplegable.solo-flecha:hover > td { background: transparent; }
+table.grid tr.fila-desplegable.solo-flecha td.flecha-col { cursor: pointer; }
+table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: var(--acento); }
+
 /* ───────── Configuración agrupada ─────────
    Eran doce pestañas en una fila, todas al mismo nivel: lo que se toca una vez
    al año se veía igual de importante que lo de todos los días. */

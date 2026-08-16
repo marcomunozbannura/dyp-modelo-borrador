@@ -72,20 +72,15 @@ function vEntrega() {
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('check', 'g')}Buscar unidad para entrega</h2>
-      <div class="desc">El cierre del ciclo. Se escribe la patente y el sistema propone las que están listas</div></div>
+      <div class="desc">El cierre del ciclo. Abajo salen las unidades listas; la patente sirve para filtrar</div></div>
       <span class="et ${listos.length ? 'verde' : 'gris'}">${listos.length} listas para entregar</span></div>
     <div class="cuerpo">
       <div class="rejilla-campos">
         <div class="campo"><label>Patente u OT</label>
-          <input id="ent-patente" list="ent-listas" autocomplete="off"
-            value="${esc(e.patente)}" placeholder="Escribe y elige de la lista">
-          <datalist id="ent-listas">
-            ${listos.map((x) => '<option value="' + esc(x.patente) + '">OT ' + esc(x.numeroOT) +
-              ' · ' + esc(x.cliente) + '</option>').join('')}
-          </datalist>
-          <span class="ayuda">Abajo están las ${listos.length} listas para entregar. Escribe
-            para filtrar, o para llegar a una que todavía no lo está — aparece marcada con lo que
-            le falta</span></div>
+          <input id="ent-patente" autocomplete="off"
+            value="${esc(e.patente)}" placeholder="Filtrar por patente o número de OT">
+          <span class="ayuda">La lista completa está más abajo. Escribir acá la filtra, o llega a
+            una que todavía no está lista — aparece igual, marcada con lo que le falta</span></div>
         <div class="campo"><label>&nbsp;</label><button class="btn" id="ent-buscar">Buscar patente</button></div>
       </div>
 
@@ -95,13 +90,16 @@ function vEntrega() {
         : ''}
 
       ${coincidencias.length ? `
-      <h3 style="font-size:13px;margin:14px 0 6px">${e.patente
+      <h3 style="font-size:13px;margin:14px 0 4px">${e.patente
         ? 'Resultados de la patente &ldquo;' + esc(e.patente) + '&rdquo;'
         : 'Vehículos listos para entregar'}</h3>
+      <div class="ayuda" style="margin:0 0 7px">La flecha de la izquierda abre el detalle.
+        Con fecha de hoy el botón <strong>entrega</strong> y cierra la orden; con una fecha
+        más adelante cambia a <strong>Programar</strong>, que compromete el día y deja la orden abierta</div>
       <div class="grid-envoltorio"><table class="grid">
         <thead><tr>
-          <th>OT</th><th>Patente</th><th style="width:170px">Fecha Entrega</th>
-          <th style="width:200px">Tipo de entrega</th><th>Observaciones</th><th style="width:96px"></th>
+          <th>OT</th><th>Patente</th><th style="width:170px">Fecha de entrega</th>
+          <th style="width:200px">Tipo de entrega</th><th>Observaciones</th><th style="width:104px"></th>
         </tr></thead>
         <tbody>${coincidencias.map((x) => filaEntrega(x, e)).join('')}</tbody>
       </table></div>` : ''}
@@ -130,10 +128,21 @@ function filaEntrega(x, e) {
     '<td><span class="patente">' + esc(x.patente) + '</span>' +
       (listo ? ' <span class="et verde">lista</span>'
              : ' <span class="et ambar" title="' + esc(falta) + '">pendiente</span>') +
+      // La fecha ya comprometida se ve en la fila: es lo primero que pregunta
+      // el cliente cuando llama, y sin esto había que abrir la orden. Sólo si
+      // es de más adelante: una fecha probable ya vencida no es un compromiso
+      // vigente, y con 53 filas sería una etiqueta en todas que no dice nada.
+      (esFutura(x.fechaCompromiso) ? ' <span class="et azul">programada ' +
+        esc(fCorta(x.fechaCompromiso)) + '</span>' : '') +
       '<div class="ayuda" style="margin:2px 0 0">' + esc(x.cliente) +
       (falta ? ' — ' + esc(falta) : '') + '</div></td>' +
     // La fecha lleva HORA, igual que el original: un taller entrega varios
     // autos el mismo día y el orden importa cuando hay un reclamo.
+    /* Parte SIEMPRE en hoy, aunque la orden ya tenga una fecha comprometida
+       más adelante. Se probó al revés —prellenar el compromiso— y quedaban 22
+       de 53 filas con el botón en «Programar» en la pantalla que se llama
+       Entregar Unidad: el cliente que llega al mostrador a buscar su auto es
+       el caso de todos los días, y programar es el que se decide. */
     '<td><input type="datetime-local" data-ent-campo="fecha" data-ot="' + esc(x.id) + '" ' +
       'value="' + esc(isoFechaHora(HOY)) + '"></td>' +
     '<td><select data-ent-campo="estado" data-ot="' + esc(x.id) + '">' +
@@ -145,6 +154,39 @@ function filaEntrega(x, e) {
     '<td><button class="btn" data-ent-entregar="' + esc(x.id) + '">Entregar</button></td></tr>';
 }
 
+/* ── Entregar hoy o programar para después ─────────────────────────────
+   Pedido del cliente el 15-08-2026: poder poner una fecha de entrega futura.
+
+   No se resuelve dejando escribir cualquier fecha en el mismo botón, porque
+   entregar es un HECHO —cierra la orden, manda el auto al histórico y detiene
+   los relojes— y un hecho no se puede registrar antes de que pase. Lo que se
+   agenda para el jueves es un COMPROMISO, y eso es otra cosa.
+
+   Entonces el botón lee la fecha: si es de hoy o de antes, entrega; si es de
+   un día más adelante, programa. Un solo campo, dos actos bien separados.
+
+   Se compara por DÍA, no por hora: la casilla viene con la hora actual y con
+   una comparación al minuto el botón parpadearía entre un modo y otro sin que
+   nadie haya tocado nada. */
+function esFutura(d) {
+  if (!d) return false;
+  const soloDia = (f) => new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime();
+  return soloDia(d) > soloDia(HOY);
+}
+
+/* De `AAAA-MM-DDTHH:MM` a Date. A mano y no con `new Date(texto)`: ese
+   constructor interpreta la cadena con zona horaria y en Chile devuelve el día
+   anterior, que en una fecha de entrega es exactamente el error que no se puede
+   cometer. */
+function fechaDelCampo(v) {
+  if (!v) return null;
+  const [f, h] = String(v).split('T');
+  const [a, m, d] = String(f).split('-').map(Number);
+  if (!a || !m || !d) return null;
+  const [hh, mm] = String(h || '00:00').split(':').map(Number);
+  return new Date(a, m - 1, d, hh || 0, mm || 0);
+}
+
 /* `datetime-local` necesita `AAAA-MM-DDTHH:MM` en hora local. Con toISOString()
    sale en UTC y en Chile el campo aparece con horas de diferencia. */
 function isoFechaHora(d) {
@@ -152,6 +194,62 @@ function isoFechaHora(d) {
   const ahora = new Date();
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
     'T' + p(ahora.getHours()) + ':' + p(ahora.getMinutes());
+}
+
+/* Lo que se ve al abrir la flecha en esta pantalla. El cliente pidió tres
+   cosas y ninguna más: cuándo entró el auto, qué repuestos tiene y quién es el
+   dueño. Por eso no se usa el desplegable general —que además trae los
+   presupuestos y las OR—: entregando no se está mirando plata, se está
+   confirmando que el auto que se lleva el señor es el suyo y está completo. */
+function detalleEntrega(clave) {
+  const o = ordenPorNumeroOId(clave);
+  if (!o) return '<div class="vacio"><div class="texto">No se pudo leer esta orden.</div></div>';
+
+  const dato = (k, v) => '<div class="dato"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span></div>';
+  const pend = o.repuestos.filter((r) => !r.fechaBodega);
+
+  const ingreso = '<div class="rejilla-datos">' +
+    dato('Fecha de ingreso', o.fechaIngreso
+      ? esc(fFecha(o.fechaIngreso)) + ' <span style="color:var(--gris-2);font-weight:400">· ' +
+        o.diasTotales + ' días</span>'
+      : '<span style="color:var(--gris-2)">sin dato</span>') +
+    dato('Entrega programada', o.fechaCompromiso
+      ? esc(fFecha(o.fechaCompromiso))
+      : '<span style="color:var(--gris-2)">sin comprometer</span>') +
+    '</div>';
+
+  // El RUT, el teléfono y la dirección van enmascarados salvo que el rol tenga
+  // `datos.rut_completo`, igual que en la ficha. Que la pantalla sea otra no
+  // cambia quién puede ver un dato personal.
+  const cliente = '<div class="rejilla-datos">' +
+    dato('Cliente', esc(o.cliente)) +
+    dato('RUT', esc(Modelo.velar(o.rut, 'datos.rut_completo'))) +
+    dato('Teléfono', esc(Modelo.velar(o.telefono, 'datos.rut_completo') || '—')) +
+    dato('Dirección', esc(Modelo.velar(o.direccion, 'datos.rut_completo', 'todo') || '—')) +
+    '</div>';
+
+  const repuestos = o.repuestos.length
+    ? '<table class="grid anidada"><thead><tr>' +
+        '<th>Repuesto</th><th class="num">Cant.</th><th>Paga</th><th>Pedido</th>' +
+        '<th>En bodega</th><th>Entregado al área</th></tr></thead><tbody>' +
+      o.repuestos.map((r) =>
+        '<tr><td>' + esc(r.descripcion) + '</td>' +
+        '<td class="num">' + (r.cantidad || 1) + '</td>' +
+        '<td>' + esc(r.responsablePago || '—') + '</td>' +
+        '<td class="num">' + (r.fechaSolicitud ? esc(fCorta(r.fechaSolicitud)) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? esc(fCorta(r.fechaBodega))
+          : '<span style="color:var(--rojo)">por llegar</span>') + '</td>' +
+        '<td class="num">' + (r.fechaEntregaArea ? esc(fCorta(r.fechaEntregaArea)) : '—') + '</td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="texto" style="color:var(--gris-2)">Esta orden no lleva repuestos.</div>';
+
+  return '<div class="detalle-ot">' +
+    '<div class="bloque"><h4>Ingreso</h4>' + ingreso + '</div>' +
+    '<div class="bloque"><h4>Cliente</h4>' + cliente + '</div>' +
+    '<div class="bloque"><h4>Repuestos' +
+      (pend.length ? ' <span class="et roja">' + pend.length + ' por llegar</span>' : '') +
+      '</h4>' + repuestos + '</div>' +
+    '</div>';
 }
 
 function vEntregaFicha(o) {
@@ -205,8 +303,13 @@ function vEntregaFicha(o) {
 }
 
 function pEntrega() {
-  // Doble clic abre la orden en pestaña nueva, igual que en la torre.
-  dobleClicPorFilas();
+  /* Acá el desplegable se abre SÓLO con la flecha de la izquierda, y no hay
+     doble clic que abra la orden en otra pestaña. Las dos cosas las pidió el
+     cliente el 15-08-2026 y las dos son por lo mismo: esta tabla tiene campos
+     en las celdas. Elegir el tipo de entrega desplegaba y contraía la fila, y
+     al terminar de llenar los campos uno se iba a otra pestaña sin querer. La
+     entrega se hace acá, en la fila, sin salir a ninguna parte. */
+  dobleClicPorFilas('tr.fila[data-ot]', { soloFlecha: true, detalle: detalleEntrega });
   const e = entregaEstado();
   const campo = document.getElementById('ent-patente');
   const buscar = () => { e.patente = campo.value.trim().toUpperCase(); e.otId = null; render(); };
@@ -214,36 +317,54 @@ function pEntrega() {
   if (btn) btn.addEventListener('click', buscar);
   if (campo) campo.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') buscar(); });
 
-  // El autocompletado: elegir de la lista busca al tiro, sin apretar el botón.
-  if (campo) campo.addEventListener('change', () => {
-    if (campo.value && campo.value !== e.patente) buscar();
-  });
-
   document.querySelectorAll('[data-ent-ot]').forEach((b) => b.addEventListener('click', () => {
     e.otId = b.dataset.entOt; render();
   }));
 
-  /* Entregar desde la propia fila. Los tres campos se leen de la fila del
-     botón, no de un formulario aparte: pueden verse varias unidades a la vez y
-     hay que entregar la que se apretó, no la última que se tocó. */
+  /* El botón dice lo que va a hacer, y lo decide la fecha de su propia fila.
+     Se recalcula al pintar y a cada cambio: si el recepcionista corre la fecha
+     al jueves, el botón pasa a Programar antes de que lo apriete. */
+  const sincronizar = (campoFecha) => {
+    const b = document.querySelector('[data-ent-entregar="' + campoFecha.dataset.ot + '"]');
+    if (!b) return;
+    const futura = esFutura(fechaDelCampo(campoFecha.value));
+    b.textContent = futura ? 'Programar' : 'Entregar';
+    b.classList.toggle('secundario', futura);
+  };
+  document.querySelectorAll('[data-ent-campo="fecha"]').forEach((c) => {
+    sincronizar(c);
+    c.addEventListener('input', () => sincronizar(c));
+    c.addEventListener('change', () => sincronizar(c));
+  });
+
+  /* Entregar —o programar— desde la propia fila. Los tres campos se leen de la
+     fila del botón, no de un formulario aparte: pueden verse varias unidades a
+     la vez y hay que entregar la que se apretó, no la última que se tocó. */
   document.querySelectorAll('[data-ent-entregar]').forEach((b) => b.addEventListener('click', () => {
     const id = b.dataset.entEntregar;
     const dame = (c) => {
       const el = document.querySelector('[data-ent-campo="' + c + '"][data-ot="' + id + '"]');
       return el ? el.value : '';
     };
-    const cuando = dame('fecha');
-    const tipo = dame('estado');
+    const cuando = fechaDelCampo(dame('fecha'));
     if (!cuando) return avisar({ ok: false, motivo: 'La fecha de entrega es obligatoria.' });
+
+    /* Fecha de más adelante: se compromete, no se entrega. No se pide tipo de
+       entrega porque no se está cerrando nada — el estado final se elige el
+       día que el auto se va, que es cuando se sabe cómo se fue. */
+    if (esFutura(cuando)) {
+      return ejecutar(() => Modelo.programar_entrega(id, cuando, dame('obs')),
+        'Entrega programada para el ' + fFecha(cuando) + '. La orden sigue abierta y el ' +
+        'vehículo sigue en la torre: comprometer una fecha no es haber entregado.',
+        () => render());
+    }
+
+    const tipo = dame('estado');
     if (!tipo) return avisar({ ok: false, motivo: 'Falta elegir el tipo de entrega. ' +
       'No es un detalle: define con qué estado se cierra la orden, y un estado final no se corrige después.' });
 
-    const [f, h] = cuando.split('T');
-    const [a, m, d] = f.split('-').map(Number);
-    const [hh, mm] = (h || '00:00').split(':').map(Number);
-
     ejecutar(() => Modelo.registrar_entrega(id, {
-      estado: tipo, fecha: new Date(a, m - 1, d, hh || 0, mm || 0), observacion: dame('obs')
+      estado: tipo, fecha: cuando, observacion: dame('obs')
     }), 'Unidad entregada. La orden quedó cerrada y el vehículo salió de la torre.',
       () => { e.otId = null; e.patente = ''; render(); });
   }));

@@ -1361,7 +1361,18 @@ function conDobleClic(el, clave, alDoble, alSimple) {
    qué desplegar nada en Bodega. */
 const abiertoPorPanel = {};
 
-function dobleClicPorFilas(selector) {
+/* `opciones` es opcional y los seis paneles siguen llamándolo sin nada:
+
+   · soloFlecha  — despliega SÓLO la flecha de la izquierda, no la fila entera,
+                   y se olvida del doble clic. Es para las tablas cuyas celdas
+                   llevan campos: en Entregar Unidad, elegir el tipo de entrega
+                   desplegaba y contraía la fila, porque el clic del desplegable
+                   también era un clic en la fila. Pedido del 15-08-2026.
+   · detalle     — qué se ve al abrir. Por omisión la ficha completa; el que
+                   pasa la suya muestra otra cosa. */
+function dobleClicPorFilas(selector, opciones) {
+  const op = opciones || {};
+  const armarDetalle = op.detalle || detalleDeOT;
   const vista = ui.vista;
   const abierta = abiertoPorPanel[vista] || null;
 
@@ -1369,12 +1380,10 @@ function dobleClicPorFilas(selector) {
     const n = tr.dataset.ot;
     if (!n) return;
 
-    conDobleClic(tr, 'ot-' + n,
-      () => { abrirFicha(n); return true; },
-      () => {
-        abiertoPorPanel[vista] = (abiertoPorPanel[vista] === n) ? null : n;
-        render();
-      });
+    const alternar = () => {
+      abiertoPorPanel[vista] = (abiertoPorPanel[vista] === n) ? null : n;
+      render();
+    };
 
     /* La flecha va en su PROPIA columna, a la izquierda del número, igual que
        en la torre — que la tiene entre sus 17 columnas. Se inserta acá, junto
@@ -1384,11 +1393,12 @@ function dobleClicPorFilas(selector) {
     // la barra superior y es position:fixed. Puesta en un <tr>, lo saca del
     // flujo y la tabla entera colapsa: las filas quedan en el DOM sin verse.
     tr.classList.add('fila-desplegable');
-    if (!tr.querySelector('td.flecha-col')) {
-      const cel = document.createElement('td');
-      cel.className = 'flecha-col';
-      cel.innerHTML = '<span class="flecha">&#9656;</span>';
-      tr.insertBefore(cel, tr.firstChild);
+    let flecha = tr.querySelector('td.flecha-col');
+    if (!flecha) {
+      flecha = document.createElement('td');
+      flecha.className = 'flecha-col';
+      flecha.innerHTML = '<span class="flecha">&#9656;</span>';
+      tr.insertBefore(flecha, tr.firstChild);
 
       const tabla = tr.closest('table');
       const encab = tabla && tabla.querySelector('thead tr');
@@ -1399,13 +1409,21 @@ function dobleClicPorFilas(selector) {
       }
     }
 
+    if (op.soloFlecha) {
+      // La fila deja de ser un botón: el cursor tampoco la ofrece como tal.
+      tr.classList.add('solo-flecha');
+      flecha.addEventListener('click', (ev) => { ev.stopPropagation(); alternar(); });
+    } else {
+      conDobleClic(tr, 'ot-' + n, () => { abrirFicha(n); return true; }, alternar);
+    }
+
     if (n !== abierta) return;
     tr.classList.add('abierta');
     const fila = document.createElement('tr');
     fila.className = 'detalle';
     const td = document.createElement('td');
     td.colSpan = tr.children.length;
-    td.innerHTML = detalleDeOT(n);
+    td.innerHTML = armarDetalle(n);
     fila.appendChild(td);
     tr.parentNode.insertBefore(fila, tr.nextSibling);
   });

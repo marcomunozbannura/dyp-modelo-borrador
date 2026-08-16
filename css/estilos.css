@@ -648,6 +648,17 @@ fieldset.bloque legend {
 }
 
 
+
+/* ───────── La grilla del presupuesto ─────────
+   La pantalla de carga se parece al documento que sale: cada monto en la
+   columna de su tipo, y la última fila sirve para escribir. */
+.pregunta-rep { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; font-size: 12.5px; }
+table.grid.grilla-presu td.apagada { background: var(--superficie-3); }
+table.grid.grilla-presu tr.fila-carga td { padding: 3px 4px; background: var(--acento-bg); }
+table.grid.grilla-presu tr.fila-carga input { width: 100%; margin: 0; }
+table.grid.grilla-presu tfoot td { border-top: 1px solid var(--borde-fuerte); background: var(--superficie-2); padding: 5px 8px; }
+table.grid.grilla-presu tr.fila-total td { background: var(--acento-bg); font-size: 13px; }
+
 /* ───────── Firma del cliente ─────────
    `touch-action:none` es lo que hace que se pueda firmar con el dedo: sin eso
    el gesto hace scroll de la página y el trazo sale cortado. */

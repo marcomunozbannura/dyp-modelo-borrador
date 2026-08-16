@@ -26,21 +26,60 @@ function entregaEstado() {
   return ui.entrega;
 }
 
+/* ── Qué significa "listo para entregar" ───────────────────────────────
+   El cliente pidió el 15-08-2026 que al escribir aparezcan los vehículos que
+   están listos para entregar. Listo no es una bandera del sistema: se deduce, y
+   son tres condiciones a la vez.
+
+   Se ofrecen TODAS las órdenes vivas igual, no sólo las listas. Ocultar las que
+   no cumplen dejaría al recepcionista buscando una patente que sí está en el
+   taller, sin saber por qué no aparece — y hay casos legítimos de entregar un
+   auto con algo pendiente. Aparecen todas, marcadas. */
+function listoParaEntregar(o) {
+  const calidad = (o.etapasAsignadas || []).find((x) => x.codigo === 'calidad');
+  return {
+    enTaller: !!o.enTaller,
+    calidadOk: !calidad || calidad.finalizada,
+    sinPendientes: !o.repuestos.some((r) => !r.fechaBodega)
+  };
+}
+const estaListo = (o) => { const c = listoParaEntregar(o); return c.enTaller && c.calidadOk && c.sinPendientes; };
+
+function motivoNoListo(o) {
+  const c = listoParaEntregar(o);
+  const faltas = [];
+  if (!c.enTaller) faltas.push('está fuera del taller');
+  if (!c.calidadOk) faltas.push('control de calidad abierto');
+  if (!c.sinPendientes) faltas.push(o.repuestos.filter((r) => !r.fechaBodega).length + ' repuestos por llegar');
+  return faltas.join(' · ');
+}
+
 function vEntrega() {
   const e = entregaEstado();
   const o = e.otId ? Modelo.otPorId(e.otId) : null;
+  const vivas = Modelo.torre();
   const coincidencias = e.patente
-    ? Modelo.torre().filter((x) => x.patente.indexOf(e.patente) >= 0)
+    ? vivas.filter((x) => x.patente.indexOf(e.patente) >= 0 ||
+        String(x.numeroOT).indexOf(e.patente) >= 0)
     : [];
+  const listos = vivas.filter(estaListo);
 
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('check', 'g')}Buscar unidad para entrega</h2>
-      <div class="desc">El cierre del ciclo. Busca por patente, igual que el original</div></div></div>
+      <div class="desc">El cierre del ciclo. Se escribe la patente y el sistema propone las que están listas</div></div>
+      <span class="et ${listos.length ? 'verde' : 'gris'}">${listos.length} listas para entregar</span></div>
     <div class="cuerpo">
       <div class="rejilla-campos">
-        <div class="campo"><label>Patente</label>
-          <input id="ent-patente" value="${esc(e.patente)}" placeholder="AABB11"></div>
+        <div class="campo"><label>Patente u OT</label>
+          <input id="ent-patente" list="ent-listas" autocomplete="off"
+            value="${esc(e.patente)}" placeholder="Escribe y elige de la lista">
+          <datalist id="ent-listas">
+            ${listos.map((x) => '<option value="' + esc(x.patente) + '">OT ' + esc(x.numeroOT) +
+              ' · ' + esc(x.cliente) + '</option>').join('')}
+          </datalist>
+          <span class="ayuda">La lista propone las ${listos.length} que están listas. Se puede
+            buscar cualquier otra igual: aparece marcada con lo que le falta</span></div>
         <div class="campo"><label>&nbsp;</label><button class="btn" id="ent-buscar">Buscar patente</button></div>
       </div>
 
@@ -50,26 +89,62 @@ function vEntrega() {
         : ''}
 
       ${coincidencias.length ? `
-      <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
-        <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Estado</th><th>Etapa</th>
-          <th>Días</th><th>Repuestos</th><th></th></tr></thead>
-        <tbody>${coincidencias.map((x) =>
-          '<tr class="fila' + (o && o.id === x.id ? ' abierta' : '') + '" data-ot="' + esc(x.numeroOT) + '">' +
-          '<td class="num"><strong>' + x.numeroOT + '</strong></td>' +
-          '<td><span class="patente">' + esc(x.patente) + '</span></td>' +
-          '<td>' + esc(x.cliente) + '</td>' +
-          '<td><span class="et ' + esc(x.estadoClase) + '">' + esc(x.estadoNombre) + '</span></td>' +
-          '<td>' + esc(x.etapaNombre) + '</td>' +
-          '<td class="num">' + x.diasKpi + '</td>' +
-          '<td>' + (x.repuestos.some((r) => !r.fechaBodega)
-            ? '<span class="et roja">' + x.repuestos.filter((r) => !r.fechaBodega).length + ' por llegar</span>'
-            : '<span class="et verde">al día</span>') + '</td>' +
-          '<td><button class="btn secundario" data-ent-ot="' + esc(x.id) + '">Trabajar sobre esta</button></td></tr>').join('')}
-        </tbody></table></div>` : ''}
+      <h3 style="font-size:13px;margin:14px 0 6px">Resultados de la patente
+        &ldquo;${esc(e.patente)}&rdquo;</h3>
+      <div class="grid-envoltorio"><table class="grid">
+        <thead><tr>
+          <th>OT</th><th>Patente</th><th style="width:170px">Fecha Entrega</th>
+          <th style="width:200px">Tipo de entrega</th><th>Observaciones</th><th style="width:96px"></th>
+        </tr></thead>
+        <tbody>${coincidencias.map((x) => filaEntrega(x, e)).join('')}</tbody>
+      </table></div>` : ''}
 
       ${o ? vEntregaFicha(o) : ''}
     </div>
   </div>`;
+}
+
+/* La fila de entrega, con los mismos campos que el sistema actual: OT, patente,
+   fecha con hora, tipo de entrega, observaciones y el botón. Se entrega desde
+   la propia fila — no hay que abrir nada más, que es como trabaja el
+   recepcionista hoy.
+
+   Lo que se agrega, y no estorba: si al vehículo le falta algo para estar listo
+   se dice EN la fila. El original deja entregar igual y sin avisar; acá se
+   avisa y se deja entregar igual, porque hay casos legítimos —un cliente que se
+   lleva el auto a medias— y quien decide es el taller, no el sistema. */
+function filaEntrega(x, e) {
+  const finales = Modelo.catalogo('estado').filter((s) => (s.alcanzable_en || []).indexOf('entrega') >= 0);
+  const listo = estaListo(x);
+  const falta = listo ? '' : motivoNoListo(x);
+
+  return '<tr class="fila" data-ot="' + esc(x.numeroOT) + '">' +
+    '<td class="num"><strong>' + x.numeroOT + '</strong></td>' +
+    '<td><span class="patente">' + esc(x.patente) + '</span>' +
+      (listo ? ' <span class="et verde">lista</span>'
+             : ' <span class="et ambar" title="' + esc(falta) + '">pendiente</span>') +
+      '<div class="ayuda" style="margin:2px 0 0">' + esc(x.cliente) +
+      (falta ? ' — ' + esc(falta) : '') + '</div></td>' +
+    // La fecha lleva HORA, igual que el original: un taller entrega varios
+    // autos el mismo día y el orden importa cuando hay un reclamo.
+    '<td><input type="datetime-local" data-ent-campo="fecha" data-ot="' + esc(x.id) + '" ' +
+      'value="' + esc(isoFechaHora(HOY)) + '"></td>' +
+    '<td><select data-ent-campo="estado" data-ot="' + esc(x.id) + '">' +
+      '<option value="">Seleccionar</option>' +
+      finales.map((s) => '<option value="' + esc(s.codigo) + '">' + esc(s.nombre) + '</option>').join('') +
+      '</select></td>' +
+    '<td><textarea rows="2" data-ent-campo="obs" data-ot="' + esc(x.id) + '" ' +
+      'placeholder="Observaciones de la entrega"></textarea></td>' +
+    '<td><button class="btn" data-ent-entregar="' + esc(x.id) + '">Entregar</button></td></tr>';
+}
+
+/* `datetime-local` necesita `AAAA-MM-DDTHH:MM` en hora local. Con toISOString()
+   sale en UTC y en Chile el campo aparece con horas de diferencia. */
+function isoFechaHora(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  const ahora = new Date();
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+    'T' + p(ahora.getHours()) + ':' + p(ahora.getMinutes());
 }
 
 function vEntregaFicha(o) {
@@ -132,8 +207,38 @@ function pEntrega() {
   if (btn) btn.addEventListener('click', buscar);
   if (campo) campo.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') buscar(); });
 
+  // El autocompletado: elegir de la lista busca al tiro, sin apretar el botón.
+  if (campo) campo.addEventListener('change', () => {
+    if (campo.value && campo.value !== e.patente) buscar();
+  });
+
   document.querySelectorAll('[data-ent-ot]').forEach((b) => b.addEventListener('click', () => {
     e.otId = b.dataset.entOt; render();
+  }));
+
+  /* Entregar desde la propia fila. Los tres campos se leen de la fila del
+     botón, no de un formulario aparte: pueden verse varias unidades a la vez y
+     hay que entregar la que se apretó, no la última que se tocó. */
+  document.querySelectorAll('[data-ent-entregar]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.entEntregar;
+    const dame = (c) => {
+      const el = document.querySelector('[data-ent-campo="' + c + '"][data-ot="' + id + '"]');
+      return el ? el.value : '';
+    };
+    const cuando = dame('fecha');
+    const tipo = dame('estado');
+    if (!cuando) return avisar({ ok: false, motivo: 'La fecha de entrega es obligatoria.' });
+    if (!tipo) return avisar({ ok: false, motivo: 'Falta elegir el tipo de entrega. ' +
+      'No es un detalle: define con qué estado se cierra la orden, y un estado final no se corrige después.' });
+
+    const [f, h] = cuando.split('T');
+    const [a, m, d] = f.split('-').map(Number);
+    const [hh, mm] = (h || '00:00').split(':').map(Number);
+
+    ejecutar(() => Modelo.registrar_entrega(id, {
+      estado: tipo, fecha: new Date(a, m - 1, d, hh || 0, mm || 0), observacion: dame('obs')
+    }), 'Unidad entregada. La orden quedó cerrada y el vehículo salió de la torre.',
+      () => { e.otId = null; e.patente = ''; render(); });
   }));
 
   const obs = document.getElementById('ent-obs');

@@ -689,7 +689,10 @@ fieldset.bloque legend {
    Dibujados en SVG por el propio sistema, sin librerías: el modelo tiene que
    abrirse en el mesón aunque no haya internet. El SVG además imprime nítido a
    cualquier tamaño, que es lo que se necesita cuando el reporte sale en PDF. */
-svg.graf { width: 100%; height: 200px; display: block; }
+/* `height: auto` y no un alto fijo: el SVG escala solo, proporcional, y así la
+   tipografía no se deforma. Con alto fijo había que estirarlo, y estirarlo
+   deformaba todo lo de adentro. */
+svg.graf { width: 100%; height: auto; display: block; }
 svg.graf .graf-barra { fill: var(--acento-solido); }
 :root[data-tema="oscuro"] svg.graf .graf-barra,
 :root:not([data-tema="claro"]) svg.graf .graf-barra { fill: var(--acento); }

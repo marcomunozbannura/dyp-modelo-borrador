@@ -94,15 +94,27 @@ function repUniverso() {
    sale del máximo de los datos, y el texto va en la propia caja para que se
    pueda imprimir sin que se descuadre. */
 
+/* ⚠️ SIN `preserveAspectRatio="none"`, y ésa era la falla.
+
+   Con `none` el navegador estira el dibujo hasta llenar el ancho disponible, y
+   estira TODO con él: la tipografía queda deformada, la línea de la meta se
+   engorda y las barras se vuelven bloques. En una pantalla de 1600 px el SVG
+   de 720 se estiraba más del doble a lo ancho y nada a lo alto.
+
+   Ahora el `viewBox` sale en la proporción en que se va a ver y el escalado es
+   proporcional —el que trae el SVG por omisión—, con `height:auto` en el CSS.
+   El alto cambia con el ancho, que es exactamente lo que uno quiere de un
+   gráfico que vive en una pantalla que se puede achicar. */
 function svgBarras(datos, op) {
   const o = op || {};
   const max = Math.max(1, ...datos.map((d) => d.v));
   const n = datos.length || 1;
-  const W = 720, H = 200, PIE = 26, TOPE = 14;
+  const W = 1200, H = 300, PIE = 30, TOPE = 26;
   const ancho = W / n;
-  const alto = (v) => (H - PIE - TOPE) * (v / max);
+  // Se deja aire arriba: la barra más alta llega al 88% y no toca el borde.
+  const alto = (v) => (H - PIE - TOPE) * (v / max) * 0.88;
 
-  return '<svg class="graf" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+  return '<svg class="graf" viewBox="0 0 ' + W + ' ' + H + '">' +
     // Tres líneas de referencia. Sin ejes con números: el valor va sobre la barra.
     [0.25, 0.5, 0.75].map((p) => '<line x1="0" x2="' + W + '" y1="' + (TOPE + (H - PIE - TOPE) * p) +
       '" y2="' + (TOPE + (H - PIE - TOPE) * p) + '" class="graf-guia"/>').join('') +
@@ -117,9 +129,13 @@ function svgBarras(datos, op) {
           esc(d.corto || d.rot) + '</text>' : '') +
         '<text x="' + (x + w / 2) + '" y="' + (H - 8) + '" class="graf-eje">' + esc(d.etiqueta || d.k) + '</text>';
     }).join('') +
+    /* El rótulo de la meta va al EXTREMO DERECHO. A la izquierda se montaba
+       encima del número de la primera barra —se leía "meta 15 dí15"— y un
+       gráfico que se lee mal miente igual que un dato equivocado. */
     (o.meta ? '<line x1="0" x2="' + W + '" y1="' + (H - PIE - alto(o.meta)) + '" y2="' +
       (H - PIE - alto(o.meta)) + '" class="graf-meta"/>' +
-      '<text x="6" y="' + (H - PIE - alto(o.meta) - 4) + '" class="graf-meta-rot">meta ' + o.meta + ' días</text>' : '') +
+      '<text x="' + (W - 6) + '" y="' + (H - PIE - alto(o.meta) - 6) +
+      '" class="graf-meta-rot" text-anchor="end">meta ' + o.meta + ' días</text>' : '') +
     '</svg>';
 }
 
@@ -172,16 +188,13 @@ function repDinamica(lista) {
     }, { s: 0, n: 0 })) };
 }
 
-function vReporteria() {
-  const r = repEstado();
-  const lista = repUniverso();
-  const meta = Modelo.metricas().metaDias;
+/* Los agregados del panel, en un solo lugar. Los usan la PANTALLA y el PDF:
+   si cada uno los calculara por su cuenta, el día que se toque uno el papel y
+   la pantalla empezarían a decir cosas distintas — y en un reporte ése es el
+   peor defecto posible. */
+function repAgregados(lista, meta) {
+  const dimDe = (id) => REP_DIMENSIONES.find((d) => d.id === id);
 
-  const prom = (f) => lista.length ? lista.reduce((s, o) => s + f(o), 0) / lista.length : 0;
-  const venta = lista.reduce((s, o) => s + plataDe(o).ventaTotal, 0);
-  const dentro = lista.filter((o) => o.diasReparacion <= meta).length;
-
-  // ── Entregas por mes, con el promedio de reparación de cada mes ──
   const porMes = new Map();
   lista.forEach((o) => {
     const k = repMes(o.fechaEntrega);
@@ -190,20 +203,12 @@ function vReporteria() {
   });
   const meses = [...porMes.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).slice(-12);
 
-  const entregasMes = meses.map(([k, c]) => ({ k, v: c.n, rot: c.n + ' entregas',
-    corto: String(c.n), etiqueta: repMesCorto(k) }));
-  const diasMes = meses.map(([k, c]) => {
-    const d = Math.round(c.dias / c.n);
-    return { k, v: d, rot: d + ' días', corto: String(d), etiqueta: repMesCorto(k), alerta: d > meta };
-  });
-
   const top = (dim, n) => {
     const m = new Map();
     lista.forEach((o) => { const k = dim.de(o); m.set(k, (m.get(k) || 0) + 1); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
       .map(([k, v]) => ({ k, v, rot: v + (v === 1 ? ' orden' : ' órdenes') }));
   };
-  const dimDe = (id) => REP_DIMENSIONES.find((d) => d.id === id);
 
   const ventaPorCompania = (() => {
     const m = new Map();
@@ -215,6 +220,28 @@ function vReporteria() {
       .map(([k, v]) => ({ k, v, rot: fMonto(v) }));
   })();
 
+  return {
+    dimDe, meses, top, ventaPorCompania,
+    venta: lista.reduce((s, o) => s + plataDe(o).ventaTotal, 0),
+    dentro: lista.filter((o) => o.diasReparacion <= meta).length,
+    promReparacion: lista.length
+      ? lista.reduce((s, o) => s + o.diasReparacion, 0) / lista.length : 0,
+    entregasMes: meses.map(([k, c]) => ({ k, v: c.n, rot: c.n + ' entregas',
+      corto: String(c.n), etiqueta: repMesCorto(k) })),
+    diasMes: meses.map(([k, c]) => {
+      const d = Math.round(c.dias / c.n);
+      return { k, v: d, rot: d + ' días', corto: String(d), etiqueta: repMesCorto(k), alerta: d > meta };
+    })
+  };
+}
+
+function vReporteria() {
+  const r = repEstado();
+  const lista = repUniverso();
+  const meta = Modelo.metricas().metaDias;
+  const g = repAgregados(lista, meta);
+  const { meses, entregasMes, diasMes, top, dimDe, ventaPorCompania, venta, dentro } = g;
+  const prom = () => g.promReparacion;
   const d = repDinamica(lista);
   const selDim = (id, valorActual, conVacio) => '<select id="' + id + '">' +
     (conVacio ? '<option value="">Sin abrir</option>' : '') +
@@ -377,9 +404,11 @@ function impresoReporteria() {
   const lista = repUniverso();
   const d = repDinamica(lista);
   const meta = Modelo.metricas().metaDias;
-  const venta = lista.reduce((s, o) => s + plataDe(o).ventaTotal, 0);
-  const dentro = lista.filter((o) => o.diasReparacion <= meta).length;
   const r = repEstado();
+  // Los mismos agregados que la pantalla, calculados una sola vez y en un solo
+  // lugar: el papel no puede decir algo distinto de lo que se está mirando.
+  const { meses, entregasMes, diasMes, top, dimDe, ventaPorCompania, venta, dentro } =
+    repAgregados(lista, meta);
 
   const periodo = (r.desde || r.hasta)
     ? (r.desde || 'el inicio') + ' a ' + (r.hasta || 'hoy')
@@ -389,6 +418,11 @@ function impresoReporteria() {
     const v = d.valor(d.celdas.get(f + '|' + c));
     return v === null ? '—' : d.med.fmt(v);
   };
+
+  // Una tabla de dos columnas para los rankings del papel.
+  const tabla = (cabs, filas) => '<table><thead><tr>' +
+    cabs.map((c, i) => '<th' + (i ? ' class="n"' : '') + '>' + esc(c) + '</th>').join('') +
+    '</tr></thead><tbody>' + filas + '</tbody></table>';
 
   return `
   <div class="cab-doc">
@@ -408,6 +442,31 @@ function impresoReporteria() {
     ${campoImpreso('Dentro de la meta de ' + meta + ' días',
       (lista.length ? Math.round((dentro / lista.length) * 100) : 0) + '%')}
   </div>
+
+  ${/* 🔴 EL PDF LLEVA LOS GRÁFICOS, no sólo la tabla. Salía con una sola y era
+       un reporte a medias: el gráfico de días contra la meta es justamente lo
+       que se le muestra al dueño, y es lo que faltaba en el papel.
+
+       Los SVG se imprimen tal cual —vectoriales, nítidos a cualquier tamaño—,
+       que es la otra razón por la que estos gráficos se dibujaron a mano en
+       vez de traer una librería que pinta sobre un lienzo de píxeles. */''}
+  <h2>Días de reparación por mes</h2>
+  ${meses.length ? svgBarras(diasMes, { meta }) : '<p>Sin entregas en el período.</p>'}
+
+  <h2>Entregas por mes</h2>
+  ${meses.length ? svgBarras(entregasMes) : '<p>Sin entregas en el período.</p>'}
+
+  <h2>Modelos más siniestrados</h2>
+  ${tabla(['Modelo', 'Órdenes'], top(dimDe('modelo'), 10)
+    .map((x) => '<tr><td>' + esc(x.k) + '</td><td class="n">' + x.v + '</td></tr>').join(''))}
+
+  <h2>Venta por compañía</h2>
+  ${tabla(['Compañía', 'Venta'], ventaPorCompania
+    .map((x) => '<tr><td>' + esc(x.k) + '</td><td class="n">' + esc(x.rot) + '</td></tr>').join(''))}
+
+  <h2>Clientes con más vehículos</h2>
+  ${tabla(['Cliente', 'Órdenes'], top(dimDe('cliente'), 10)
+    .map((x) => '<tr><td>' + esc(x.k) + '</td><td class="n">' + x.v + '</td></tr>').join(''))}
 
   <h2>${esc(d.med.rot)} por ${esc(d.dimF.rot.toLowerCase())}${
     d.dimC ? ', abierto por ' + esc(d.dimC.rot.toLowerCase()) : ''}</h2>

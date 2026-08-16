@@ -165,6 +165,19 @@ function fichaTrabajoAutorizado(o) {
 /* El desglose del checklist en una línea. Solo aparecen los estados que tienen
    algo: un "0 dañados" ocupa lugar y no dice nada. Si el inventario viene vacío
    —una OT creada desde otra pantalla— se dice, no se muestra un cero. */
+/* Las piezas que quedaron rayadas en el croquis, sin repetir. Desde el
+   15-08-2026 el daño no lleva tipo —se raya y se cuenta todo en una sola
+   observación— así que lo que la ficha puede decir es DÓNDE, que es el dato que
+   el croquis clasifica solo. */
+function fichaPiezasMarcadas(danos) {
+  const piezas = [];
+  danos.forEach((d) => {
+    const n = d.zonaNombre || 'Sin zona';
+    if (piezas.indexOf(n) < 0) piezas.push(n);
+  });
+  return piezas.join(' · ');
+}
+
 function fichaInventario(inv) {
   if (!inv || !inv.length) return '<span class="et gris">Sin datos</span>';
   const partes = Modelo.inventarioEstados().map((e) => {
@@ -193,11 +206,9 @@ function fichaResumen(o) {
         ${dato('Marca y modelo', esc([o.marca, o.modelo].filter(Boolean).join(' ') || '—'))}
         ${dato('Año', o.anio || '—')}
         ${dato('Color', esc(o.color || '—'))}
-        ${dato('Daños marcados', o.danos.length
-          ? o.danos.map((d) => esc(d.zonaNombre + ' · ' + d.tipoNombre) +
-              (d.descripcion ? ' <span style="color:var(--gris-2)">' + esc(d.descripcion) + '</span>' : ''))
-              .join('<br>')
-          : '<span style="color:var(--gris-2)">ninguno marcado</span>')}
+        ${dato('Piezas marcadas', o.danos.length
+          ? esc(fichaPiezasMarcadas(o.danos))
+          : '<span style="color:var(--gris-2)">ninguna</span>')}
       </fieldset>
 
       <fieldset class="bloque"><legend>Cómo va</legend>

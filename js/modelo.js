@@ -572,13 +572,20 @@ const Modelo = (function () {
       [o.marca, o.modelo, o.color].filter(Boolean).join(' · ') +
       (o.compania && o.compania !== '—' ? ' — ' + o.compania : ''), null);
 
-    if (o.danos.length) {
+    /* Las piezas rayadas en el croquis, sin repetir, más lo que se escribió en
+       la observación de la recepción. Desde el 15-08-2026 el daño no lleva tipo
+       ni comentario propio: se raya el auto y se cuenta todo en una sola
+       casilla, así que el expediente registra esas dos cosas y nada más. */
+    if (o.danos.length || (o.recepcion && o.recepcion.observaciones)) {
+      const piezas = [];
+      o.danos.forEach((d) => {
+        const n = d.zonaNombre || 'Sin zona';
+        if (piezas.indexOf(n) < 0) piezas.push(n);
+      });
+      const obs = (o.recepcion && o.recepcion.observaciones) || '';
       sumar(o.fechaIngreso, -2, 'recepcion', 'Daños registrados en la recepción',
-        o.danos.map((d) => d.zonaNombre + ': ' + d.tipoNombre +
-          (d.severidad ? ' (' + d.severidad + ')' : '') +
-          // El comentario que la recepción le escribió a esa marca. Es lo que
-          // después se discute con la compañía, así que va en el expediente.
-          (d.descripcion ? ' — ' + d.descripcion : '')).join(' · '), null);
+        (piezas.length ? piezas.join(' · ') : 'Sin marcas en el croquis') +
+        (obs ? ' — ' + obs : ''), null);
     }
     /* El inventario, con los cuatro estados del 15-08-2026. Decía "falta:" y
        ahí adentro caía TODO lo que no estuviera presente: lo que no vino, lo

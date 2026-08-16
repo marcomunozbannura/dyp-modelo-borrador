@@ -582,7 +582,10 @@ fieldset.bloque legend {
 .vista-rotulo { font-size: 11px; fill: var(--gris-2); pointer-events: none; font-family: "Segoe UI", sans-serif;
   text-transform: uppercase; letter-spacing: .5px; }
 /* El trazo del daño. Grueso y redondeado: es una raya hecha con el dedo. */
-.trazo-dano { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+/* Un solo color: desde el 15-08-2026 no se elige tipo de daño, se raya y se
+   cuenta en la observación. El color sale de la variable del tema y no de un
+   atributo en el SVG, así que se lee igual en oscuro y en claro. */
+.trazo-dano { fill: none; stroke: var(--rojo); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 
 /* ── Paso 4 · el dibujo a la izquierda y todo lo demás a la derecha ──
    Es el reparto del sistema real. En pantallas angostas se apila, porque en un

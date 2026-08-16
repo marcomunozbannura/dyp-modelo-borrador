@@ -207,15 +207,17 @@ const CSS_IMPRESO = `
    Los trazos van con `stroke` y sin relleno; los daños viejos, que se marcaban
    con un clic y no tienen trazo, se siguen dibujando como un punto. */
 function svgSiluetaImpresa(danos) {
+  // En papel el trazo va en rojo fijo: el tema del navegador no llega acá.
+  const TINTA = '#c4362f';
   const marcas = (danos || []).map((d) => {
     if (d.trazo && d.trazo.length) {
-      return '<path d="' + siluetaTrazoD(d.trazo) + '" fill="none" stroke="' + d.color +
+      return '<path d="' + siluetaTrazoD(d.trazo) + '" fill="none" stroke="' + TINTA +
         '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>';
     }
     // Sin trazo: se dibuja en el centro de su zona, que es el dato que sí tiene.
     const p = siluetaPuntoDeZona(d.vista, d.zona);
     return '<circle cx="' + (p.x * SILUETA_CAJA.w).toFixed(1) + '" cy="' + (p.y * SILUETA_CAJA.h).toFixed(1) +
-      '" r="7" fill="' + d.color + '" fill-opacity=".8" stroke="#111" stroke-width="1.5"></circle>';
+      '" r="7" fill="' + TINTA + '" fill-opacity=".8" stroke="#111" stroke-width="1.5"></circle>';
   }).join('');
 
   return '<div style="width:104mm">' +
@@ -260,6 +262,17 @@ function pieImpreso() {
 }
 
 const campoImpreso = (k, v) => '<div class="c"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span></div>';
+
+/* Las piezas rayadas, sin repetir. El croquis impreso en blanco y negro no
+   siempre deja claro cuál es cuál, así que van también en palabras. */
+function impresoPiezas(danos) {
+  const vistas = [];
+  (danos || []).forEach((d) => {
+    const n = d.zonaNombre || 'Sin zona';
+    if (vistas.indexOf(n) < 0) vistas.push(n);
+  });
+  return vistas.join(' · ');
+}
 
 /* ── 1 · Comprobante de recepción ──────────────────────────────────────── */
 
@@ -306,17 +319,16 @@ function impresoRecepcion(o) {
     ${campoImpreso('Fecha de ingreso', fFecha(o.fechaIngreso))}
   </div>
 
+  ${/* El croquis rayado y, debajo, lo que se escribió. Ya no hay tabla de daños
+       con tipo y severidad: desde el 15-08-2026 se raya y se cuenta en una sola
+       observación, así que el papel muestra exactamente eso. Las piezas van
+       listadas porque el croquis impreso en blanco y negro no siempre deja
+       claro cuál es cuál. */''}
   <h2>Estado descriptivo</h2>
-  <div style="display:flex;gap:10px;flex-direction:column">
-    ${svgSiluetaImpresa(o.danos)}
-    <div style="flex:1">
-      <table><thead><tr><th>Zona</th><th>Daño</th><th>Severidad</th><th>Comentario</th></tr></thead><tbody>
-      ${o.danos.length ? o.danos.map((d) => '<tr><td>' + esc(d.zonaNombre) + '</td><td>' +
-        esc(d.tipoNombre) + '</td><td>' + '●'.repeat(d.severidad || 1) + '</td><td>' +
-        esc(d.descripcion || '—') + '</td></tr>').join('')
-        : '<tr><td colspan="4">Sin daños marcados</td></tr>'}
-      </tbody></table>
-    </div>
+  ${svgSiluetaImpresa(o.danos)}
+  <div style="margin-top:5px">
+    <strong>Piezas marcadas:</strong>
+    ${o.danos.length ? esc(impresoPiezas(o.danos)) : 'ninguna'}
   </div>
 
   <h2>Inventario del vehículo · ${inv.length} ítems</h2>

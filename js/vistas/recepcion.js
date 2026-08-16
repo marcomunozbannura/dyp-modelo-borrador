@@ -112,7 +112,7 @@ function rec() {
       // mientras se teclea todavía no calza con ninguna fila del catálogo.
       textos: {},
       bloques: [bloqueVacio()],
-      danos: [], tipoDano: 'abolladura',
+      danos: [],
       // item_id → 'presente' | 'no_presente' | 'danado' | 'sin_verificar'.
       // Lo que no está en el mapa es `sin_verificar`: nadie lo miró todavía.
       inventario: {}, obsInventario: {},
@@ -141,7 +141,7 @@ function guardarBorrador() {
     const r = rec();
     localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({
       paso: r.paso, llave: r.llave, campos: r.campos, bloques: r.bloques,
-      danos: r.danos, tipoDano: r.tipoDano, textos: r.textos,
+      danos: r.danos, textos: r.textos,
       inventario: r.inventario, obsInventario: r.obsInventario,
       fotos: r.fotos,
       // El Blob de la firma no es serializable; los trazos sí, y con ellos
@@ -848,25 +848,24 @@ function recDanos() {
     </div>
 
     <div class="ed-lado">
-      <h4 class="rot-chico">Tipo de daño a marcar</h4>
-      <div class="chips" id="chips-tipo" style="margin-bottom:12px">
-        ${Modelo.tiposDano().map((t) => '<button class="chip' + (t.codigo === r.tipoDano ? ' activo' : '') +
-          '" data-tipo="' + esc(t.codigo) + '"><i class="punto" style="background:' + t.color + '"></i>' +
-          esc(t.nombre) + '</button>').join('')}
-      </div>
+      ${/* 🔶 ACÁ NO VA NADA MÁS (15-08-2026, y va en mayúsculas porque se pidió
+           tres veces). Se raya el auto y se escribe en UNA casilla. Se sacaron
+           el selector de tipo de daño —Rayón, Abolladura, Quiebre, Faltante,
+           Óxido— y la lista de marcas con su observación por trazo.
 
-      <h4 class="rot-chico">Lo marcado <span id="n-danos">(0)</span></h4>
-      <div class="lista-danos" id="lista-danos"></div>
+           Por qué se sacan aunque funcionaran: la recepción se hace en el mesón
+           con el cliente esperando, y elegir un tipo antes de cada raya y
+           redactar una línea después de cada raya es más trabajo que el que
+           ahorra. El tipo de daño se cuenta en la observación, en castellano.
 
-      ${/* UNA sola observación para todo el estado descriptivo, como el
-           original. Antes había una casilla por trazo y se llenaba de campos
-           vacíos: quien raya el auto cuenta lo que le pasó al vehículo, no
-           redacta una ficha por cada raya. La lista de arriba ya dice qué se
-           marcó y dónde; acá se escribe el resto. */''}
-      <div class="campo" style="margin-top:10px">
+           La zona se sigue deduciendo sola de dónde cayó el trazo, y por eso el
+           dato consultable no se pierde — pero eso pasa por debajo y el
+           recepcionista no lo ve ni lo elige. */''}
+      <div class="campo">
         <label>Observaciones</label>
-        <textarea rows="3" data-rec="observaciones"
-          placeholder="Lo que hay que decir del estado del vehículo al recibirlo">${esc(r.campos.observaciones)}</textarea>
+        <textarea rows="5" data-rec="observaciones"
+          placeholder="Qué trae el vehículo: dónde está el daño, de qué tipo, si ya venía…">${esc(r.campos.observaciones)}</textarea>
+        <span class="ayuda">Una sola casilla para todo lo marcado.</span>
       </div>
 
       <fieldset class="bloque" style="margin-top:12px"><legend>Tablero</legend>
@@ -934,11 +933,26 @@ function recInvResumen(c) {
     .join(' ');
 }
 
+/* Las piezas rayadas, agrupadas y contadas. Es lo que el croquis aporta como
+   DATO —y lo que después permite preguntar cuántos vehículos llegaron con la
+   puerta trasera derecha marcada—, sin pedirle nada al recepcionista. */
+function recPiezasMarcadas(danos) {
+  const cuenta = {};
+  danos.forEach((d) => {
+    const k = d.zonaNombre || 'Sin zona';
+    cuenta[k] = (cuenta[k] || 0) + 1;
+  });
+  return Object.keys(cuenta).map((k) =>
+    '<span class="et azul" style="margin:0 4px 4px 0;display:inline-block">' + esc(k) +
+    (cuenta[k] > 1 ? ' ×' + cuenta[k] : '') + '</span>').join('');
+}
+
+/* Dibujar lo rayado, y nada más. No hay lista al lado: el auto ya muestra dónde
+   se marcó, que es exactamente para lo que sirve un croquis. */
 function pintarDanos() {
   const r = rec();
   const g = document.getElementById('marcas');
-  const lista = document.getElementById('lista-danos');
-  if (!g || !lista) return;
+  if (!g) return;
 
   // Cada daño es un TRAZO. Se redibuja entero desde los puntos guardados, así
   // que sobrevive a cambiar de paso, a recargar y al borrador restaurado.
@@ -946,27 +960,11 @@ function pintarDanos() {
     // Un daño sin trazo viene de un borrador anterior al dibujo libre: se marca
     // en el centro de su zona en vez de desaparecer de la pantalla.
     const p = (d.trazo && d.trazo.length) ? d.trazo : [siluetaPuntoDeZona(d.vista, d.zona)];
-    return '<path class="trazo-dano" data-trazo="' + i + '" d="' + siluetaTrazoD(p) +
-      '" stroke="' + d.color + '"></path>';
+    return '<path class="trazo-dano" data-trazo="' + i + '" d="' + siluetaTrazoD(p) + '"></path>';
   }).join('');
 
-  document.getElementById('n-danos').textContent = '(' + r.danos.length + ')';
-  /* La lista dice QUÉ se marcó y DÓNDE, que es lo que el trazo por sí solo no
-     alcanza a decir. Lo que se cuenta en palabras va en la observación única de
-     abajo, no en una casilla por raya. */
-  lista.innerHTML = r.danos.length
-    ? r.danos.map((d, i) =>
-        '<div class="item-dano"><span><i class="punto" style="background:' + d.color + '"></i>' +
-        '<strong>' + esc(d.tipoNombre) + '</strong> · ' + esc(d.zonaNombre || 'sin zona') +
-        ' <span class="et gris">' + esc(SILUETA_NOMBRE_VISTA[d.vista] || d.vista) + '</span></span>' +
-        '<button class="quitar" data-quitar="' + i + '" title="Quitar">&times;</button></div>').join('')
-    : '<div style="color:var(--gris-2);font-size:12.5px;padding:8px 2px">Sin daños marcados todavía. ' +
-      'Raya sobre el dibujo.</div>';
-
-  lista.querySelectorAll('[data-quitar]').forEach((b) => b.addEventListener('click', () => {
-    r.danos.splice(Number(b.dataset.quitar), 1);
-    guardarBorrador(); pintarDanos();
-  }));
+  const n = document.getElementById('n-marcas');
+  if (n) n.textContent = r.danos.length ? plural(r.danos.length, 'marca', 'marcas') : 'sin marcas';
 }
 
 /* ── Paso 5 · Verificar Orden ──────────────────────────────────────────
@@ -1059,13 +1057,12 @@ function recVerificar() {
     </fieldset>
   </div>
 
+  ${/* Las piezas que quedaron rayadas. No es una tabla de daños con tipo y
+       comentario —eso se sacó— sino el resumen de dónde se marcó, que es lo que
+       el trazo aporta como dato. Lo demás está en la observación. */''}
   ${r.danos.length ? `
-  <fieldset class="bloque" style="margin-top:10px"><legend>Los daños marcados</legend>
-    <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>Zona</th><th>Daño</th><th>Comentario</th></tr></thead>
-      <tbody>${r.danos.map((x) => '<tr><td>' + esc(x.zonaNombre) + '</td><td><i class="punto" style="background:' +
-        x.color + '"></i>' + esc(x.tipoNombre) + '</td><td>' + v(x.descripcion) + '</td></tr>').join('')}</tbody>
-    </table></div>
+  <fieldset class="bloque" style="margin-top:10px"><legend>Piezas marcadas en el croquis</legend>
+    <div>${recPiezasMarcadas(r.danos)}</div>
   </fieldset>` : ''}
 
   <h3 class="rot-seccion">3 · Solicitud de reparación</h3>
@@ -1327,10 +1324,6 @@ function pRecepcion() {
   }));
 
   // Silueta
-  document.querySelectorAll('[data-tipo]').forEach((b) => b.addEventListener('click', () => {
-    r.tipoDano = b.dataset.tipo;
-    document.querySelectorAll('[data-tipo]').forEach((x) => x.classList.toggle('activo', x.dataset.tipo === r.tipoDano));
-  }));
   /* ── Rayar sobre el auto ────────────────────────────────────────────
      Se raya con el dedo o con el mouse, y cada trazo es un daño. Al soltar se
      calcula el centro del trazo y se mira en qué vista y en qué zona cayó: el
@@ -1354,11 +1347,9 @@ function pRecepcion() {
     svg.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
       try { svg.setPointerCapture(ev.pointerId); } catch (e) { /* no siempre se puede */ }
-      const t = Modelo.tiposDano().find((x) => x.codigo === r.tipoDano) || Modelo.tiposDano()[0];
-      trazo = { puntos: [punto(ev)], color: t.color, tipo: t };
+      trazo = { puntos: [punto(ev)] };
       vivo = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       vivo.setAttribute('class', 'trazo-dano');
-      vivo.setAttribute('stroke', t.color);
       document.getElementById('marcas').appendChild(vivo);
     });
 
@@ -1370,7 +1361,7 @@ function pRecepcion() {
 
     const soltar = () => {
       if (!trazo) return;
-      const puntos = trazo.puntos, t = trazo.tipo;
+      const puntos = trazo.puntos;
       trazo = null; vivo = null;
 
       // El centro del trazo decide la zona. Con el promedio y no con el primer
@@ -1380,10 +1371,12 @@ function pRecepcion() {
       const u = siluetaUbicar(cx, cy);
       const z = u.zona ? zonas.find((x) => x.codigo === u.zona) : null;
 
+      /* Sin tipo de daño: ya no se elige. La zona se sigue deduciendo sola —es
+         gratis y mantiene el dato consultable— y qué clase de daño es se cuenta
+         en la observación, en castellano. */
       r.danos.push({
-        vista: u.vista, zona: u.zona, zonaNombre: z ? z.nombre : 'Sin zona',
-        tipo: t.codigo, tipoNombre: t.nombre, color: t.color, severidad: 2,
-        descripcion: '',
+        vista: u.vista, zona: u.zona, zonaNombre: z ? z.nombre : null,
+        severidad: 2, descripcion: '',
         x: Number(cx.toFixed(4)), y: Number(cy.toFixed(4)),
         trazo: puntos
       });
@@ -1401,8 +1394,8 @@ function pRecepcion() {
     if (!r.danos.length) return avisar({ ok: false, motivo: 'No hay ningún daño marcado todavía.' });
     const d = r.danos.pop();
     guardarBorrador(); pintarDanos();
-    avisar({ ok: true, motivo: '' }, 'Se quitó el ' + d.tipoNombre.toLowerCase() + ' de ' +
-      (d.zonaNombre || 'sin zona') + '.');
+    avisar({ ok: true, motivo: '' }, 'Se quitó la marca' +
+      (d.zonaNombre ? ' de ' + d.zonaNombre.toLowerCase() : '') + '.');
   });
   const borrarTodo = document.getElementById('dano-borrar');
   if (borrarTodo) borrarTodo.addEventListener('click', () => {
@@ -1625,8 +1618,8 @@ function recComprobanteBorrador() {
       observaciones: r.campos.observaciones || ''
     },
     danos: r.danos.map((x) => ({
-      zonaNombre: x.zonaNombre, tipoNombre: x.tipoNombre, color: x.color,
-      severidad: x.severidad, x: x.x, y: x.y, descripcion: x.descripcion || ''
+      zonaNombre: x.zonaNombre, vista: x.vista, zona: x.zona,
+      severidad: x.severidad, x: x.x, y: x.y, trazo: x.trazo || null
     })),
     inventario: items.map((it) => {
       const cod = r.inventario[it.id] || 'sin_verificar';
@@ -1653,7 +1646,7 @@ function guardarRecepcion() {
     return recRechazar(faltan);
   }
 
-  const zonas = Modelo.zonasDano(), tipos = Modelo.tiposDano();
+  const zonas = Modelo.zonasDano();
 
   const ficha = Object.assign({}, r.campos, {
     anio: r.campos.anio ? Number(r.campos.anio) : null,
@@ -1668,7 +1661,8 @@ function guardarRecepcion() {
       // El trazo va junto con la zona: uno se dibuja, la otra se consulta.
       trazo: d.trazo || null,
       zona_id: (zonas.find((z) => z.codigo === d.zona) || {}).id || null,
-      tipo_id: (tipos.find((t) => t.codigo === d.tipo) || {}).id || null
+      // Sin tipo: dejó de elegirse. La columna queda por si vuelve a pedirse.
+      tipo_id: null
     })),
     demo: true
   });

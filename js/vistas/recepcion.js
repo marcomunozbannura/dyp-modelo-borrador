@@ -1010,18 +1010,17 @@ function recDanos() {
          quedó el checklist. Con los botones se marca de un toque y el estado se
          lee de lejos por su color y su icono, que es lo que hace el original.
 
-         🔶 LA OBSERVACIÓN POR ÍTEM VUELVE (15-08-2026), pero no como estaba.
-         Antes era una casilla fija en las 28 filas, y 28 casillas vacías piden
-         que las llenes. Ahora aparece SOLO donde hay algo que explicar: cuando
-         el ítem quedó `no presente` o `dañado`.
+         🔶 LA OBSERVACIÓN POR ÍTEM, en los 28 y en cualquier estado
+         (15-08-2026). Se probó mostrarla solo en `no presente` y `dañado` —que
+         es donde la muestra el original— y el cliente pidió poder escribir
+         siempre. Manda él, y además tiene razón: «rayado pero funciona» es una
+         nota legítima sobre un ítem PRESENTE, y no somos nosotros los que
+         tenemos que adivinar en cuáles lo dejamos escribir.
 
-         Es la diferencia entre un dato y un reclamo. «Radio: presente» no
-         necesita nota. «Cenicero: no presente» y «Encendedor: dañado» sí — son
-         las dos que un mes después alguien va a discutir, y ahí la nota del
-         recepcionista es la única prueba de qué se vio en el mesón.
-
-         Si ya hay algo escrito, la casilla se sigue mostrando aunque el estado
-         cambie: una nota escrita no se esconde sola. */''}
+         Lo que sí cambia según el estado es qué PREGUNTA el campo —«Por qué no
+         está», «Qué daño tiene», «Sin observación»— y que al marcar uno de los
+         dos estados que se discuten después el foco salta solo a la casilla.
+         Esa es la mitad que sí vale la pena guiar. */''}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>Elemento</th><th style="width:250px">Estado</th><th>Observación</th></tr></thead>
       <tbody>${items.map((it) => {
@@ -1045,21 +1044,28 @@ function recDanos() {
   </fieldset>`;
 }
 
-/* Los dos estados que piden explicación. `presente` no necesita nota, y
-   `sin_verificar` menos todavía: nadie lo miró, no hay nada que contar. */
+/* Los dos estados que PIDEN explicación. No son los únicos donde se puede
+   escribir —se escribe en cualquiera—, pero son los que se van a discutir
+   después, así que el marcador del campo pregunta lo que corresponde y el
+   foco salta solo al marcarlos. */
 const INV_PIDE_NOTA = ['no_presente', 'danado'];
 
-/* La celda de observación de un ítem. Devuelve la casilla cuando corresponde,
-   y si no, un guión — la columna no queda vacía y se ve que ahí no hay nada
-   que anotar, que no es lo mismo que "falta llenarlo". */
+// Qué pregunta el campo según cómo quedó el ítem.
+function recObsMarcador(estado) {
+  if (estado === 'danado') return 'Qué daño tiene';
+  if (estado === 'no_presente') return 'Por qué no está';
+  return 'Sin observación';
+}
+
+/* La celda de observación de un ítem. Se escribe SIEMPRE, en los 28 y en
+   cualquier estado: el recepcionista puede querer anotar «rayado pero
+   funciona» en algo que está presente, y no es él quien tiene que adivinar en
+   cuáles lo dejamos escribir. Lo único que cambia según el estado es qué
+   pregunta el campo. */
 function recObsInv(it, estado) {
   const r = rec();
-  const texto = String(r.obsInventario[it.id] || '');
-  if (INV_PIDE_NOTA.indexOf(estado) < 0 && !texto.trim()) {
-    return '<span class="obs-inv-vacia" aria-hidden="true">—</span>';
-  }
-  return '<input data-obsinv="' + esc(it.id) + '" value="' + esc(texto) + '" ' +
-    'placeholder="' + (estado === 'danado' ? 'Qué daño tiene' : 'Por qué no está') + '" ' +
+  return '<input data-obsinv="' + esc(it.id) + '" value="' + esc(r.obsInventario[it.id] || '') + '" ' +
+    'placeholder="' + esc(recObsMarcador(estado)) + '" ' +
     'aria-label="' + esc('Observación de ' + it.nombre) + '">';
 }
 
@@ -1606,23 +1612,19 @@ function pRecepcion() {
     const rot = document.getElementById('n-inv');
     if (rot) rot.innerHTML = recInvResumen(recInvConteo());
 
-    /* La casilla de observación aparece o desaparece según el estado nuevo, y
-       se redibuja solo esa celda. Si el ítem pasó a pedir nota, el foco se va
-       ahí: el recepcionista acaba de decir que algo falta o está dañado, y lo
-       siguiente que quiere hacer es contar qué. */
+    /* La casilla de observación está siempre, así que acá NO se redibuja la
+       celda: si alguien está escribiendo y toca un botón, volver a pintar el
+       campo le borraría lo tecleado. Solo cambia lo que el campo pregunta.
+
+       Y si el ítem pasó a `no presente` o `dañado` sin nada escrito, el foco
+       se va ahí: acaba de decir que algo falta o está dañado, y lo siguiente
+       que quiere hacer es contar qué. Si ya había texto no se le mueve el
+       cursor encima. */
     const fila = document.querySelector('[data-fila-inv="' + id + '"]');
-    const celda = fila && fila.querySelector('.celda-obs-inv');
-    if (celda) {
-      const item = Modelo.catalogo('inventario_item').find((x) => x.id === id);
-      const yaEstaba = !!celda.querySelector('[data-obsinv]');
-      celda.innerHTML = recObsInv(item, b.dataset.estado);
-      const casilla = celda.querySelector('[data-obsinv]');
-      if (casilla) {
-        casilla.addEventListener('input', () => {
-          r.obsInventario[id] = casilla.value; guardarBorrador();
-        });
-        if (!yaEstaba) casilla.focus();
-      }
+    const casilla = fila && fila.querySelector('[data-obsinv]');
+    if (casilla) {
+      casilla.placeholder = recObsMarcador(b.dataset.estado);
+      if (INV_PIDE_NOTA.indexOf(b.dataset.estado) >= 0 && !casilla.value.trim()) casilla.focus();
     }
     guardarBorrador();
   }));

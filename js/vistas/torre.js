@@ -69,10 +69,12 @@ function thOrden(clave, rotulo, titulo) {
   const f = ui.torre;
   const activa = f.orden === clave;
   const flecha = activa ? '<span class="flechita">' + (f.desc ? '&#9662;' : '&#9652;') + '</span>' : '';
-  const ayuda = (titulo ? titulo + ' · ' : '') +
-    (activa ? 'Ordenando por acá. Clic para invertir' : 'Clic para ordenar por esta columna');
-  return '<th class="orden' + (activa ? ' activa' : '') + '" data-orden="' + esc(clave) +
-    '" title="' + esc(ayuda) + '">' + esc(rotulo) + flecha + '</th>';
+  /* Sin globo que diga "clic para ordenar" (15-08-2026, pedido de Marco: que
+     no se vea ningún texto de ordenar). Queda el `title` sólo cuando la
+     columna trae una explicación PROPIA —qué mide, no cómo se usa—; la flecha
+     ya dice por dónde va el orden y el cursor dice que se puede apretar. */
+  return '<th class="orden' + (activa ? ' activa' : '') + '" data-orden="' + esc(clave) + '"' +
+    (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(rotulo) + flecha + '</th>';
 }
 
 function filtrarTorre() {

@@ -45,13 +45,25 @@ function editRecCargar(o) {
   };
   e.inventario = {};
   (o.inventario || []).forEach((i) => { if (i.itemId) e.inventario[i.itemId] = i.estado; });
+
+  /* Copia de trabajo de los daños. Se COPIA y no se apunta a la del modelo:
+     mientras el recepcionista raya y borra, la orden de verdad no se toca
+     hasta que aprieta guardar — y si se arrepiente, «Descartar lo escrito»
+     vuelve a la silueta que estaba firmada. */
+  e.danos = (o.danos || []).map((d) => ({
+    vista: d.vista, zona: d.zona, zonaNombre: d.zonaNombre,
+    severidad: d.severidad, x: d.x, y: d.y,
+    descripcion: d.descripcion || '',
+    trazo: d.trazo ? d.trazo.map((p) => ({ x: p.x, y: p.y })) : null
+  }));
 }
 
 const EDIT_REC_BLOQUES = [
   { id: 'cliente',    rot: 'Cliente' },
   { id: 'vehiculo',   rot: 'Vehículo' },
   { id: 'recepcion',  rot: 'Recepción' },
-  { id: 'inventario', rot: 'Checklist' }
+  { id: 'inventario', rot: 'Checklist' },
+  { id: 'danos',      rot: 'Daños' }
 ];
 
 function vRecepcionEditarFicha() {
@@ -72,13 +84,13 @@ function vRecepcionEditarFicha() {
     '" data-edrec-bloque="' + b.id + '">' + esc(b.rot) + '</button>';
 
   return `
+  <button class="btn volver" id="rec-volver"><span class="flecha-atras">&#8592;</span>
+    Volver a buscar otra patente</button>
   <div class="panel">
     <div class="cab"><div><h2>${ico('documento', 'g')}Editar Recepción</h2>
       <div class="desc">OT ${o.numeroOT} · <span class="patente">${esc(o.patente)}</span> ·
         recibido el ${fFecha(o.fechaIngreso)}</div></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="et ${version > 1 ? 'azul' : 'gris'}">versión ${version}</span>
-        <button class="btn secundario" id="rec-volver">Volver</button></div>
+      <span class="et ${version > 1 ? 'azul' : 'gris'}">versión ${version}</span>
     </div>
     <div class="cuerpo">
       <div class="nota info">${ico('info')}
@@ -90,7 +102,9 @@ function vRecepcionEditarFicha() {
 
       <div class="tabs" style="margin:12px 0 10px">${EDIT_REC_BLOQUES.map(pestana).join('')}</div>
 
-      ${e.bloque === 'inventario' ? vEditRecInventario() : vEditRecCampos(e)}
+      ${e.bloque === 'inventario' ? vEditRecInventario()
+        : e.bloque === 'danos' ? vEditRecDanos()
+        : vEditRecCampos(e)}
 
       <div class="rejilla-campos" style="margin-top:12px">
         <div class="campo" style="grid-column:1/-1">
@@ -121,9 +135,11 @@ function vRecepcionEditarFicha() {
         </tbody></table></div>` : ''}
 
       <div class="nota" style="margin-top:12px">
-        <strong>Lo que todavía no se corrige acá:</strong> los daños dibujados en la silueta y la
-        firma del cliente. Se declaran pendientes en vez de dejarlos a medias — repintar la silueta
-        es otra pantalla, y volver a pedir la firma es volver a tener al cliente adelante.
+        <strong>La firma no se vuelve a pedir acá, y no es un pendiente técnico.</strong> Volver a
+        firmar es tener al cliente otra vez adelante, y si hay que hacerlo o no es la pregunta que
+        está sobre la mesa del taller: si el papel de la versión 1 sigue valiendo, o cada corrección
+        se firma de nuevo. Mientras no se responda, la firma que hay es la de la versión 1 y el
+        comprobante lo dice.
       </div>
     </div>
   </div>`;
@@ -214,6 +230,158 @@ function vEditRecInventario() {
     '<tbody>' + items.map(fila).join('') + '</tbody></table></div>';
 }
 
+/* ── Los daños de la silueta ───────────────────────────────────────────
+   El pendiente que quedó declarado el 15-08-2026 y que se cierra acá.
+
+   Se raya igual que en el ingreso —el mismo dibujo, el mismo gesto— pero con
+   los handlers escritos en este archivo y no reutilizando los de
+   `recepcion.js`: aquéllos están amarrados al borrador del formulario
+   (`rec().danos`, `guardarBorrador()`), y hacerlos genéricos era meter mano en
+   el archivo que Benjamín está trabajando. Lo que sí se reutiliza es lo que ya
+   es común: el SVG, la ubicación por coordenada y el trazado.
+
+   La corrección reemplaza la lista ENTERA, porque así es el gesto: se raya y
+   se borra lo que se rayó de más. Lo que había queda guardado completo en la
+   fila de corrección, con sus trazos, así que la silueta firmada se puede
+   volver a dibujar. */
+function vEditRecDanos() {
+  const e = editRec();
+  const n = e.danos.length;
+
+  const lista = n
+    ? '<div class="grid-envoltorio"><table class="grid">' +
+      '<thead><tr><th style="width:34px">#</th><th>Dónde cayó la marca</th>' +
+      '<th>Observación</th><th style="width:84px"></th></tr></thead><tbody>' +
+      e.danos.map((d, i) => '<tr><td class="num">' + (i + 1) + '</td>' +
+        '<td>' + esc(d.zonaNombre || 'Sin zona identificada') +
+          '<div class="ayuda" style="margin:2px 0 0">' +
+          esc(SILUETA_NOMBRE_VISTA[d.vista] || d.vista || '—') + '</div></td>' +
+        '<td><input data-edrec-dano="' + i + '" value="' + esc(d.descripcion || '') + '" ' +
+          'placeholder="Qué es la marca"></td>' +
+        '<td><button class="btn secundario" data-edrec-quitar="' + i + '">Quitar</button></td></tr>').join('') +
+      '</tbody></table></div>'
+    : '<div class="nota" style="margin-top:9px">La recepción quedó <strong>sin marcas</strong> en la ' +
+      'silueta. Si el auto entró con daños y no se marcaron, se marcan acá.</div>';
+
+  return `
+  <div class="estado-descriptivo" style="margin-top:11px">
+    <div class="ed-dibujo">
+      <div class="lienzo">${svgSilueta()}</div>
+      <div class="ed-barra">
+        <span class="ayuda">Raya sobre el auto para agregar una marca. <span id="n-marcas-ed">${
+          n ? plural(n, 'marca', 'marcas') : 'sin marcas'}</span></span>
+        <span style="display:flex;gap:6px">
+          <button class="btn secundario" id="edrec-dano-deshacer">Deshacer el último</button>
+          <button class="btn secundario" id="edrec-dano-borrar">Borrar todo</button>
+        </span>
+      </div>
+    </div>
+    <div class="ed-lado">${lista}</div>
+  </div>`;
+}
+
+/* Redibuja las marcas dentro del SVG. Es la misma idea que `pintarDanos()` del
+   ingreso, sobre la copia de trabajo de esta pantalla. */
+function pintarDanosEditor() {
+  const e = editRec();
+  const g = document.getElementById('marcas');
+  if (!g) return;
+  g.innerHTML = e.danos.map((d, i) => {
+    const p = (d.trazo && d.trazo.length) ? d.trazo : [siluetaPuntoDeZona(d.vista, d.zona)];
+    return '<path class="trazo-dano" data-trazo="' + i + '" d="' + siluetaTrazoD(p) + '"></path>';
+  }).join('');
+  const n = document.getElementById('n-marcas-ed');
+  if (n) n.textContent = e.danos.length ? plural(e.danos.length, 'marca', 'marcas') : 'sin marcas';
+}
+
+function pEditRecDanos() {
+  const e = editRec();
+  const svg = document.querySelector('.lienzo svg');
+  if (!svg) return;
+  const zonas = Modelo.zonasDano();
+
+  /* El trazo se dibuja en vivo dentro del propio SVG y recién al soltar se
+     convierte en una marca.
+
+     ⚠️ Las coordenadas van de 0 a 1, NO en píxeles de la caja. Es la convención
+     de `silueta.js` —`siluetaUbicar` y `siluetaTrazoD` multiplican ellos por
+     `SILUETA_CAJA`— y es la correcta: la misma raya tiene que caer en la misma
+     pieza en el computador del mesón y en el teléfono del jefe de taller.
+     Escrito al revés la primera vez, la marca se dibujaba fuera de la lámina y
+     `zonaNombre` volvía siempre nulo. */
+  let puntos = null, vivo = null;
+  const donde = (ev) => {
+    const c = svg.getBoundingClientRect();
+    return { x: Number(((ev.clientX - c.left) / c.width).toFixed(4)),
+             y: Number(((ev.clientY - c.top) / c.height).toFixed(4)) };
+  };
+
+  svg.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    puntos = [donde(ev)];
+    vivo = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    vivo.setAttribute('class', 'trazo-dano');
+    svg.appendChild(vivo);
+    if (svg.setPointerCapture) { try { svg.setPointerCapture(ev.pointerId); } catch (x) { /* nada */ } }
+  });
+
+  svg.addEventListener('pointermove', (ev) => {
+    if (!puntos) return;
+    puntos.push(donde(ev));
+    if (vivo) vivo.setAttribute('d', siluetaTrazoD(puntos));
+  });
+
+  const soltar = () => {
+    if (!puntos) return;
+    const p = puntos;
+    puntos = null;
+    if (vivo && vivo.parentNode) vivo.parentNode.removeChild(vivo);
+    vivo = null;
+    // Un toque suelto no es una raya: sin esto, cualquier clic para mirar el
+    // dibujo dejaba una marca en la recepción de un auto.
+    if (p.length < 2) return pintarDanosEditor();
+
+    // El centro del trazo decide la zona, con el promedio: una raya que cruza
+    // dos piezas pertenece a la que más recorre.
+    const cx = p.reduce((s, q) => s + q.x, 0) / p.length;
+    const cy = p.reduce((s, q) => s + q.y, 0) / p.length;
+    const u = siluetaUbicar(cx, cy);
+    const z = u.zona ? zonas.find((x) => x.codigo === u.zona) : null;
+
+    e.danos.push({
+      vista: u.vista, zona: u.zona, zonaNombre: z ? z.nombre : null,
+      severidad: 2, descripcion: '',
+      x: Number(cx.toFixed(4)), y: Number(cy.toFixed(4)), trazo: p
+    });
+    render();
+  };
+  svg.addEventListener('pointerup', soltar);
+  svg.addEventListener('pointerleave', soltar);
+  svg.addEventListener('pointercancel', soltar);
+
+  pintarDanosEditor();
+
+  document.querySelectorAll('[data-edrec-quitar]').forEach((b) => b.addEventListener('click', () => {
+    e.danos.splice(Number(b.dataset.edrecQuitar), 1);
+    render();
+  }));
+  document.querySelectorAll('[data-edrec-dano]').forEach((el) => el.addEventListener('input', () => {
+    e.danos[Number(el.dataset.edrecDano)].descripcion = el.value;
+  }));
+
+  const deshacer = document.getElementById('edrec-dano-deshacer');
+  if (deshacer) deshacer.addEventListener('click', () => {
+    if (!e.danos.length) return avisar({ ok: false, motivo: 'No hay ninguna marca.' });
+    e.danos.pop(); render();
+  });
+  const borrar = document.getElementById('edrec-dano-borrar');
+  if (borrar) borrar.addEventListener('click', () => {
+    if (!e.danos.length) return avisar({ ok: false, motivo: 'No hay nada que borrar.' });
+    if (!confirm('¿Borrar las ' + e.danos.length + ' marcas de la silueta?')) return;
+    e.danos = []; render();
+  });
+}
+
 function pRecepcionEditarFicha() {
   const e = editRec();
   const volver = document.getElementById('rec-volver');
@@ -224,6 +392,8 @@ function pRecepcionEditarFicha() {
   document.querySelectorAll('[data-edrec-bloque]').forEach((b) => b.addEventListener('click', () => {
     e.bloque = b.dataset.edrecBloque; render();
   }));
+
+  if (e.bloque === 'danos') pEditRecDanos();
 
   /* Se guarda en el estado a cada tecla, no al pintar: el usuario puede saltar
      entre los cuatro bloques antes de guardar y no puede perder lo escrito en
@@ -257,6 +427,7 @@ function pRecepcionEditarFicha() {
   const guardar = document.getElementById('edrec-guardar');
   if (guardar) guardar.addEventListener('click', () => {
     const c = e.campos;
+    const zonas = Modelo.zonasDano();
     const o = Modelo.otPorId(e.otId);
     if (!o) return avisar({ ok: false, motivo: 'La orden ya no está abierta.' });
 
@@ -281,7 +452,15 @@ function pRecepcionEditarFicha() {
       recepcion: { km: c.km === '' ? null : Number(c.km),
                    combustible: c.combustible === '' ? null : Number(c.combustible),
                    observaciones: c.observaciones },
-      inventario: e.inventario
+      inventario: e.inventario,
+      // La zona viaja como código mientras se dibuja —es lo que devuelve la
+      // silueta— y se resuelve a su id recién acá, igual que en el ingreso.
+      danos: e.danos.map((d) => ({
+        vista: d.vista, zona_id: (zonas.find((z) => z.codigo === d.zona) || {}).id || null,
+        tipo_id: null, severidad: d.severidad || 2,
+        zonaNombre: d.zonaNombre, x: d.x, y: d.y,
+        descripcion: d.descripcion || '', trazo: d.trazo || null
+      }))
     };
 
     ejecutar(() => Modelo.corregir_recepcion(e.otId, cambios, e.motivo),

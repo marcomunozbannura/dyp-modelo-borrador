@@ -439,11 +439,18 @@ function vRecepcionBuscar(modo) {
   const q = String(r.buscaEditar || '').trim().toUpperCase();
   const encontradas = q ? Modelo.torre().filter((o) => o.patente.indexOf(q) >= 0) : [];
 
+  /* 🔶 El volver va ARRIBA y AFUERA del panel (15-08-2026, pedido de Marco:
+     "más fácil y más claro"). Estaba como botón chico y gris en la esquina
+     derecha del encabezado, que es donde nadie mira para retroceder: la
+     lectura va de izquierda a derecha y el paso atrás se busca al principio.
+     Ahora es lo primero de la pantalla, con flecha y con el nombre de a dónde
+     vuelve — "Volver" a secas obliga a acordarse de dónde venías. */
   return `
+  <button class="btn volver" id="rec-volver"><span class="flecha-atras">&#8592;</span>
+    Volver a las opciones de Recepción</button>
   <div class="panel">
     <div class="cab"><div><h2>${ico(cfg.icono, 'g')}${esc(cfg.rot)}</h2>
       <div class="desc">${esc(cfg.desc)}</div></div>
-      <div><button class="btn secundario" id="rec-volver">Volver a las opciones</button></div>
     </div>
     <div class="cuerpo">
       <div class="rejilla-campos">
@@ -477,10 +484,11 @@ function vRecepcionBuscar(modo) {
       ${modo === 'editar' ? `
       <div class="nota info" style="margin-top:12px">${ico('info')}
         <strong>La recepción se corrige versionándola.</strong> Se cambia el cliente, el vehículo,
-        los datos de la recepción y el checklist; lo que estaba queda guardado con quién lo cambió,
-        cuándo y por qué, y el comprobante impreso dice qué versión es. El papel que firmó el
-        cliente no se toca. <strong>Los daños de la silueta y la firma todavía no se editan acá</strong>,
-        y eso está declarado, no resuelto a medias.
+        los datos de la recepción, el checklist y <strong>los daños de la silueta</strong>; lo que
+        estaba queda guardado con quién lo cambió, cuándo y por qué, y el comprobante impreso dice
+        qué versión es. El papel que firmó el cliente no se toca. <strong>La firma no se vuelve a
+        pedir</strong>: si cada corrección se firma de nuevo o el original sigue valiendo lo decide
+        el taller.
       </div>` : `
       <div class="nota info" style="margin-top:12px">${ico('info')}
         <strong>Abrir la OR no es valorizarla.</strong> Acá se abre la orden de reparación sobre el

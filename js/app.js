@@ -966,6 +966,7 @@ function render() {
   // Misma razón que Media.pintar: acá vale para todos los paneles y para los
   // que vengan, en vez de tener que acordarse de llamarlo en cada vista.
   marcarEtiquetas();
+  mejorarTablas();
 
   const f = ESTADO_BARRA[ui.vista];
   pintarBarraEstado(f ? f() : '');
@@ -1426,6 +1427,193 @@ function dobleClicPorFilas(selector, opciones) {
     td.innerHTML = armarDetalle(n);
     fila.appendChild(td);
     tr.parentNode.insertBefore(fila, tr.nextSibling);
+  });
+}
+
+/* ═══════════ ORDENAR Y ENSANCHAR CUALQUIER COLUMNA ═══════════
+   Pedido de Marco el 15-08-2026: que en todos los paneles las columnas se
+   puedan ordenar y se puedan ensanchar o achicar, **y que no se vea ningún
+   texto que lo explique**. Por eso no hay globos de ayuda ni rótulos: la
+   columna ordenada se marca con una flecha chica y el que quiera ensanchar
+   encuentra el cursor de arrastre en el borde. Se descubre solo, como en
+   cualquier planilla.
+
+   Va acá y no en cada vista, por la misma razón que `Media.pintar()`: son
+   catorce paneles y los que vengan. Se aplica después de pintar, sobre el DOM
+   ya armado, así que también alcanza a la columna de la flecha que
+   `dobleClicPorFilas` inserta a mano.
+
+   Lo que se ordena son las filas que ya están en pantalla. La TORRE queda
+   fuera: ordena en el modelo —sus 17 columnas, sobre las 102 órdenes— y eso es
+   mejor que ordenar lo pintado. Ahí sólo se agrega el ensanchado. */
+const ordenPorTabla = {};
+const anchoPorTabla = {};
+
+function llaveTabla(tabla, i) { return ui.vista + '#' + i; }
+
+/* De texto de celda a algo comparable. Reconoce lo que estas tablas muestran:
+   plata con puntos de miles, fechas chilenas, días, y todo lo demás como
+   texto. Sin esto `$1.000.000` quedaba antes que `$90.000` — el orden
+   alfabético sobre un número es una respuesta equivocada con cara de
+   respuesta. */
+function valorDeCelda(td) {
+  const t = (td ? td.textContent : '').trim();
+  if (!t) return { n: null, t: '' };
+
+  // Fecha: 12-08-2026, 12/08/2026 o 12/08. Se compara como número AAAAMMDD.
+  const f = t.match(/^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$/);
+  if (f) {
+    const a = f[3] ? (f[3].length === 2 ? 2000 + Number(f[3]) : Number(f[3])) : 0;
+    return { n: a * 10000 + Number(f[2]) * 100 + Number(f[1]), t: t.toLowerCase() };
+  }
+
+  // Número: $1.234.567, 1.234, 12,5, 45 d, -3
+  const limpio = t.replace(/[$\s]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+  const m = limpio.match(/^-?\d+(\.\d+)?/);
+  if (m && /\d/.test(t)) return { n: Number(m[0]), t: t.toLowerCase() };
+
+  return { n: null, t: t.toLowerCase() };
+}
+
+function mejorarTablas() {
+  document.querySelectorAll('#contenido table.grid').forEach((tabla, i) => {
+    // Las tablas anidadas del desplegable no: son cuatro filas dentro de una
+    // fila, y ordenarlas por su cuenta confunde más de lo que ayuda.
+    if (tabla.classList.contains('anidada')) return;
+    const encab = tabla.querySelector('thead tr');
+    const cuerpo = tabla.querySelector('tbody');
+    if (!encab || !cuerpo) return;
+
+    const llave = llaveTabla(tabla, i);
+    const propia = !!encab.querySelector('th[data-orden]');   // la torre
+    /* Una tabla con `colspan` en el cuerpo trae totales o subtítulos. Esas no
+       se ordenan —el total terminaría en la fila 14— y por eso tampoco se
+       marcan como ordenables: una columna que parece que se puede apretar y
+       no hace nada es peor que una que no lo parece. */
+    const conTotales = !!tabla.querySelector('tbody td[colspan]');
+    const ths = [...encab.children];
+
+    aplicarAnchos(tabla, ths, llave);
+    ths.forEach((th, col) => {
+      agregarTirador(tabla, ths, th, col, llave);
+      if (propia || conTotales || th.classList.contains('flecha-col')) return;
+      // Un encabezado en blanco es la columna de los botones: no se ordena.
+      if (!th.textContent.trim()) return;
+      ordenable(tabla, cuerpo, th, col, llave);
+    });
+
+    const guardado = ordenPorTabla[llave];
+    if (!propia && guardado) ordenarFilas(tabla, cuerpo, guardado.col, guardado.desc, ths);
+  });
+}
+
+/* ── Ordenar ─────────────────────────────────────────────────────────── */
+function ordenable(tabla, cuerpo, th, col, llave) {
+  th.classList.add('ordenable');
+  const g = ordenPorTabla[llave];
+  if (g && g.col === col) {
+    th.classList.add('ordenando');
+    th.dataset.sentido = g.desc ? 'desc' : 'asc';
+  }
+  th.addEventListener('click', (ev) => {
+    if (ev.target.classList.contains('tirador-col')) return;
+    const actual = ordenPorTabla[llave];
+    const desc = !!(actual && actual.col === col && !actual.desc);
+    ordenPorTabla[llave] = { col, desc };
+    render();
+  });
+}
+
+function ordenarFilas(tabla, cuerpo, col, desc, ths) {
+  /* Una fila de totales o de subtítulo lleva una celda con `colspan`: si se
+     ordenara se iría al medio de la tabla y dejaría de significar lo que
+     significa. Esas tablas no se ordenan, y es mejor eso que un total
+     flotando en la fila 14. */
+  if (cuerpo.querySelector('td[colspan]')) return;
+
+  const filas = [...cuerpo.children].filter((tr) => !tr.classList.contains('detalle'));
+  if (filas.length < 2) return;
+
+  // El desplegable abierto viaja pegado a su fila.
+  const detalleDe = new Map();
+  filas.forEach((tr) => {
+    const sig = tr.nextElementSibling;
+    if (sig && sig.classList.contains('detalle')) detalleDe.set(tr, sig);
+  });
+
+  const clave = (tr) => valorDeCelda(tr.children[col]);
+  const orden = filas.map((tr, i) => ({ tr, i, v: clave(tr) }));
+  orden.sort((a, b) => {
+    const x = a.v, y = b.v;
+    let r;
+    if (x.n !== null && y.n !== null) r = x.n - y.n;
+    else if (x.n !== null) r = -1;          // los números antes que el texto
+    else if (y.n !== null) r = 1;
+    else r = x.t.localeCompare(y.t, 'es');
+    // Empate: se conserva el orden con el que venían. Sin esto, dos filas
+    // iguales bailan cada vez que se repinta.
+    return (r || (a.i - b.i)) * (desc ? -1 : 1);
+  });
+
+  const trozo = document.createDocumentFragment();
+  orden.forEach((o) => {
+    trozo.appendChild(o.tr);
+    const d = detalleDe.get(o.tr);
+    if (d) trozo.appendChild(d);
+  });
+  cuerpo.appendChild(trozo);
+}
+
+/* ── Ensanchar ───────────────────────────────────────────────────────── */
+function aplicarAnchos(tabla, ths, llave) {
+  const anchos = anchoPorTabla[llave];
+  if (!anchos) return;
+  // `table-layout: fixed` es lo que hace que un ancho puesto a mano se
+  // respete de verdad; con el automático el navegador lo trata como sugerencia
+  // y una columna nunca achica bajo su contenido. Se enciende recién cuando
+  // alguien arrastra, y ahí se fijan TODAS las columnas con el ancho que
+  // tenían: así la tabla no se redistribuye sola al mover una sola.
+  tabla.classList.add('anchos-fijos');
+  ths.forEach((th, col) => {
+    if (anchos[col]) th.style.width = anchos[col] + 'px';
+  });
+}
+
+function agregarTirador(tabla, ths, th, col, llave) {
+  if (th.querySelector('.tirador-col')) return;
+  const t = document.createElement('span');
+  t.className = 'tirador-col';
+  th.appendChild(t);
+
+  t.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    // Se congelan los anchos actuales antes de mover uno: si no, al pasar a
+    // layout fijo las demás columnas se reparten el espacio en partes iguales
+    // y la tabla salta.
+    if (!anchoPorTabla[llave]) {
+      anchoPorTabla[llave] = ths.map((x) => Math.round(x.getBoundingClientRect().width));
+      aplicarAnchos(tabla, ths, llave);
+    }
+    const x0 = ev.clientX;
+    const w0 = anchoPorTabla[llave][col] || Math.round(th.getBoundingClientRect().width);
+    document.body.classList.add('arrastrando-col');
+    try { t.setPointerCapture(ev.pointerId); } catch (e) { /* no siempre se puede */ }
+
+    const mover = (e2) => {
+      const w = Math.max(38, w0 + (e2.clientX - x0));
+      anchoPorTabla[llave][col] = w;
+      th.style.width = w + 'px';
+    };
+    const soltar = () => {
+      document.body.classList.remove('arrastrando-col');
+      t.removeEventListener('pointermove', mover);
+      t.removeEventListener('pointerup', soltar);
+      t.removeEventListener('pointercancel', soltar);
+    };
+    t.addEventListener('pointermove', mover);
+    t.addEventListener('pointerup', soltar);
+    t.addEventListener('pointercancel', soltar);
   });
 }
 

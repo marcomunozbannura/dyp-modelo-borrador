@@ -423,6 +423,33 @@ table.grid th {
   font-weight: 700; white-space: nowrap; position: sticky; top: 0; z-index: 2;
 }
 table.grid th:last-child { border-right: none; }
+
+/* ── Ordenar y ensanchar cualquier columna ──────────────────────────────
+   Sin un solo rótulo que lo explique, que es como se pidió: la flecha marca
+   por dónde va el orden y el cursor de arrastre aparece en el borde. */
+table.grid th.ordenable { cursor: pointer; user-select: none; }
+table.grid th.ordenable:hover { color: var(--tinta); }
+table.grid th.ordenando { color: var(--tinta); }
+table.grid th.ordenando::after {
+  content: '\25B4'; margin-left: 4px; font-size: 9px; color: var(--acento);
+}
+table.grid th.ordenando[data-sentido="desc"]::after { content: '\25BE'; }
+
+table.grid th .tirador-col {
+  position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+  cursor: col-resize; z-index: 3;
+}
+/* La línea sólo aparece cuando el dedo ya está encima: la tabla se ve limpia
+   y el que la busca la encuentra. */
+table.grid th .tirador-col:hover { background: var(--acento); opacity: .55; }
+table.grid th:last-child .tirador-col { right: 0; }
+table.grid.anchos-fijos { table-layout: fixed; }
+table.grid.anchos-fijos th, table.grid.anchos-fijos td {
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Mientras se arrastra no se selecciona texto ni parpadea el cursor. */
+body.arrastrando-col { cursor: col-resize; user-select: none; }
+
 table.grid th.orden { cursor: pointer; user-select: none; }
 table.grid th.orden:hover { color: var(--tinta); }
 /* La columna que manda el orden se marca en su propio encabezado: si no se ve
@@ -637,6 +664,18 @@ fieldset.bloque legend {
 
 /* Vuelta al menú desde el formulario: un enlace, no un botón — no compite con
    Anterior ni con Siguiente, que son los que mueven el trabajo. */
+/* El paso atrás de Recepción. Va antes del panel, a la izquierda, con flecha y
+   con el nombre de a dónde vuelve: es lo primero que se lee y no compite con
+   nada. Antes era un botón gris en la esquina derecha del encabezado. */
+.btn.volver {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-bottom: 9px; padding: 7px 14px; font-weight: 700;
+  background: var(--superficie-2); color: var(--tinta);
+  border: 1px solid var(--borde-fuerte);
+}
+.btn.volver:hover { border-color: var(--acento); color: var(--acento-texto); background: var(--seleccion); }
+.btn.volver .flecha-atras { font-size: 14px; line-height: 1; }
+
 .enlace-volver {
   background: none; border: none; padding: 0 0 0 8px; margin-left: 6px;
   border-left: 1px solid var(--borde); color: var(--acento-texto);

@@ -844,6 +844,51 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 31 · 🔴 LA SILUETA CORREGIDA NO SE LLEVA LA QUE SE FIRMÓ ────────
+         Los daños son el único campo de la recepción que es un DIBUJO, y se
+         corrigen reemplazando la lista entera —así es el gesto: se raya y se
+         borra lo que se rayó de más—. Si al reemplazarla no quedara guardada
+         la anterior, «se versiona» sería mentira justo donde más importa: el
+         estado en que entró el auto es lo que se discute con la compañía.
+
+         Se comprueba lo que se pierde, no lo que se ve: que la fila de
+         corrección conserve las marcas viejas **con sus trazos**. */
+      (function () {
+        restaurarSesion();
+        const quien = (db.persona.find((p) => p.correo === 'gabriel.diaz@dyp.cl') || {}).id;
+        Modelo.fijar_persona_actual(quien);
+
+        const o = Modelo.torre().find((x) => (x.danos || []).length >= 2);
+        const antes = o ? o.danos.length : 0;
+        // Se quita la primera y se agrega una marca nueva en otra zona.
+        const quedan = o ? o.danos.slice(1).map((d) => ({
+          vista: d.vista, zona_id: null, zonaNombre: d.zonaNombre, severidad: d.severidad,
+          x: d.x, y: d.y, descripcion: d.descripcion, trazo: d.trazo })) : [];
+        quedan.push({ vista: 'superior', zona_id: null, zonaNombre: 'Techo', severidad: 2,
+          x: 0.5, y: 0.2, descripcion: 'Marca agregada en la corrección',
+          trazo: [{ x: 0.5, y: 0.2 }, { x: 0.52, y: 0.21 }] });
+
+        const r = o ? Modelo.corregir_recepcion(o.id, { danos: quedan },
+          'Se marcó una raya que no era del siniestro') : { ok: false };
+
+        const luego = o ? Modelo.otPorId(o.id) : null;
+        const corr = luego && luego.recepcion ? Modelo.correccionesDeRecepcion(luego.recepcion.id) : [];
+        const viejas = corr.length ? (corr[0].danosAntes || []) : [];
+
+        push({
+          nombre: '🔴 Corregir la silueta guarda entera la que estaba, con sus trazos',
+          intento: o ? ('Quitar una marca de la OT ' + o.numeroOT + ' y agregar otra: ' +
+                   antes + ' marcas → ' + quedan.length) : 'No había ninguna orden con daños marcados',
+          esperado: 'La orden queda con las marcas nuevas y la corrección conserva las ' + antes + ' anteriores',
+          paso: r.ok && !!luego && luego.danos.length === quedan.length && viejas.length === antes,
+          detalle: !o ? 'Ninguna orden de la semilla trae dos o más daños.'
+            : (!r.ok ? ('Rebotó: ' + r.motivo)
+              : 'Ahora: ' + luego.danos.map((d) => d.zonaNombre || '—').join(', ') +
+                '  ·  Guardadas en la corrección: ' + viejas.length + ' de ' + antes +
+                (viejas.length === antes ? '' : '  ·  SE PERDIÓ la silueta anterior.'))
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

@@ -1287,6 +1287,45 @@ const Modelo = (function () {
       });
     }
 
+    /* Los daños de la silueta se corrigen ENTEROS: llega la lista completa y
+       reemplaza a la anterior. No es pereza — es que un daño no tiene id
+       estable para el recepcionista, que lo que hace es rayar el auto y
+       borrar lo que rayó de más. Casar marca por marca sería inventar una
+       identidad que el gesto no tiene.
+
+       Lo anterior no se pierde: la fila de corrección guarda `danos_antes`
+       completo, con sus trazos, así que la silueta de la versión 1 se puede
+       volver a dibujar tal como se firmó. */
+    let danosAntes = null;
+    if (c.danos) {
+      const previos = db.dano.filter((d) => d.recepcion_id === r.id);
+      const nombreZona = (id) => {
+        const z = (db.zona_dano || []).find((x) => x.id === id);
+        return z ? z.nombre : null;
+      };
+      const resumen = (lista, zonaDe) => lista.length
+        ? lista.length + (lista.length === 1 ? ' marca' : ' marcas') + ' (' +
+          (lista.map(zonaDe).filter(Boolean).join(', ') || 'sin zona identificada') + ')'
+        : 'sin marcas';
+
+      const antes = resumen(previos, (d) => nombreZona(d.zona_id));
+      const despues = resumen(c.danos, (d) => d.zonaNombre);
+
+      if (antes !== despues || previos.length !== c.danos.length) {
+        danosAntes = previos.map((d) => ({
+          vista: d.vista, zona_id: d.zona_id, zonaNombre: nombreZona(d.zona_id),
+          severidad: d.severidad, x: d.x, y: d.y, descripcion: d.descripcion, trazo: d.trazo
+        }));
+        anotar('Daños marcados', antes, despues);
+        db.dano = db.dano.filter((d) => d.recepcion_id !== r.id);
+        c.danos.forEach((d, i) => db.dano.push({
+          id: nuevoId('da') + '-' + i, recepcion_id: r.id, vista: d.vista || 'superior',
+          zona_id: d.zona_id || null, tipo_id: d.tipo_id || null, severidad: d.severidad || 2,
+          x: d.x, y: d.y, descripcion: d.descripcion || '', trazo: d.trazo || null
+        }));
+      }
+    }
+
     if (!hechos.length)
       return { ok: false, motivo: 'No hay nada que corregir: todo llegó igual a como estaba.' };
 
@@ -1295,7 +1334,10 @@ const Modelo = (function () {
     r.version = version;
     db.recepcion_correccion.push({
       id: nuevoId('rc'), recepcion_id: r.id, ot_id, version, fecha: HOY,
-      persona_id: persona_actual || null, motivo: String(motivo).trim(), cambios: hechos
+      persona_id: persona_actual || null, motivo: String(motivo).trim(), cambios: hechos,
+      // La silueta anterior, entera. Sin esto, "se versiona" sería mentira en
+      // el único campo que es un dibujo.
+      danos_antes: danosAntes
     });
 
     registrarEvento(ot_id, 'modificacion', 'Recepción corregida (versión ' + version + '): ' +
@@ -1316,7 +1358,8 @@ const Modelo = (function () {
       .map((x) => {
         const p = x.persona_id ? db.persona.find((y) => y.id === x.persona_id) : null;
         return { id: x.id, version: x.version, fecha: x.fecha, motivo: x.motivo,
-                 quien: p ? nombreDe(p) : 'Sin registrar', cambios: x.cambios };
+                 quien: p ? nombreDe(p) : 'Sin registrar', cambios: x.cambios,
+                 danosAntes: x.danos_antes || null };
       });
   }
 

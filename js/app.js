@@ -86,10 +86,22 @@ const ui = {
 // ninguna de las 39 pantallas del sistema actual. Está modelado y documentado
 // en DECISIONES-REPLICA, y se cotiza aparte. No se muestra como si existiera.
 const MENU = [
+  /* 🔶 EL MENÚ SON LOS DIEZ DEL SISTEMA ACTUAL Y NADA MÁS (16-08-2026, Marco:
+     "ojo deja solo estos"). Salieron cuatro:
+
+       · **Mi trabajo** — nuestro. Es la pantalla del operario: sus vehículos y
+         sus etapas. El sistema actual no tiene nada por persona.
+       · **Repuestos** — ya vive DENTRO de Bodega, que es donde el taller lo
+         busca. Era la misma pantalla en dos puertas.
+       · **Esperas** — nuestro. Las detenciones con su motivo.
+       · **Expediente** — nuestro. El historial completo del vehículo.
+
+     Las cuatro vistas SIGUEN EXISTIENDO y se llega por dirección
+     (`#vista=expediente`). Sacar algo del menú no es motivo para romper un
+     enlace guardado, y tampoco para borrar trabajo que el taller todavía no
+     ha visto. Se conserva la agrupación en tres bloques: diez íconos en una
+     fila plana se leen peor que diez repartidos por para qué sirven. */
   { grupo: 'Operación diaria' },
-  // Primero lo propio: el que entra con su nombre abre el sistema en lo suyo.
-  { id: 'mitrabajo', nombre: 'Mi trabajo',    icono: 'taller',
-    cuenta: () => (Modelo.personaActual() ? Modelo.miTrabajo(Modelo.personaActual().id).mias.length : null) },
   { id: 'recepcion', nombre: 'Recepción',      icono: 'recepcion' },
   { id: 'torre',     nombre: 'Torre de control', icono: 'torre',   cuenta: () => Modelo.torre().length },
   { id: 'taller',    nombre: 'Taller',         icono: 'taller' },
@@ -102,18 +114,12 @@ const MENU = [
      del menú no es motivo para romper un enlace que alguien pudo dejar
      guardado. Lo que cambió es de dónde se llega. */
   { grupo: 'Seguimiento' },
-  { id: 'repuestos',   nombre: 'Repuestos',   icono: 'repuesto',    cuenta: () => Modelo.metricas().repuestosPendientes },
-  { id: 'detenidos',   nombre: 'Esperas',     icono: 'espera',      cuenta: () => Modelo.metricas().conRepuestoPendiente },
   { id: 'presupuesto', nombre: 'Presupuesto', icono: 'presupuesto' },
   { id: 'bodega',      nombre: 'Bodega',      icono: 'bodega' },
   { id: 'documentos',  nombre: 'Documentos',  icono: 'documento' },
   // El Histórico es un BUSCADOR, no un listado: sin filtro no muestra nada.
   // Por eso no lleva contador — mostrarlo sugeriría que hay una tabla detrás.
   { id: 'historico',   nombre: 'Histórico',   icono: 'historico' },
-  // El expediente es del VEHÍCULO; el Histórico es un buscador de órdenes
-  // cerradas. Van juntos porque se llega a los dos buscando, pero no son lo
-  // mismo y por eso no se fusionaron.
-  { id: 'expediente',  nombre: 'Expediente',  icono: 'historico' },
   { grupo: 'Administración' },
   { id: 'personal',      nombre: 'Personal',      icono: 'personal', cuenta: () => Modelo.personal().filter((p) => p.activo).length },
   { id: 'consolidado',   nombre: 'Consolidado',   icono: 'consolidado' },

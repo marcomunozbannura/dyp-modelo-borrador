@@ -63,6 +63,9 @@ function plataDe(o) {
 function vHistorico() {
   const h = historicoEstado();
   if (h.vista === 'estadisticas') return vHistoricoEstadisticas();
+  // La reportería vive en `reporteria.js`: son gráficos y tabla dinámica, y no
+  // tienen por qué compartir archivo con el buscador.
+  if (h.vista === 'reporteria') return vReporteria();
   const hayFiltro = !!(h.patente || h.cliente || h.compania_id || h.estado || h.desde || h.hasta ||
     h.marca_id || h.modelo_id);
   const universo = Modelo.historico({ todo: true });
@@ -120,6 +123,7 @@ function vHistorico() {
       <div style="display:flex;gap:8px">
         <button class="btn${h.todos ? '' : ' secundario'}" id="h-todos">Ver todos</button>
         <button class="btn secundario" id="h-estadisticas">Ver estadísticas</button>
+        <button class="btn secundario" id="h-reporteria">${ico('consolidado')}Reportería</button>
       </div></div>
     <div class="cuerpo">
       <div class="desc" style="margin-bottom:9px">Cada parámetro es independiente de los otros,
@@ -385,6 +389,8 @@ function pHistorico() {
   const h = historicoEstado();
 
   // La hoja de reportes tiene sus propios botones y sale de acá derecho.
+  if (h.vista === 'reporteria') return pReporteria();
+
   if (h.vista === 'estadisticas') {
     const volver = document.getElementById('h-volver');
     if (volver) volver.addEventListener('click', () => { h.vista = 'buscador'; render(); });
@@ -429,6 +435,8 @@ function pHistorico() {
   });
   const est = document.getElementById('h-estadisticas');
   if (est) est.addEventListener('click', () => { h.vista = 'estadisticas'; render(); });
+  const rep = document.getElementById('h-reporteria');
+  if (rep) rep.addEventListener('click', () => { h.vista = 'reporteria'; render(); });
 
   const pdf = document.getElementById('h-pdf');
   if (pdf) pdf.addEventListener('click', () => {

@@ -1331,25 +1331,14 @@ const PARAM_OT = (function () {
   } catch (e) { return null; }
 })();
 
-// En qué pestaña de la orden abrir, si la dirección lo pide (`#ot=N&tab=etapas`),
-// y en qué modo dentro de ella (`&modo=asignar`), que es lo que usa el listado
-// de Taller: su botón dice `Asignar etapas` y tiene que abrir eso, no otra cosa.
-/* Se leen CADA VEZ, no una sola al cargar. `PARAM_OT` puede ser una constante
-   porque la ventana de una orden nace con su número; el `tab` no: el enlace se
-   comparte, y quien lo recibe puede tener el sistema YA ABIERTO. Ahí el
-   navegador no recarga nada —solo cambia el ancla— y una constante calculada
-   al arrancar habría quedado con el valor de la dirección anterior, mandando a
-   la pestaña equivocada sin ningún error a la vista. */
-function paramDelAncla(clave) {
+// En qué pestaña de la orden abrir, si la dirección lo pide (`#ot=N&tab=etapas`).
+const PARAM_TAB = (function () {
   try {
     const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     if (h.get('vista')) return null;
-    return h.get(clave);
+    return h.get('tab');
   } catch (e) { return null; }
-}
-
-const PARAM_TAB = () => paramDelAncla('tab');
-const PARAM_MODO = () => paramDelAncla('modo');
+})();
 
 // Busca en TODAS las órdenes, no solo en la torre y el histórico: una orden
 // rechazada o dada por pérdida total también tiene que poder abrirse.
@@ -1364,12 +1353,11 @@ const buscarOT = (n) => Modelo.otPorNumero(n);
 
    Va en la dirección y no en una variable porque la orden se abre en una
    ventana NUEVA: lo que esta pestaña tenga en memoria no la acompaña. */
-const urlFicha = (numero, tab, modo) => 'index.html#ot=' + encodeURIComponent(numero) +
-  (tab ? '&tab=' + encodeURIComponent(tab) : '') +
-  (modo ? '&modo=' + encodeURIComponent(modo) : '');
+const urlFicha = (numero, tab) => 'index.html#ot=' + encodeURIComponent(numero) +
+  (tab ? '&tab=' + encodeURIComponent(tab) : '');
 
-function abrirFicha(numero, tab, modo) {
-  window.open(urlFicha(numero, tab, modo), '_blank', 'noopener');
+function abrirFicha(numero, tab) {
+  window.open(urlFicha(numero, tab), '_blank', 'noopener');
 }
 
 /* ───────────── Doble clic para abrir la orden ─────────────
@@ -2170,8 +2158,6 @@ if (!HAY_SESION) {
   pantallaIngreso();
 } else if (PARAM_OT) {
   // La dirección trae una OT: esta pestaña es la ventana de ese registro.
-  // Y puede pedir además en qué pestaña y en qué modo abrirla.
-  fichaAplicarDireccion();
   modoRegistro(PARAM_OT);
 } else {
   pintarMenu();
@@ -2322,13 +2308,8 @@ window.addEventListener('hashchange', function () {
   const vista = leer('vista');
   const ot = leer('ot');
   if (ot && !vista) {
-    /* Pegar el enlace de una orden en una pestaña YA ABIERTA no recarga nada:
-       solo cambia el ancla. Hay que atender igual la pestaña y el modo que ese
-       enlace pide, o el que lo recibe cae en un lugar distinto del que le
-       mandaron y no hay forma de que lo sepa. */
-    fichaAplicarDireccion();
     if (String(ot) !== String(ui.registroOT)) return modoRegistro(ot);
-    return refrescarFicha();
+    return;
   }
   if (vista && MENU.some((m) => m.id === vista)) {
     // Se venía de una ventana de registro: hay que devolverle el menú lateral.

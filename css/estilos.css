@@ -672,6 +672,37 @@ fieldset.bloque legend {
 
 /* Vuelta al menú desde el formulario: un enlace, no un botón — no compite con
    Anterior ni con Siguiente, que son los que mueven el trabajo. */
+/* ───────── Gráficos de la reportería ─────────
+   Dibujados en SVG por el propio sistema, sin librerías: el modelo tiene que
+   abrirse en el mesón aunque no haya internet. El SVG además imprime nítido a
+   cualquier tamaño, que es lo que se necesita cuando el reporte sale en PDF. */
+svg.graf { width: 100%; height: 200px; display: block; }
+svg.graf .graf-barra { fill: var(--acento-solido); }
+:root[data-tema="oscuro"] svg.graf .graf-barra,
+:root:not([data-tema="claro"]) svg.graf .graf-barra { fill: var(--acento); }
+svg.graf .graf-barra.alerta { fill: var(--rojo); }
+svg.graf .graf-barra:hover { opacity: .8; }
+svg.graf .graf-guia { stroke: var(--borde); stroke-width: 1; }
+svg.graf .graf-meta { stroke: var(--verde); stroke-width: 1.5; stroke-dasharray: 5 4; }
+svg.graf text { font-family: inherit; }
+svg.graf .graf-valor { font-size: 10px; fill: var(--tinta); text-anchor: middle; font-weight: 700; }
+svg.graf .graf-eje { font-size: 9.5px; fill: var(--gris); text-anchor: middle; }
+svg.graf .graf-meta-rot { font-size: 9px; fill: var(--verde); }
+
+/* Barras horizontales: para rankings, donde el rótulo es largo y el número
+   importa tanto como la comparación. */
+.barrasH { display: flex; flex-direction: column; gap: 5px; }
+.barrasH .fila-barra { display: grid; grid-template-columns: 150px 1fr 110px; gap: 9px; align-items: center; }
+.barrasH .rot { font-size: 11.5px; color: var(--texto); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.barrasH .pista { background: var(--superficie-2); border: 1px solid var(--borde);
+  border-radius: 2px; height: 15px; overflow: hidden; }
+.barrasH .relleno { display: block; height: 100%; background: var(--acento-solido); }
+:root[data-tema="oscuro"] .barrasH .relleno,
+:root:not([data-tema="claro"]) .barrasH .relleno { background: var(--acento); }
+.barrasH .val { font-size: 11.5px; font-weight: 700; color: var(--tinta);
+  text-align: right; font-variant-numeric: tabular-nums; }
+
 /* Aviso de versión nueva publicada. Va arriba de todo, cruzando la pantalla:
    es lo único que se muestra por encima del sistema, y por eso tiene que ser
    evidente y tiene que poder ignorarse — no tapa nada con lo que se trabaje. */

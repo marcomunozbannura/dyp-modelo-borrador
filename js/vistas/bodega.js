@@ -327,7 +327,7 @@ function bodegaSeguimiento() {
 
   <div class="grid-envoltorio"><table class="grid">
     <thead><tr><th>OT</th><th>OR</th><th>Cliente</th><th>Compañia</th><th>Patente</th><th>Siniestro</th>
-      <th>Marca</th><th>Modelo</th><th>Color</th><th>Ingreso</th><th>Días</th><th>Alerta</th>
+      <th>Marca</th><th>Modelo</th><th>Color</th><th>Fecha de Ingreso</th><th>Días</th><th>Alerta</th>
       <th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
     <tbody>${filas.slice(0, 60).map((o) =>
       '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
@@ -337,7 +337,7 @@ function bodegaSeguimiento() {
       '<td class="num">' + esc(o.siniestro || '—') + '</td>' +
       '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
       '<td>' + esc(o.color || '—') + '</td>' +
-      '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+      '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
       '<td class="num">' + o.diasKpi + '</td>' +
       '<td>' + (o.alertas.length ? o.alertas.map((a) => '<span class="cod">' + esc(a.letra) + '</span>').join('') : '—') + '</td>' +
       '<td style="max-width:220px">' + lista(o, true) + '</td>' +

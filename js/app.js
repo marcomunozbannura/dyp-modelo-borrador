@@ -39,6 +39,15 @@ function esc(v) {
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fFecha = (d) => (d ? d.getDate() + ' ' + MESES[d.getMonth()] + ' ' + d.getFullYear() : '—');
 const fCorta = (d) => (d ? String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') : '—');
+/* Fecha con hora, `dd-mm-aaaa HH:MM`, como la muestra el sistema actual.
+   Pedido de Marco el 16-08-2026 para las columnas de ingreso y de entrega: en
+   un taller que recibe y entrega varios autos el mismo día, la hora es la que
+   ordena los hechos cuando hay un reclamo — y `12/08` a secas no ordena nada. */
+const fFechaHora = (d) => (d
+  ? String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+    '-' + d.getFullYear() + ' ' + String(d.getHours()).padStart(2, '0') + ':' +
+    String(d.getMinutes()).padStart(2, '0')
+  : '—');
 const fMonto = (n) => '$' + Math.round(n).toLocaleString('es-CL');
 const nDias = (d) => Math.max(0, Math.round((HOY - d) / 86400000));
 const plural = (n, s, p) => n + ' ' + (n === 1 ? s : p);

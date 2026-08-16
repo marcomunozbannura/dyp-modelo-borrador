@@ -164,8 +164,8 @@ function vHistorico() {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr>
         <th>OT</th><th title="Cantidad de repuestos">Qty Rep</th><th>Patente</th><th>Cliente</th>
-        <th>Marca</th><th>Modelo</th><th>Color</th><th>Ingreso</th><th>Tipo</th><th>Estado</th>
-        <th>Fecha Entrega</th>
+        <th>Marca</th><th>Modelo</th><th>Color</th><th>Fecha de Ingreso</th><th>Tipo</th><th>Estado</th>
+        <th>Fecha de Entrega</th>
         <th title="El original NO tiene esta columna: al entregar, el contador desaparece">Días tot.</th>
         <th title="Tampoco existe allá">Reparación</th>
         <th>Venta MO</th><th>Venta Rep</th><th title="Deducción: trabajos a terceros. Pregunta 5">Venta ToT</th><th>Venta Total</th>
@@ -179,10 +179,10 @@ function vHistorico() {
           '<td>' + esc(o.cliente) + '</td>' +
           '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
           '<td>' + esc(o.color || '—') + '</td>' +
-          '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+          '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
           '<td>' + esc(o.origenIngresoNombre || '—') + '</td>' +
           '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +
-          '<td class="num">' + fCorta(o.fechaEntrega) + '</td>' +
+          '<td class="num">' + fFechaHora(o.fechaEntrega) + '</td>' +
           '<td class="num"><strong>' + o.diasTotales + '</strong></td>' +
           '<td class="num" style="color:' + (o.diasReparacion > Modelo.metricas().metaDias ? 'var(--ambar)' : 'inherit') + '">' +
             o.diasReparacion + '</td>' +
@@ -312,7 +312,7 @@ function vHistoricoEstadisticas() {
               ? d.ultimasSinPresupuesto.map((o) => '<tr><td class="num">' + o.numeroOT + '</td>' +
                 '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
                 '<td>' + esc(o.cliente) + '</td>' +
-                '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+                '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
                 '<td><button class="btn secundario" data-ver-ot="' + esc(o.numeroOT) + '">Ver OT</button></td></tr>').join('')
               : '<tr><td colspan="5"><div class="vacio"><div class="titulo">Ninguna</div>' +
                 '<div class="texto">Todas las órdenes abiertas tienen presupuesto.</div></div></td></tr>'}
@@ -342,12 +342,12 @@ function impresoListadoHistorico(filas, rotulo) {
       <div>${esc(rotulo)}</div><div>Emitido ${fFecha(HOY)}</div></div>
   </div>
   <table><thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Marca</th><th>Modelo</th>
-    <th>Ingreso</th><th>Entrega</th><th>Estado</th><th class="n">Días</th><th class="n">Venta</th>
+    <th>Fecha de Ingreso</th><th>Entrega</th><th>Estado</th><th class="n">Días</th><th class="n">Venta</th>
   </tr></thead><tbody>
     ${filas.map((o) => '<tr><td>' + o.numeroOT + '</td><td>' + esc(o.patente) + '</td>' +
       '<td>' + esc(o.cliente) + '</td><td>' + esc(o.marca || '—') + '</td>' +
       '<td>' + esc(o.modelo || '—') + '</td>' +
-      '<td>' + fCorta(o.fechaIngreso) + '</td><td>' + fCorta(o.fechaEntrega) + '</td>' +
+      '<td>' + fFechaHora(o.fechaIngreso) + '</td><td>' + fFechaHora(o.fechaEntrega) + '</td>' +
       '<td>' + esc(o.estadoNombre) + '</td><td class="n">' + o.diasTotales + '</td>' +
       '<td class="n">' + fMonto(plataDe(o).ventaTotal) + '</td></tr>').join('')}
   </tbody><tfoot><tr><td colspan="9" style="text-align:right"><strong>Venta del listado</strong></td>
@@ -381,7 +381,7 @@ function impresoEstadisticas() {
       m.n + '</td></tr>').join(''))}
   ${tabla('Últimas órdenes sin presupuesto', ['OT', 'Patente', 'Cliente', 'Fecha'],
     d.ultimasSinPresupuesto.map((o) => '<tr><td>' + o.numeroOT + '</td><td>' + esc(o.patente) +
-      '</td><td>' + esc(o.cliente) + '</td><td>' + fCorta(o.fechaIngreso) + '</td></tr>').join(''))}
+      '</td><td>' + esc(o.cliente) + '</td><td>' + fFechaHora(o.fechaIngreso) + '</td></tr>').join(''))}
   ${pieImpreso()}`;
 }
 
@@ -491,7 +491,7 @@ function vConsolidado() {
       <button class="btn secundario" data-pendiente="Exportar el consolidado|6|la exportación es un permiso aparte y queda en la traza">Exportar</button></div>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>OR</th><th>Patente</th><th>Siniestro</th><th>Cliente</th><th>Compañia</th>
-        <th>Marca</th><th>Modelo</th><th>Ingreso</th><th>Tipo</th><th>Días</th><th>Estado</th><th>Etapa</th>
+        <th>Marca</th><th>Modelo</th><th>Fecha de Ingreso</th><th>Tipo</th><th>Días</th><th>Estado</th><th>Etapa</th>
         <th>Venta</th><th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const z = plataDe(o);
@@ -501,7 +501,7 @@ function vConsolidado() {
           '<td class="num">' + esc(o.siniestro || '—') + '</td>' +
           '<td>' + esc(o.cliente) + '</td><td>' + esc(o.compania) + '</td>' +
           '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
-          '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+          '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
           '<td>' + esc(o.origenIngresoNombre || '—') + '</td>' +
           '<td class="num">' + o.diasKpi + '</td>' +
           '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +

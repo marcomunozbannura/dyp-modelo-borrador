@@ -38,14 +38,14 @@ function documentosListado() {
       <div class="desc">Solo vehículos en la torre, igual que el original</div></div>
       <div class="filtros"><input type="search" id="doc-q" placeholder="OT, patente o cliente" value="${esc(d.busqueda)}"></div></div>
     <div class="grid-envoltorio"><table class="grid">
-      <thead><tr><th>OT</th><th>Patente</th><th>Marca</th><th>Modelo</th><th>Ingreso</th>
+      <thead><tr><th>OT</th><th>Patente</th><th>Marca</th><th>Modelo</th><th>Fecha de Ingreso</th>
         <th>Estado</th><th>Etapa</th><th>Adjuntos</th><th></th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const n = Modelo.mediaDe(o.id).filter((m) => m.momento === 'documento').length;
         return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.marca || '—') + '</td><td>' + esc(o.modelo || '—') + '</td>' +
-          '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+          '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
           '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +
           '<td>' + esc(o.etapaNombre) + '</td>' +
           '<td class="num">' + (n || '<span style="color:var(--gris-2)">—</span>') + '</td>' +

@@ -121,6 +121,14 @@ const Semilla = (function () {
   const entre = (a, b) => a + Math.floor(rnd() * (b - a + 1));
   const elegir = (arr) => arr[Math.floor(rnd() * arr.length)];
   const dias = (n) => new Date(HOY.getTime() - n * 86400000);
+  /* Con HORA de taller. `dias()` devuelve medianoche, y las columnas de ingreso
+     y entrega muestran la hora: dejarlas todas en 00:00 sería mostrar un dato
+     que no dice nada. El taller recibe entre las 8:30 y las 18:00. */
+  const diasHora = (n) => {
+    const d = dias(n);
+    d.setHours(8 + entre(0, 9), entre(0, 59), 0, 0);
+    return d;
+  };
 
   function generar() {
     _s = 20260812;   // se reinicia en cada siembra: mismo resultado siempre
@@ -800,7 +808,7 @@ const Semilla = (function () {
       const diasIngreso = viva
         ? (s < 0.62 ? entre(1, 22) : s < 0.86 ? entre(23, 55) : entre(56, 130))
         : entre(20, 210);
-      const fecha_ingreso = dias(diasIngreso);
+      const fecha_ingreso = diasHora(diasIngreso);
 
       /* Una recepción puede generar VARIAS órdenes. A-8: en el formulario de
          ingreso los campos son arreglos con botón +. Acá una de cada doce
@@ -834,7 +842,9 @@ const Semilla = (function () {
 
       const estadoCod = !viva ? (rnd() > 0.06 ? 'entrega_cliente' : 'entrega_sin_rep')
                               : (fuera ? 'fuera_taller' : 'recibido');
-      const fecha_entrega_real = viva ? null : dias(entre(1, diasIngreso - 1));
+      // Con hora, igual que el ingreso: un taller entrega varios autos el mismo
+      // día y el orden importa cuando hay un reclamo.
+      const fecha_entrega_real = viva ? null : diasHora(entre(1, diasIngreso - 1));
 
       orden_trabajo.push({
         id: ot_id, numero_ot, recepcion_id: rec_id, vehiculo_id: veh_id, cliente_id: cli_id,

@@ -157,11 +157,11 @@ function vTorre() {
           ${thOrden('ot', 'OT')}${thOrden('or', 'OR')}${thOrden('patente', 'Patente')}
           ${thOrden('siniestro', 'N° Siniestro')}${thOrden('cliente', 'Cliente')}
           ${thOrden('compania', 'Compañia')}${thOrden('marca', 'Marca')}${thOrden('modelo', 'Modelo')}
-          ${thOrden('color', 'Color')}${thOrden('ingreso', 'Ingreso')}${thOrden('tipo', 'Tipo')}
+          ${thOrden('color', 'Color')}${thOrden('ingreso', 'Fecha de Ingreso')}${thOrden('tipo', 'Tipo')}
           ${thOrden('dias', 'Días', 'El reloj elegido en Configuración: ' + kpiNombre + '. En el original hay uno solo y se reinicia al regrabar el estado.')}
           ${thOrden('diastot', 'Días tot.', 'Días desde el ingreso. Nunca se reinicia.')}
           ${thOrden('estado', 'Estado')}${thOrden('etapa', 'Etapa')}${thOrden('encargado', 'Encargado')}
-          ${thOrden('entrega', 'Fecha Entrega')}
+          ${thOrden('entrega', 'Fecha de Entrega')}
           <th title="La inicial del asunto de cada mensaje de bitácora">Alerta</th>
         </tr></thead>
         <tbody>${pagina.length ? pagina.map(filaTorre).join('') :
@@ -223,7 +223,7 @@ function filaTorre(o) {
     '<td>' + esc(o.marca || '—') + '</td>' +
     '<td>' + esc(o.modelo || '—') + '</td>' +
     '<td>' + esc(o.color || '—') + '</td>' +
-    '<td class="num">' + fCorta(o.fechaIngreso) + '</td>' +
+    '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
     '<td>' + esc(o.origenIngresoNombre || '—') + '</td>' +
     '<td class="num">' + (fuera ? '<span style="color:var(--gris)">0</span>'
       : (sobreMeta ? '<strong style="color:var(--ambar)">' + o.diasKpi + '</strong>' : o.diasKpi)) + '</td>' +
@@ -293,7 +293,7 @@ function detalleOT(o) {
         ? '<span style="color:var(--ambar)">' + o.diasKpi + ' de ' + META_DIAS_REPARACION + ' · sobre la meta</span>'
         : o.diasKpi + ' de ' + META_DIAS_REPARACION) +
       (fuera ? dato('Fuera de taller hace', '<span style="color:var(--ambar)">' + o.diasFuera + ' días</span>') : '') +
-      dato('Ingreso', fFecha(o.fechaIngreso)) +
+      dato('Fecha de ingreso', fFechaHora(o.fechaIngreso)) +
       '<div class="linea-tiempo">' + hitos + '</div></fieldset>' +
 
     '<fieldset class="bloque"><legend>Repuestos, presupuestos y fotos</legend>' +

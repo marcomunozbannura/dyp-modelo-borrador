@@ -461,7 +461,7 @@ function vRecepcionBuscar(modo) {
 
       ${q ? (encontradas.length ? `
       <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
-        <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Ingreso</th><th>Estado</th>
+        <thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Fecha de Ingreso</th><th>Estado</th>
           ${modo === 'or' ? '<th>OR abiertas</th>' : ''}<th></th></tr></thead>
         <tbody>${encontradas.map((o) => '<tr><td class="num">' + o.numeroOT + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +

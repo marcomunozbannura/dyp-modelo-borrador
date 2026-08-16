@@ -21,7 +21,7 @@
    ── Qué se copia del original ────────────────────────────────────────────
 
    · Las columnas y su orden: OT · Patente · Cliente · Marca · Modelo · Color ·
-     Ingreso · Días · Estado · Etapa · Encargado · Fecha Entrega · Acción ·
+     Ingreso · Días · Estado · Etapa · Encargado · Fecha de Entrega · Acción ·
      Datos. Verificado contra la pantalla `miembros.php?ver=taller`.
    · La acción `Asignar Etapas` en su propia columna, y la lupa de `Datos`.
    · Que la lista incluya también los vehículos FUERA de taller. En el original
@@ -117,7 +117,7 @@ function vTallerListado() {
       '<td>' + esc(o.marca || '—') + '</td>' +
       '<td>' + esc(o.modelo || '—') + '</td>' +
       '<td>' + esc(o.color || '—') + '</td>' +
-      '<td>' + fCorta(o.fechaIngreso) + '</td>' +
+      '<td>' + fFechaHora(o.fechaIngreso) + '</td>' +
       /* El reloj que se muestra es el de REPARACIÓN, no el del original. El
          original muestra días desde el último cambio de estado, que es el bug
          que este sistema corrige — ver C-1. Poner ese número acá sería copiar
@@ -149,8 +149,8 @@ function vTallerListado() {
   ${filas.length ? `<div class="grid-envoltorio"><table class="grid">
     <thead><tr>
       <th>OT</th><th>Patente</th><th>Cliente</th><th>Marca</th><th>Modelo</th><th>Color</th>
-      <th>Ingreso</th><th>Días</th><th>Estado</th><th>Etapa</th><th>Encargado</th>
-      <th>Fecha Entrega</th><th>Acción</th><th>Datos</th>
+      <th>Fecha de Ingreso</th><th>Días</th><th>Estado</th><th>Etapa</th><th>Encargado</th>
+      <th>Fecha de Entrega</th><th>Acción</th><th>Datos</th>
     </tr></thead>
     <tbody>${filas.map(fila).join('')}</tbody>
   </table></div>` : `<div class="vacio">${ico('buscar')}

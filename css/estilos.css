@@ -649,6 +649,37 @@ fieldset.bloque legend {
 
 
 
+
+
+/* La flecha del expandible en los paneles que no tienen columna propia para
+   ella. La torre sí la tiene —es parte de sus 17 columnas—, así que ahí no se
+   dibuja dos veces. */
+table.grid tr.fila.desplegable > td:first-child::before {
+  content: 'B8'; color: var(--gris); margin-right: 6px; display: inline-block;
+  transition: transform .12s ease;
+}
+table.grid tr.fila.desplegable.abierta > td:first-child::before {
+  transform: rotate(90deg); color: var(--acento);
+}
+table.grid tr.fila.desplegable { cursor: pointer; }
+table.grid tr.fila.desplegable:hover > td { background: var(--seleccion); }
+
+/* ───────── Configuración agrupada ─────────
+   Eran doce pestañas en una fila, todas al mismo nivel: lo que se toca una vez
+   al año se veía igual de importante que lo de todos los días. */
+.cfg-grupo { border-bottom: 1px solid var(--borde); }
+.cfg-grupo:last-child { border-bottom: none; }
+.cfg-grupo-cab {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: none; color: var(--texto); font-family: inherit;
+  font-size: 12.5px; text-align: left; padding: 7px 2px; cursor: pointer;
+}
+.cfg-grupo-cab:hover { color: var(--tinta); }
+.cfg-grupo-cab .flecha { color: var(--gris); width: 10px; }
+.cfg-grupo-cab .nom { font-weight: 700; }
+.cfg-grupo-cab .ayuda { color: var(--gris-2); font-size: 11.5px; }
+.cfg-grupo.abierto > .chips { padding: 0 0 9px 18px; }
+
 /* ───────── La grilla del presupuesto ─────────
    La pantalla de carga se parece al documento que sale: cada monto en la
    columna de su tipo, y la última fila sirve para escribir. */

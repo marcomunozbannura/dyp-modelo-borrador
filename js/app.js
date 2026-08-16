@@ -1284,9 +1284,9 @@ function conDobleClic(el, clave, alDoble, alSimple) {
     if (alSimple) alSimple();
   });
   el.addEventListener('dblclick', (ev) => { ev.preventDefault(); alDoble(); });
-  el.title = alSimple
-    ? 'Un clic despliega la orden · doble clic la abre en una pestaña nueva'
-    : 'Doble clic abre la orden en una pestaña nueva';
+  /* Sin `title`. Lo tenia, y el globo del navegador se montaba encima de la
+     etiqueta de datos —que dice bastante mas que el globo— y tapaba la fila de
+     abajo. El gesto ya esta explicado en el subtitulo del panel. */
 }
 
 /* ───────────── El expandible, en todos los paneles ─────────────
@@ -1317,6 +1317,11 @@ function dobleClicPorFilas(selector) {
         abiertoPorPanel[vista] = (abiertoPorPanel[vista] === n) ? null : n;
         render();
       });
+
+    /* La flecha que anuncia que la fila se despliega. En la torre es una
+       columna propia; en los demas paneles la pone el CSS sobre la primera
+       celda, para no tener que agregarle una columna a cada tabla. */
+    tr.classList.add('desplegable');
 
     if (n !== abierta) return;
     tr.classList.add('abierta');

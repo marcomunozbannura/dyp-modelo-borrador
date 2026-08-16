@@ -26,25 +26,72 @@
 
 /* Las secciones del panel. El orden es deliberado: primero lo que gobierna el
    flujo del taller, después los catálogos de datos, al final el acceso. */
-const CONFIG_SECCIONES = [
-  { id: 'etapa',            nombre: 'Etapas' },
-  { id: 'precedencia',      nombre: 'Precedencias' },
-  { id: 'estado',           nombre: 'Estados' },
-  { id: 'compania',         nombre: 'Compañías' },
-  { id: 'tipo_ingreso',     nombre: 'Tipos de ingreso' },
-  { id: 'prioridad',        nombre: 'Prioridades' },
-  { id: 'color_vehiculo',   nombre: 'Colores' },
-  { id: 'asunto_bitacora',  nombre: 'Asuntos y alertas' },
-  { id: 'responsable_pago', nombre: 'Responsable de pago' },
-  { id: 'motivo_detencion', nombre: 'Motivos de detención' },
-  { id: 'parametro',        nombre: 'Parámetros' },
-  { id: 'permisos',         nombre: 'Roles y permisos' }
+/* ── Los catálogos, agrupados por cuánto se tocan ──────────────────────
+   El cliente pidió el 15-08-2026 que la Configuración "no tenga tantos
+   parámetros", para que el sistema sea más simple de cara al administrador.
+
+   ⚠️ Y hay una contradicción que conviene tener presente: fue él mismo quien
+   pidió *"cópialo, pero escalable"*, y escalable para él significaba
+   exactamente poder crear maestros sin llamar a un programador
+   (`HALLAZGOS-REUNION.md` §3.1). Por eso existen los diez catálogos.
+
+   Así que no se elimina ninguno: **lo que sobraba era la pantalla, no las
+   tablas**. Eran doce pestañas en una fila, todas al mismo nivel, y las que se
+   tocan una vez al año se veían igual de importantes que las de todos los días.
+   Ahora van en tres grupos por frecuencia de uso, y los dos últimos arrancan
+   plegados. Se sigue pudiendo todo; se ve un tercio.
+
+   Si al mostrárselo él igual quiere sacar alguno, ahí sí se saca — pero
+   sabiendo cuál y por qué, no borrando a ciegas lo que pidió poder editar. */
+const CONFIG_GRUPOS = [
+  { id: 'diario', nombre: 'Del día a día',
+    ayuda: 'Lo que cambia cuando entra una compañía nueva o se agrega un color',
+    abierto: true,
+    secciones: [
+      { id: 'compania',         nombre: 'Compañías' },
+      { id: 'prioridad',        nombre: 'Prioridades' },
+      { id: 'color_vehiculo',   nombre: 'Colores' },
+      { id: 'responsable_pago', nombre: 'Responsable de pago' }
+    ] },
+  { id: 'flujo', nombre: 'El flujo del taller',
+    ayuda: 'Se define una vez y casi no se vuelve a tocar. Cambiarlo mueve cómo trabaja el taller',
+    abierto: false,
+    secciones: [
+      { id: 'etapa',            nombre: 'Etapas' },
+      { id: 'precedencia',      nombre: 'Precedencias' },
+      { id: 'estado',           nombre: 'Estados' },
+      { id: 'tipo_ingreso',     nombre: 'Tipos de ingreso' },
+      { id: 'motivo_detencion', nombre: 'Motivos de detención' },
+      { id: 'asunto_bitacora',  nombre: 'Asuntos y alertas' }
+    ] },
+  { id: 'sistema', nombre: 'Del sistema',
+    ayuda: 'Quién puede hacer qué, y los parámetros que gobiernan los cálculos',
+    abierto: false,
+    secciones: [
+      { id: 'parametro',        nombre: 'Parámetros' },
+      { id: 'permisos',         nombre: 'Roles y permisos' }
+    ] }
 ];
 
+// Se conserva la lista plana: el resto del archivo la usa para resolver una
+// sección por su id, y no tiene por qué saber en qué grupo cayó.
+const CONFIG_SECCIONES = CONFIG_GRUPOS.reduce((t, g) => t.concat(g.secciones), []);
+
 function cfg() {
-  ui.config = ui.config || { seccion: 'etapa', editando: null, nuevo: false };
+  ui.config = ui.config || {
+    seccion: 'compania', editando: null, nuevo: false,
+    // Qué grupos están abiertos. Arranca con el del día a día.
+    grupos: CONFIG_GRUPOS.reduce((m, g) => { m[g.id] = g.abierto; return m; }, {})
+  };
+  // Un borrador guardado de antes puede no traer `grupos`.
+  if (!ui.config.grupos) {
+    ui.config.grupos = CONFIG_GRUPOS.reduce((m, g) => { m[g.id] = g.abierto; return m; }, {});
+  }
   return ui.config;
 }
+
+const grupoDeSeccion = (id) =>
+  (CONFIG_GRUPOS.find((g) => g.secciones.some((s) => s.id === id)) || {}).id;
 
 /* Marca de uso: cuántos registros dependen de esta fila. Es lo que convierte
    "eliminar" en "dar de baja" y lo que impide romper el histórico. */
@@ -82,9 +129,26 @@ const cfgCheck = (campo, valor, id) =>
 
 function vConfiguracion() {
   const c = cfg();
-  const chips = CONFIG_SECCIONES.map((s) =>
-    '<button class="chip' + (c.seccion === s.id ? ' activo' : '') + '" data-cfg-sec="' + s.id + '">' +
-    esc(s.nombre) + '</button>').join('');
+
+  // El grupo de lo que se está mirando se abre solo: si no, la sección activa
+  // quedaría escondida detrás de un grupo plegado.
+  const activo = grupoDeSeccion(c.seccion);
+
+  const grupos = CONFIG_GRUPOS.map((g) => {
+    const abierto = c.grupos[g.id] || g.id === activo;
+    const cuantos = g.secciones.length;
+    return '<div class="cfg-grupo' + (abierto ? ' abierto' : '') + '">' +
+      '<button class="cfg-grupo-cab" data-cfg-grupo="' + esc(g.id) + '">' +
+        '<span class="flecha">' + (abierto ? '&#9662;' : '&#9656;') + '</span>' +
+        '<span class="nom">' + esc(g.nombre) + '</span>' +
+        '<span class="et gris">' + cuantos + '</span>' +
+        '<span class="ayuda">' + esc(g.ayuda) + '</span>' +
+      '</button>' +
+      (abierto ? '<div class="chips">' + g.secciones.map((s) =>
+        '<button class="chip' + (c.seccion === s.id ? ' activo' : '') +
+        '" data-cfg-sec="' + s.id + '">' + esc(s.nombre) + '</button>').join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
 
   const cuerpo = {
     etapa: cfgEtapas, precedencia: cfgPrecedencias, estado: cfgEstados,
@@ -94,9 +158,10 @@ function vConfiguracion() {
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('config', 'g')}Catálogos del sistema</h2>
-      <div class="desc">Ningún valor de estas tablas está escrito en el código.</div></div>
-      <div class="chips">${chips}</div>
+      <div class="desc">Ningún valor de estas tablas está escrito en el código.
+        Lo que casi nunca se toca viene plegado</div></div>
     </div>
+    <div class="cuerpo" style="padding-bottom:0">${grupos}</div>
     <div class="cuerpo">${cuerpo()}</div>
   </div>`;
 }
@@ -364,6 +429,12 @@ function cfgPermisos() {
 
 function pConfiguracion() {
   const c = cfg();
+
+  document.querySelectorAll('[data-cfg-grupo]').forEach((b) => b.addEventListener('click', () => {
+    const g = b.dataset.cfgGrupo;
+    c.grupos[g] = !c.grupos[g];
+    render();
+  }));
 
   document.querySelectorAll('[data-cfg-sec]').forEach((b) => b.addEventListener('click', () => {
     c.seccion = b.dataset.cfgSec; c.editando = null; render();

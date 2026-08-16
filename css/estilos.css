@@ -672,6 +672,18 @@ fieldset.bloque legend {
 
 /* Vuelta al menú desde el formulario: un enlace, no un botón — no compite con
    Anterior ni con Siguiente, que son los que mueven el trabajo. */
+/* Aviso de versión nueva publicada. Va arriba de todo, cruzando la pantalla:
+   es lo único que se muestra por encima del sistema, y por eso tiene que ser
+   evidente y tiene que poder ignorarse — no tapa nada con lo que se trabaje. */
+.aviso-version {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 980;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600;
+  background: var(--acento-bg); color: var(--acento-texto);
+  border-bottom: 1px solid var(--acento-borde);
+}
+.aviso-version .btn { padding: 3px 12px; }
+
 /* El paso atrás de Recepción. Va antes del panel, a la izquierda, con flecha y
    con el nombre de a dónde vuelve: es lo primero que se lee y no compite con
    nada. Antes era un botón gris en la esquina derecha del encabezado. */

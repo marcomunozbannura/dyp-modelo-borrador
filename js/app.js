@@ -506,6 +506,60 @@ function selloVersion() {
   return m[3] + '-' + m[2] + '-' + m[1] + ' ' + m[4] + ':' + m[5];
 }
 
+/* ── El aviso de versión nueva ─────────────────────────────────────────
+   🔴 EL PROBLEMA QUE ESTO RESUELVE (16-08-2026). Marco: "no veo los cambios
+   cuando actualizo el link". Y tenía razón en lo que veía, aunque lo publicado
+   estuviera bien: GitHub Pages sirve el `index.html` con `Cache-Control:
+   max-age=600`, así que **durante diez minutos el navegador sigue mostrando el
+   index viejo**, que apunta a los archivos con el sello viejo, que también
+   están en su caché. Se publica, se recarga, y no pasa nada.
+
+   El sello en la barra de estado ya dejaba comprobarlo a mano — pero hay que
+   saber contra qué compararlo. Esto lo hace solo: al entrar, y cada cinco
+   minutos, se pide el `index.html` SIN caché y se compara su sello con el que
+   está corriendo. Si hay uno más nuevo, aparece una barra arriba con un botón
+   que recarga saltándose la caché.
+
+   No recarga solo a propósito: si alguien está a medio llenar una recepción,
+   una recarga sorpresa le borra el trabajo. Avisa y espera. */
+const SELLO_CORRIENDO = (() => {
+  const l = document.querySelector('link[rel="stylesheet"]');
+  const m = l && /\?v=(\d{12})/.exec(l.getAttribute('href') || '');
+  return m ? m[1] : null;
+})();
+
+function revisarVersionPublicada() {
+  // En `file://` no hay servidor al que preguntarle, y en localhost el propio
+  // `serve.ps1` manda `no-store`: el problema no existe ahí.
+  if (!SELLO_CORRIENDO || location.protocol === 'file:') return;
+
+  fetch('index.html?ping=' + new Date().getTime(), { cache: 'no-store' })
+    .then((r) => (r.ok ? r.text() : null))
+    .then((html) => {
+      if (!html) return;
+      const m = /\?v=(\d{12})/.exec(html);
+      if (!m || m[1] <= SELLO_CORRIENDO) return;
+      mostrarAvisoVersion(m[1]);
+    })
+    .catch(() => null);   // sin conexión no es un error que valga la pena contar
+}
+
+function mostrarAvisoVersion(sello) {
+  if (document.getElementById('aviso-version')) return;
+  const f = (s) => s.slice(6, 8) + '-' + s.slice(4, 6) + ' ' + s.slice(8, 10) + ':' + s.slice(10, 12);
+  const barra = document.createElement('div');
+  barra.id = 'aviso-version';
+  barra.className = 'aviso-version';
+  barra.innerHTML = '<span>Hay una versión más nueva publicada (' + esc(f(sello)) +
+    '). La que estás viendo es del ' + esc(f(SELLO_CORRIENDO)) + '.</span>' +
+    '<button class="btn" id="aviso-version-btn">Actualizar</button>';
+  document.body.appendChild(barra);
+  document.getElementById('aviso-version-btn').addEventListener('click', () => {
+    // Con el parámetro cambiado, el navegador no puede servir su copia.
+    location.replace(location.pathname + '?r=' + new Date().getTime() + location.hash);
+  });
+}
+
 function pintarBarraEstado(extra) {
   // El indicador de datos modificados importa: si el estado se movió de la
   // semilla, antes de una demostración hay que reiniciar.
@@ -2264,3 +2318,9 @@ window.addEventListener('hashchange', function () {
     pararEnLaOrden(leer('ot'));
   }
 });
+
+/* Se revisa al entrar y cada cinco minutos. Cinco es a propósito: en una
+   demostración se publica un ajuste y se quiere que el que está mirando lo
+   sepa sin que nadie se lo diga por teléfono. */
+revisarVersionPublicada();
+setInterval(revisarVersionPublicada, 5 * 60 * 1000);

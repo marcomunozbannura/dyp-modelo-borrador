@@ -698,6 +698,35 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── 27 · 🔴 LA MISMA PATENTE NO PUEDE ENTRAR DE DOS FORMAS ────────
+         Una patente chilena tiene seis caracteres. El guión, el punto y las
+         minúsculas que a veces se escriben son decoración, y si se guardan, el
+         MISMO vehículo queda como `AABB11` y como `aa-bb-11`: el buscador de
+         Entrega encuentra uno y no el otro, y el historial del auto se parte
+         en dos. Se normaliza al escribir, no al guardar.
+
+         El corte en seis va en la misma prueba porque es la otra mitad de lo
+         mismo: `AABB1199` no es una patente con dos caracteres de más, es un
+         error de tipeo que hay que atajar en el mesón. */
+      (function () {
+        const variantes = ['AABB11', 'aabb11', 'AA-BB-11', ' aa bb 11 ', 'AA.BB.11'];
+        const normalizadas = variantes.map(normalizarPatente);
+        const todasIguales = normalizadas.every((p) => p === 'AABB11');
+        const cortada = normalizarPatente('AABB1199');
+        const ok = todasIguales && cortada === 'AABB11' && cortada.length === PATENTE_LARGO;
+
+        push({
+          nombre: '🔴 La misma patente escrita de cinco formas se guarda una sola vez',
+          intento: 'Normalizar ' + variantes.map((v) => '«' + v + '»').join(', ') +
+                   ' y además «AABB1199», que tiene dos caracteres de más',
+          esperado: 'Las cinco dan AABB11, y la larga se corta en ' + PATENTE_LARGO,
+          paso: ok,
+          detalle: normalizadas.map((p) => '«' + p + '»').join(' ') +
+            '  ·  AABB1199 → «' + cortada + '»' +
+            (ok ? '' : '  ·  NO CUADRA: dos escrituras distintas del mismo vehículo.')
+        });
+      })();
+
       restaurarSesion();
       return res;
     });
@@ -724,6 +753,10 @@ const Pruebas = (function () {
       // Cuatro, no dos: el checklist dejó de ser un sí/no el 15-08-2026.
       ['Estados posibles de un ítem',      Modelo.inventarioEstados().length, 4],
       ['Pasos del formulario de ingreso',  RECEPCION_PASOS.length,        5],
+      // Los dos largos fijos del paso 2. Están acá para que nadie los "arregle"
+      // sin darse cuenta: son norma (ISO 3779) y formato legal, no preferencia.
+      ['Caracteres de una patente',        PATENTE_LARGO,                 6],
+      ['Caracteres de un VIN',             VIN_LARGO,                     17],
       // El tempario se eliminó el 13-08-2026 y con él su cifra de control.
       // Queda ésta en su lugar: que no haya quedado ni un rastro de la tabla.
       ['Catálogos configurables',          Modelo.CATALOGOS.length,       9]

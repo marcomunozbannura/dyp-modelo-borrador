@@ -477,6 +477,28 @@ function imprimirVista() {
   setTimeout(() => { window.print(); document.title = previo; }, 120);
 }
 
+/* 🔶 DE QUÉ PUBLICACIÓN ES ESTA PANTALLA (15-08-2026).
+
+   El navegador se guarda `index.html` y GitHub Pages la da por buena diez
+   minutos. En esos diez minutos el modelo sigue pidiendo el `?v=` anterior —y
+   ese código también está en caché—, así que al mirarlo justo después de
+   publicar se ve la versión vieja y parece que el cambio nunca se hizo. Ya
+   pasó tres veces y las tres se fue el tiempo en averiguar si el problema era
+   la publicación o el navegador.
+
+   Con el sello a la vista se distingue en dos segundos: si el número no es el
+   de la última publicación, es la caché y se arregla con Ctrl+F5.
+
+   Se lee del sello que la publicación ya le pone al CSS. No hay un número
+   aparte que alguien tenga que acordarse de subir: no existe la forma de que
+   este cartel mienta. En desarrollo no hay sello y dice «sin publicar». */
+function selloVersion() {
+  const l = document.querySelector('link[rel="stylesheet"]');
+  const m = l && /\?v=(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(l.getAttribute('href') || '');
+  if (!m) return 'sin publicar';
+  return m[3] + '-' + m[2] + '-' + m[1] + ' ' + m[4] + ':' + m[5];
+}
+
 function pintarBarraEstado(extra) {
   // El indicador de datos modificados importa: si el estado se movió de la
   // semilla, antes de una demostración hay que reiniciar.
@@ -488,6 +510,9 @@ function pintarBarraEstado(extra) {
     '<span class="celda"><span class="luz"></span>Conectado</span>' +
     '<span class="celda">' + ico('usuario') + esc(quienMira()) + '</span>' +
     '<span class="celda">Automotora DyP</span>' +
+    '<span class="celda" title="Sello de la publicación que estás viendo. Si no es el ' +
+      'de la última, el navegador tiene la copia vieja: Ctrl+F5.">' +
+      'Versión ' + esc(selloVersion()) + '</span>' +
     (extra ? '<span class="celda">' + extra + '</span>' : '') + mod;
 }
 

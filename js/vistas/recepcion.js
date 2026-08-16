@@ -85,6 +85,18 @@ const RECEPCION_OPCIONES = [
    calza, cuesta el trabajo entero. */
 const VIN_LARGO = 17;
 
+/* La patente chilena tiene SEIS caracteres, en los dos formatos vigentes:
+   `LLLL·NN` (cuatro letras y dos dígitos, desde 2007) y el antiguo `LL·NNNN`.
+   El guión o el punto que a veces se escriben son decoración: no son parte de
+   la patente, y si se guardan, la misma patente entra dos veces —`AABB11` y
+   `AA-BB-11`— y el buscador de Entrega no la encuentra.
+
+   Por eso el campo se normaliza MIENTRAS SE ESCRIBE y no al guardar: lo que se
+   ve en pantalla es exactamente lo que va a quedar guardado. */
+const PATENTE_LARGO = 6;
+const normalizarPatente = (t) =>
+  String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, PATENTE_LARGO);
+
 /* ── Estado del formulario ─────────────────────────────────────────────── */
 
 /* El bloque nace SIN tipo de ingreso y SIN estado, a propósito. El paso 3
@@ -254,6 +266,18 @@ function recFaltantes() {
     faltan.push({
       paso: 'vehiculo', campo: 'vin',
       rot: 'El VIN, que tiene ' + vin.length + ' caracteres y son ' + VIN_LARGO
+    });
+  }
+
+  /* Y la patente, igual: seis caracteres o no es una patente. El campo ya no
+     deja escribir más de seis, así que lo único que puede pasar acá es que
+     falten — pero se valida igual, porque un borrador viejo o una recepción
+     restaurada pueden traer cualquier cosa. */
+  const patente = normalizarPatente(r.campos.patente);
+  if (patente && patente.length !== PATENTE_LARGO) {
+    faltan.push({
+      paso: 'vehiculo', campo: 'patente',
+      rot: 'La patente, que tiene ' + patente.length + ' caracteres y son ' + PATENTE_LARGO
     });
   }
 
@@ -524,6 +548,29 @@ function formatearRut(texto) {
   return cuerpo ? puntear(cuerpo) + '-' + dv : dv;
 }
 
+/* Reescribe un campo MIENTRAS SE ESCRIBE y le devuelve el cursor a su lugar.
+   Al asignar `value` el navegador manda el cursor al final: si alguien corrige
+   un carácter del medio, le salta y termina escribiendo al revés. Se cuenta
+   cuántos caracteres que CUENTAN quedaban a la izquierda —los puntos y el
+   guión del RUT no cuentan, se ponen solos— y se lo deja después del mismo.
+
+   Lo usan el RUT y la patente, que son los dos campos que se escriben de una
+   forma y se guardan de otra. */
+function reescribir(el, formatear, significativo) {
+  const antes = String(el.value).slice(0, el.selectionStart || 0)
+    .split('').filter((ch) => significativo.test(ch)).length;
+  const nuevo = formatear(el.value);
+  if (nuevo === el.value) return;
+  el.value = nuevo;
+
+  let pos = 0, vistos = 0;
+  while (pos < nuevo.length && vistos < antes) {
+    if (significativo.test(nuevo[pos])) vistos++;
+    pos++;
+  }
+  try { el.setSelectionRange(pos, pos); } catch (e) { /* el campo no lo permite */ }
+}
+
 /* Campo de texto amarrado a `campos`. */
 function recCampo(clave, rotulo, opciones) {
   const o = opciones || {};
@@ -533,8 +580,9 @@ function recCampo(clave, rotulo, opciones) {
   return '<div class="campo' + (recMarcado(clave) ? ' falta' : '') + '"><label>' + esc(rotulo) +
     (obliga ? ' <span style="color:var(--rojo)">*</span>' : '') + '</label>' +
     '<input type="' + (o.tipo || 'text') + '" data-rec="' + clave + '" value="' + esc(v) + '"' +
+    (o.largo ? ' maxlength="' + o.largo + '"' : '') +
     (o.marcador ? ' placeholder="' + esc(o.marcador) + '"' : '') + '>' +
-    (o.ayuda ? '<span class="ayuda">' + esc(o.ayuda) + '</span>' : '') + '</div>';
+    (o.ayuda ? '<span class="ayuda" data-ayuda="' + clave + '">' + esc(o.ayuda) + '</span>' : '') + '</div>';
 }
 
 function recSelect(clave, rotulo, filas, opciones) {
@@ -627,11 +675,27 @@ function recCliente() {
    El kilometraje y el combustible se fueron al paso 4: los dos se leen del
    tablero cuando ya se está mirando el auto, no cuando se anota la patente. */
 
-// Cuántos caracteres le sobran o le faltan al VIN, dicho en castellano.
-function recSobranFaltan(largo) {
-  const n = Math.abs(largo - VIN_LARGO);
-  const verbo = largo < VIN_LARGO ? ['falta', 'faltan'] : ['sobra', 'sobran'];
+// Cuántos caracteres le sobran o le faltan, dicho en castellano.
+function recSobranFaltan(largo, esperado) {
+  const meta = esperado || VIN_LARGO;
+  const n = Math.abs(largo - meta);
+  const verbo = largo < meta ? ['falta', 'faltan'] : ['sobra', 'sobran'];
   return (n === 1 ? verbo[0] : verbo[1]) + ' ' + n;
+}
+
+/* El contador de los dos campos de largo fijo. Se calcula acá y no dentro del
+   render porque el campo NO se repinta al escribir —se perdería el cursor— y
+   el contador tiene que moverse igual, tecla a tecla. */
+function recAyudaLargo(clave) {
+  const meta = clave === 'patente' ? PATENTE_LARGO : VIN_LARGO;
+  const v = String(rec().campos[clave] || '').trim();
+  if (!v) {
+    return clave === 'patente'
+      ? 'Son ' + PATENTE_LARGO + ' caracteres, en mayúsculas y sin guión'
+      : 'Obligatorio. Son ' + VIN_LARGO + ' caracteres; si de verdad no está a la vista, se declara';
+  }
+  if (v.length === meta) return '✓ ' + meta + ' de ' + meta + ' caracteres';
+  return v.length + ' de ' + meta + ' caracteres: ' + recSobranFaltan(v.length, meta);
 }
 
 /* El VIN, con su salida declarada. Obligatorio desde el 15-08-2026, pero con
@@ -644,7 +708,6 @@ function recSobranFaltan(largo) {
 function recVin() {
   const r = rec();
   const sinVer = !!r.campos.vin_no_visible;
-  const vin = String(r.campos.vin || '').trim();
 
   const casilla = '<label class="casilla" style="margin-top:5px">' +
     '<input type="checkbox" data-vin-nover' + (sinVer ? ' checked' : '') + '>' +
@@ -662,18 +725,16 @@ function recVin() {
       'hasta que alguien cargue el VIN.</span></div>';
   }
 
-  const ayuda = !vin
-    ? 'Obligatorio. Son ' + VIN_LARGO + ' caracteres; si de verdad no está a la vista, se declara'
-    : vin.length === VIN_LARGO
-      ? '✓ ' + VIN_LARGO + ' de ' + VIN_LARGO + ' caracteres'
-      : vin.length + ' de ' + VIN_LARGO + ' caracteres: ' + recSobranFaltan(vin.length);
-
+  /* 🔶 `maxlength` de 17 (15-08-2026). El campo dejaba escribir de largo y
+     recién en Verificar avisaba que sobraban caracteres: el aviso llegaba
+     tarde y no decía dónde estaba el error. El tope lo hace imposible, y el
+     contador de abajo va diciendo cuánto falta mientras se copia del chasis. */
   return '<div class="campo' + (recMarcado('vin') ? ' falta' : '') + '">' +
     '<label>VIN (número de chasis) <span style="color:var(--rojo)">*</span></label>' +
     '<input type="text" autocomplete="off" data-rec="vin" value="' + esc(r.campos.vin || '') + '" ' +
-    'placeholder="' + VIN_LARGO + ' caracteres">' +
+    'maxlength="' + VIN_LARGO + '" placeholder="' + VIN_LARGO + ' caracteres">' +
     casilla +
-    '<span class="ayuda">' + esc(ayuda) + '</span></div>';
+    '<span class="ayuda" data-ayuda="vin">' + esc(recAyudaLargo('vin')) + '</span></div>';
 }
 
 function recVehiculo() {
@@ -685,7 +746,8 @@ function recVehiculo() {
 
   return `
   <div class="rejilla-campos">
-    ${recCampo('patente', 'Patente', { marcador: 'AABB11', ayuda: 'Se normaliza a mayúsculas, sin guiones' })}
+    ${recCampo('patente', 'Patente', {
+      marcador: 'AABB11', largo: PATENTE_LARGO, ayuda: recAyudaLargo('patente') })}
     ${recCombo('marca_id', 'Marca', marcas, 'marca', { marcador: 'Escribe la marca' })}
     ${recCombo('modelo_id', 'Modelo', modelos, 'modelo', {
       marcador: r.campos.marca_id ? 'Escribe el modelo' : 'Primero la marca',
@@ -1245,18 +1307,19 @@ function pRecepcion() {
          final, y si alguien corrige un dígito del medio el cursor le salta. Se
          cuenta cuántos dígitos quedaban a la izquierda y se lo deja después del
          mismo dígito, ya con los puntos puestos. */
-      if (el.dataset.rec === 'rut') {
-        const antesDelCursor = String(el.value).slice(0, el.selectionStart || 0)
-          .replace(/[^0-9K]/gi, '').length;
-        el.value = formatearRut(el.value);
-        let pos = 0, vistos = 0;
-        while (pos < el.value.length && vistos < antesDelCursor) {
-          if (/[0-9K]/i.test(el.value[pos])) vistos++;
-          pos++;
-        }
-        try { el.setSelectionRange(pos, pos); } catch (e) { /* el campo no lo permite */ }
-      }
+      if (el.dataset.rec === 'rut') reescribir(el, formatearRut, /[0-9K]/i);
+      // La patente se limpia en el mismo gesto: mayúsculas, sin guión ni
+      // punto, y cortada en seis. Escribir la séptima simplemente no hace nada.
+      if (el.dataset.rec === 'patente') reescribir(el, normalizarPatente, /[A-Z0-9]/i);
+
       r.campos[el.dataset.rec] = el.value;
+      // El contador de patente y VIN se mueve tecla a tecla. No se repinta el
+      // campo —se perdería el cursor—: se reescribe solo su línea de ayuda.
+      if (el.dataset.rec === 'patente' || el.dataset.rec === 'vin') {
+        const pista = document.querySelector('[data-ayuda="' + el.dataset.rec + '"]');
+        if (pista) pista.textContent = recAyudaLargo(el.dataset.rec);
+      }
+
       recDesmarcar(el, el.dataset.rec);
       guardarBorrador();
     }));

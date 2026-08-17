@@ -101,10 +101,12 @@ function vHistorico() {
   const todas = base
     .filter((o) => !marca || o.marca === marca)
     .filter((o) => !modelo || o.modelo === modelo);
-  const totalPag = Math.max(1, Math.ceil(todas.length / h.porPagina));
+  // "Todas" llega como 0, y cortar de a 0 devuelve una tabla vacía.
+  const porPagina = tamanoEfectivo(h.porPagina, todas.length);
+  const totalPag = Math.max(1, Math.ceil(todas.length / porPagina));
   if (h.pagina > totalPag) h.pagina = totalPag;
-  const desde = (h.pagina - 1) * h.porPagina;
-  const pagina = todas.slice(desde, desde + h.porPagina);
+  const desde = (h.pagina - 1) * porPagina;
+  const pagina = todas.slice(desde, desde + porPagina);
 
   ultimoListadoHistorico = todas;
   const suma = todas.reduce((s, o) => ({ venta: s.venta + plataDe(o).ventaTotal }), { venta: 0 });
@@ -195,12 +197,16 @@ function vHistorico() {
         todas.length + ' órdenes filtradas</td>' +
         '<td class="num"><strong>' + fMonto(suma.venta) + '</strong></td></tr></tfoot>' : ''}
     </table></div>
-    ${todas.length > h.porPagina ? `<div class="pie-grid">
-      <div class="info">Mostrando ${desde + 1}–${Math.min(desde + h.porPagina, todas.length)} de ${todas.length}</div>
+    ${/* El pie aparece cuando hay más filas que la opción más chica, no cuando
+          hay más que la página actual: con «Todas» puesto y 214 órdenes a la
+          vista, el pie desaparecía y no quedaba forma de volver a 100. */''}
+    ${todas.length > TAMANOS_PAGINA[0] ? `<div class="pie-grid">
+      <div class="info">Mostrando ${desde + 1}–${Math.min(desde + porPagina, todas.length)} de ${todas.length}</div>
       <div class="ctrl">
-        <button class="btn secundario" id="h-ant" ${h.pagina <= 1 ? 'disabled' : ''}>Anterior</button>
-        <span class="info">Página ${h.pagina} de ${totalPag}</span>
-        <button class="btn secundario" id="h-sig" ${h.pagina >= totalPag ? 'disabled' : ''}>Siguiente</button>
+        ${selectorTamano('h-tam', h.porPagina)}
+        ${h.pagina > 1 ? '<button class="btn secundario" id="h-ant">Anterior</button>' : ''}
+        ${totalPag > 1 ? '<span class="info">Página ' + h.pagina + ' de ' + totalPag + '</span>' : ''}
+        ${h.pagina < totalPag ? '<button class="btn secundario" id="h-sig">Siguiente</button>' : ''}
       </div></div>` : ''}
   </div>
 `;
@@ -449,6 +455,12 @@ function pHistorico() {
   if (ant) ant.addEventListener('click', () => { h.pagina--; render(); });
   if (sig) sig.addEventListener('click', () => { h.pagina++; render(); });
 
+  // Cuántas filas por página. Vuelve a la primera, por lo mismo que en la Torre.
+  const tam = document.getElementById('h-tam');
+  if (tam) tam.addEventListener('change', () => {
+    h.porPagina = Number(tam.value) || 0; h.pagina = 1; render();
+  });
+
   // Antes esto leía el número desde el texto de la celda. Salía del DOM y no
   // del modelo: bastaba mover una columna para romperlo. Ahora va por `data-ot`
   // y usa el mismo mecanismo que el resto de los paneles.
@@ -470,7 +482,10 @@ function vConsolidado() {
       <thead><tr><th>OT</th><th>OR</th><th>Patente</th><th>Siniestro</th><th>Cliente</th><th>Compañia</th>
         <th>Marca</th><th>Modelo</th><th>Fecha de Ingreso</th><th>Tipo</th><th>Días</th><th>Estado</th><th>Etapa</th>
         <th>Venta</th><th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
-      <tbody>${filas.slice(0, 60).map((o) => {
+      ${/* Sin el `slice(0, 60)`: el pie de abajo decía «Mostrando 60 de 102»
+            mientras el total del pie de tabla sumaba las 102. Dos números
+            distintos de la misma cosa en la misma pantalla. */''}
+      <tbody>${filas.map((o) => {
         const z = plataDe(o);
         const pendientes = o.repuestos.filter((r) => !r.fechaBodega);
         const llegados = o.repuestos.filter((r) => r.fechaBodega);
@@ -504,7 +519,6 @@ function vConsolidado() {
       <tfoot><tr><td colspan="13" style="text-align:right">Venta parada en las ${filas.length} órdenes vivas</td>
         <td class="num"><strong>${fMonto(suma.venta)}</strong></td><td colspan="2"></td></tr></tfoot>
     </table></div>
-    <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
   </div>`;
 }
 

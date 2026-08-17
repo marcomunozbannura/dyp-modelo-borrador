@@ -167,7 +167,10 @@ function vPresupuestoListado() {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Cliente</th><th>Patente</th><th>Marca</th><th>Modelo</th>
         <th>Tipo</th><th>Fecha de Ingreso</th><th>OR</th><th>Total neto</th><th>Acción</th></tr></thead>
-      <tbody>${filas.slice(0, 60).map((o) => {
+      ${/* Sin el `slice(0, 60)` que había: mostraba sesenta órdenes de las que
+            hubiera y el pie decía «Mostrando 60 de 102». Las otras 42 no
+            existían para el que miraba. */''}
+      <tbody>${filas.map((o) => {
         const neto = o.presupuestos.reduce((s, x) => s + x.neto, 0);
         return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td>' + esc(o.cliente) + '</td>' +
@@ -208,7 +211,6 @@ function vPresupuestoListado() {
           '</span></td></tr>';
       }).join('')}</tbody>
     </table></div>
-    <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
   </div>
 `;
 }

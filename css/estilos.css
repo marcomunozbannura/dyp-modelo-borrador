@@ -561,6 +561,18 @@ table.grid td {
 }
 table.grid td:last-child { border-right: none; }
 table.grid tbody tr:nth-child(even of .fila) { background: var(--zebra); }
+/* ── La franja gris con el paginado puesto ──────────────────────────────
+   `nth-child` cuenta TODAS las filas, incluidas las que la página escondió: en
+   la página 2 la zebra arrancaba corrida y se lee como tabla mal pintada. El
+   paginado numera las filas que se ven y marca cuál lleva franja.
+
+   Van acá y no al final del archivo a propósito: el hover y la fila abierta se
+   definen abajo, con la misma especificidad, así que siguen ganando. Movidas
+   al final, la franja le ganaría al hover y la tabla dejaría de responder al
+   paso del mouse. */
+table.grid tbody tr.fila.zebra-si { background: var(--zebra); }
+table.grid tbody tr.fila.zebra-no { background: transparent; }
+tr.fuera-de-pagina { display: none; }
 table.grid tbody tr.fila { cursor: pointer; }
 table.grid tbody tr.fila:hover { background: var(--superficie-2); }
 table.grid tbody tr.fila.abierta { background: var(--seleccion); }
@@ -674,6 +686,17 @@ fieldset.bloque legend {
 }
 .pie-grid .info { font-size: 11px; color: var(--gris); font-variant-numeric: tabular-nums; }
 .pie-grid .ctrl { display: flex; gap: 4px; align-items: center; }
+/* Cuántas filas mostrar. Va pegado al tramo y a los pasos porque las tres cosas
+   son la misma decisión: qué parte de la tabla estoy mirando. */
+.pie-grid .cuantas {
+  display: flex; align-items: center; gap: 5px; margin-right: 6px;
+  font-size: 11px; color: var(--gris);
+}
+.pie-grid .cuantas select {
+  font-family: inherit; font-size: 11px; padding: 2px 4px;
+  background: var(--superficie); color: var(--tinta);
+  border: 1px solid var(--borde); border-radius: 3px;
+}
 
 /* Tablero por etapa */
 .tablero { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }

@@ -333,7 +333,11 @@ function bodegaSeguimiento() {
     <thead><tr><th>OT</th><th>OR</th><th>Cliente</th><th>Compañia</th><th>Patente</th><th>Siniestro</th>
       <th>Marca</th><th>Modelo</th><th>Color</th><th>Fecha de Ingreso</th><th>Días</th><th>Alerta</th>
       <th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
-    <tbody>${filas.slice(0, 60).map((o) =>
+    ${/* Antes acá había un `slice(0, 60)`: la tabla mostraba sesenta filas de
+          las que hubiera y el pie decía «Mostrando 60 de 102» sin ofrecer
+          ninguna forma de ver las otras 42. Eso no es paginar, es esconder. Va
+          entera y el paginado le pone el pie con el selector. */''}
+    <tbody>${filas.map((o) =>
       '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
       '<td class="num">' + esc(o.presupuestos.length ? o.presupuestos[0].numeroOR : '—') + '</td>' +
       '<td>' + esc(o.cliente) + '</td><td>' + esc(o.compania) + '</td>' +
@@ -347,7 +351,6 @@ function bodegaSeguimiento() {
       '<td style="max-width:220px">' + lista(o, true) + '</td>' +
       '<td style="max-width:220px">' + lista(o, false) + '</td></tr>').join('')}</tbody>
   </table></div>
-  <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
 `;
 }
 

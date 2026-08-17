@@ -142,10 +142,13 @@ function vTorre() {
   const f = ui.torre;
   const m = Modelo.metricas();
   const todas = filtrarTorre();
-  const totalPag = Math.max(1, Math.ceil(todas.length / f.porPagina));
+  // `porPagina` puede venir en 0 —"Todas"—: `tamanoEfectivo` lo traduce al
+  // largo de la lista, porque cortar de a 0 devuelve una tabla vacía.
+  const porPagina = tamanoEfectivo(f.porPagina, todas.length);
+  const totalPag = Math.max(1, Math.ceil(todas.length / porPagina));
   if (f.pagina > totalPag) f.pagina = totalPag;
-  const desde = (f.pagina - 1) * f.porPagina;
-  const pagina = todas.slice(desde, desde + f.porPagina);
+  const desde = (f.pagina - 1) * porPagina;
+  const pagina = todas.slice(desde, desde + porPagina);
 
   const kpiNombre = m.kpi === 'estadia_actual' ? 'estadía actual' : 'reparación acumulada';
   const cuentas = cuentasSituacion();
@@ -199,11 +202,15 @@ function vTorre() {
       </table>
     </div>
     <div class="pie-grid">
-      <div class="info">Mostrando ${todas.length ? desde + 1 : 0}–${Math.min(desde + f.porPagina, todas.length)} de ${todas.length}</div>
+      <div class="info">Mostrando ${todas.length ? desde + 1 : 0}–${Math.min(desde + porPagina, todas.length)} de ${todas.length}</div>
       <div class="ctrl">
-        <button class="btn secundario" id="pag-ant" ${f.pagina <= 1 ? 'disabled' : ''}>Anterior</button>
-        <span class="info">Página ${f.pagina} de ${totalPag}</span>
-        <button class="btn secundario" id="pag-sig" ${f.pagina >= totalPag ? 'disabled' : ''}>Siguiente</button>
+        ${/* Sólo el paso que lleva a alguna parte, igual que en el resto de las
+              tablas: en la primera página no hay «Anterior» que apretar, y un
+              botón apagado ocupa el mismo lugar sin hacer nada. */''}
+        ${selectorTamano('tam-torre', f.porPagina)}
+        ${f.pagina > 1 ? '<button class="btn secundario" id="pag-ant">Anterior</button>' : ''}
+        ${totalPag > 1 ? '<span class="info">Página ' + f.pagina + ' de ' + totalPag + '</span>' : ''}
+        ${f.pagina < totalPag ? '<button class="btn secundario" id="pag-sig">Siguiente</button>' : ''}
       </div>
     </div>
   </div>
@@ -371,6 +378,13 @@ function pTorre() {
   if (sc) sc.addEventListener('change', () => { ui.torre.compania = sc.value; ui.torre.pagina = 1; render(); });
   const se = document.getElementById('s-etapa');
   if (se) se.addEventListener('change', () => { ui.torre.etapa = se.value; ui.torre.pagina = 1; render(); });
+
+  /* Cuántas filas por página. Vuelve a la primera: quedarse en la página 3 con
+     otro tamaño muestra otras órdenes sin que nadie haya pedido moverse. */
+  const st = document.getElementById('tam-torre');
+  if (st) st.addEventListener('change', () => {
+    ui.torre.porPagina = Number(st.value) || 0; ui.torre.pagina = 1; ui.torre.abierta = null; render();
+  });
 
   document.querySelectorAll('[data-sit]').forEach((b) => b.addEventListener('click', () => {
     ui.torre.situacion = b.dataset.sit; ui.torre.pagina = 1; ui.torre.abierta = null; render();

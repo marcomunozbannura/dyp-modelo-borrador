@@ -1333,6 +1333,41 @@ const Pruebas = (function () {
             }));
           return malos;
         })(), 0],
+      /* 🔴 NINGÚN PANEL ESCONDE FILAS. Cinco tablas —Taller, Presupuesto,
+         Documentos, el seguimiento de Bodega y el Consolidado— pintaban
+         `filas.slice(0, 60)` y abajo un rótulo que decía «Mostrando 60 de
+         102». Las otras 42 órdenes no existían para el que miraba: no había
+         botón, ni página siguiente, ni forma de llegar a ellas. Y el pie de
+         tabla del Consolidado sumaba la venta de las 102, así que la misma
+         pantalla mostraba dos números distintos de la misma cosa.
+
+         Se sacó el corte y ahora la tabla va entera con su selector de
+         páginas. Esta cifra es el guardián: si alguien vuelve a poner un
+         `slice`, el panel pinta menos filas de las que hay en la torre y se
+         cae acá, no en la reunión. */
+      ['Paneles que pintan menos órdenes de las que hay',
+        (function () {
+          const total = Modelo.torre().length;
+          const cuenta = (html) => (String(html).match(/<tr class="fila"/g) || []).length;
+          const paneles = [
+            ['Taller', typeof vTaller],
+            ['Presupuesto', typeof vPresupuesto],
+            ['Documentos', typeof vDocumentos],
+            ['Bodega · seguimiento', typeof bodegaSeguimiento],
+            ['Consolidado', typeof vConsolidado]
+          ];
+          const fn = { 'Taller': () => vTaller(), 'Presupuesto': () => vPresupuesto(),
+            'Documentos': () => vDocumentos(), 'Bodega · seguimiento': () => bodegaSeguimiento(),
+            'Consolidado': () => vConsolidado() };
+          let cortados = 0;
+          paneles.forEach(([nombre, tipo]) => {
+            if (tipo !== 'function') return;      // el panel no está cargado
+            let n;
+            try { n = cuenta(fn[nombre]()); } catch (e) { return; }
+            if (n && n < total) cortados++;
+          });
+          return cortados;
+        })(), 0],
       ['Repuestos nacidos de una línea que no es «cambio»',
         (function () {
           const proc = {};

@@ -40,7 +40,9 @@ function documentosListado() {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Patente</th><th>Marca</th><th>Modelo</th><th>Fecha de Ingreso</th>
         <th>Estado</th><th>Etapa</th><th>Adjuntos</th><th></th></tr></thead>
-      <tbody>${filas.slice(0, 60).map((o) => {
+      ${/* Sin el `slice(0, 60)` que había: cortaba en sesenta y el pie decía
+            «Mostrando 60 de 102» sin dar forma de llegar a las demás. */''}
+      <tbody>${filas.map((o) => {
         const n = Modelo.mediaDe(o.id).filter((m) => m.momento === 'documento').length;
         return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
@@ -52,7 +54,6 @@ function documentosListado() {
           '<td><button class="btn secundario" data-doc-ot="' + esc(o.id) + '">Ver / subir</button></td></tr>';
       }).join('')}</tbody>
     </table></div>
-    <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
   </div>`;
 }
 

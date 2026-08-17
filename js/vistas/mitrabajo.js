@@ -139,7 +139,10 @@ function vMiTrabajo() {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Patente</th><th>Vehículo</th><th>Etapa</th><th>Días</th>
         <th>Repuestos</th><th>Dónde está</th><th style="min-width:230px">Acción</th></tr></thead>
-      <tbody>${t.disponibles.length ? t.disponibles.slice(0, 40).map((x) => fila(x, false)).join('')
+      ${/* Iba cortada en 40 y sin decirlo en ninguna parte: el que no veía su
+            trabajo en la lista concluía que no había trabajo. Va entera; si
+            pasa de 50 aparece el pie con el selector. */''}
+      <tbody>${t.disponibles.length ? t.disponibles.map((x) => fila(x, false)).join('')
         : '<tr><td colspan="8"><div class="vacio"><div class="titulo">Nada disponible ahora</div>' +
           '<div class="texto">Cuando se reciba un vehículo que pase por ' +
           esc(Modelo.sesionesPosibles().find((p) => p.id === (Modelo.personaActual() || {}).id)

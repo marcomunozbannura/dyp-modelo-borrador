@@ -260,8 +260,11 @@ function pTaller() {
     ui.torre.abierta = f.dataset.ficha;
     ui.torre.situacion = 'piso'; ui.torre.busqueda = ''; ui.torre.etapa = 'todas';
     ui.torre.pagina = 1;
-    const idx = filtrarTorre().findIndex((o) => o.id === f.dataset.ficha);
-    if (idx >= 0) ui.torre.pagina = Math.floor(idx / ui.torre.porPagina) + 1;
+    const listado = filtrarTorre();
+    const idx = listado.findIndex((o) => o.id === f.dataset.ficha);
+    // `porPagina` puede venir en 0 —"Todas"—: dividir por 0 dejaba la página en
+    // infinito y la torre se abría vacía.
+    if (idx >= 0) ui.torre.pagina = Math.floor(idx / tamanoEfectivo(ui.torre.porPagina, listado.length)) + 1;
     ir('torre');
   }));
 }

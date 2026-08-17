@@ -49,6 +49,7 @@ const fFechaHora = (d) => (d
     String(d.getMinutes()).padStart(2, '0')
   : '—');
 const fMonto = (n) => '$' + Math.round(n).toLocaleString('es-CL');
+const fMiles = (n) => Math.round(Number(n) || 0).toLocaleString('es-CL');
 const nDias = (d) => Math.max(0, Math.round((HOY - d) / 86400000));
 const plural = (n, s, p) => n + ' ' + (n === 1 ? s : p);
 // Tolerantes a nulo: una OT recien creada desde el calendario todavia no tiene
@@ -75,15 +76,49 @@ const ESTADO_PRESUPUESTO = {
 
 /* ───────────────── Estado de la interfaz ───────────────── */
 
+/* ── Cuántas filas mostrar ────────────────────────────────────────────
+   Pedido de Marco (16-08-2026): "quiero que en las tablas uno pueda decidir de
+   cuánta data mostrar, si de 1-100, 1-500, 1-1000, en todos los lugares que
+   tenga tabla".
+
+   Las opciones son una sola lista y se usan en las dos partes: acá arriba, en
+   las dos pantallas que ya paginaban solas —Torre e Histórico—, y abajo en el
+   paginado que se aplica sobre el DOM al resto de las tablas. Un solo lugar
+   que diga cuáles son, o en tres meses una pantalla ofrece 500 y la otra no.
+
+   El `0` es "Todas". Se guarda como número y no como texto para que el
+   selector y la aritmética hablen el mismo idioma.
+
+   El default es 100 —la primera opción que pidió Marco— y no las 35 de antes:
+   la mesa del taller mira la torre completa, no de a 35. */
+const TAMANOS_PAGINA = [50, 100, 500, 1000, 0];
+const TAMANO_PAGINA = 100;
+
+/* El selector. Devuelve HTML porque las dos pantallas que ya paginaban arman
+   su pie como texto, y el paginado del DOM lo inserta igual. */
+function selectorTamano(id, valor) {
+  const v = Number(valor) || 0;
+  return '<label class="cuantas">Mostrar ' +
+    '<select' + (id ? ' id="' + esc(id) + '"' : '') + ' title="Cuántas filas se muestran por página">' +
+    TAMANOS_PAGINA.map((t) => '<option value="' + t + '"' + (t === v ? ' selected' : '') + '>' +
+      (t ? fMiles(t) + ' filas' : 'Todas') + '</option>').join('') +
+    '</select></label>';
+}
+
+/* "Todas" es 0, y 0 no sirve para cortar una lista: `slice(0, 0)` devuelve
+   vacío y `total / 0` es infinito. Se traduce acá, una vez, y no en cada
+   pantalla que lo use. */
+const tamanoEfectivo = (tam, total) => (Number(tam) || Math.max(1, Number(total) || 1));
+
 const ui = {
   vista: 'torre',
   // `orden`/`desc`: pedido del cliente el 15-08-2026. La torre parte SIEMPRE
   // por correlativo descendente —lo último que entró, arriba— y desde ahí el
   // usuario reordena por la columna que quiera. Antes el orden era por fecha de
   // ingreso y no se podía cambiar.
-  torre: { pagina: 1, porPagina: 35, busqueda: '', compania: 'todas', situacion: 'piso', etapa: 'todas', abierta: null,
+  torre: { pagina: 1, porPagina: TAMANO_PAGINA, busqueda: '', compania: 'todas', situacion: 'piso', etapa: 'todas', abierta: null,
            orden: 'ot', desc: true },
-  historico: { pagina: 1, porPagina: 35, busqueda: '' },
+  historico: { pagina: 1, porPagina: TAMANO_PAGINA, busqueda: '' },
   // Las vistas grandes arman su propio estado la primera vez que se pintan, y
   // lo restauran del borrador si hay uno. Ver recepcion.js y configuracion.js.
   recepcion: null,
@@ -473,8 +508,15 @@ function exportarVistaCSV() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 
+  /* El paginado esconde filas, no las saca del documento, así que en el archivo
+     salen todas. Se dice, porque si en pantalla se ven 100 y el CSV trae 214 el
+     que lo abre piensa que exportó otra cosa. */
+  const escondidas = document.querySelectorAll('#contenido tbody tr.fuera-de-pagina:not(.detalle)').length;
+
   avisar({ ok: true, motivo: '' }, 'Exportadas ' + datos + ' filas' +
     (tablas.length > 1 ? ' de ' + tablas.length + ' tablas' : '') + ' a ' + a.download +
+    (escondidas ? ' — la tabla completa, incluidas las ' + escondidas +
+      ' filas que el paginado no tiene a la vista' : '') +
     '. Queda en la traza: quién exportó, qué y cuándo.');
 }
 
@@ -490,6 +532,13 @@ const CSS_IMPRIMIR_VISTA = `@media print{
   .contenido{overflow:visible !important;height:auto !important}
   .panel{break-inside:avoid;box-shadow:none}
   table.grid th{position:static !important}
+  /* Las filas que el paginado escondió vuelven a salir: el que imprime quiere
+     el listado que filtró, y de a cuántas lo mira es una comodidad de la
+     pantalla. Ojo: en la Torre y en el Histórico el corte lo hace el modelo
+     —esas filas no están en el documento— y ahí sí sale sólo la página que se
+     está viendo. El pie no se imprime: en papel no hay dónde apretar. */
+  tr.fuera-de-pagina{display:table-row !important}
+  .pie-grid{display:none !important}
   @page{size:A4 landscape;margin:10mm}
 }`;
 
@@ -1631,6 +1680,10 @@ function mejorarTablas() {
 
     const guardado = ordenPorTabla[llave];
     if (!propia && guardado) ordenarFilas(tabla, cuerpo, guardado.col, guardado.desc, ths);
+
+    /* Después de ordenar, no antes: la página 1 son las primeras filas del
+       orden que quedó, no las del orden con el que vinieron. */
+    if (!paginaSola(tabla)) paginarTabla(tabla, cuerpo, llave);
   });
 }
 
@@ -1647,6 +1700,10 @@ function ordenable(tabla, cuerpo, th, col, llave) {
     const actual = ordenPorTabla[llave];
     const desc = !!(actual && actual.col === col && !actual.desc);
     ordenPorTabla[llave] = { col, desc };
+    /* Se vuelve a la primera página: al cambiar el orden cambia QUÉ filas son
+       las de la página 3, así que quedarse ahí muestra otras sin haber pedido
+       moverse. */
+    if (paginaPorTabla[llave]) paginaPorTabla[llave].pag = 1;
     render();
   });
 }
@@ -1689,6 +1746,145 @@ function ordenarFilas(tabla, cuerpo, col, desc, ths) {
     if (d) trozo.appendChild(d);
   });
   cuerpo.appendChild(trozo);
+}
+
+/* ── Paginar ─────────────────────────────────────────────────────────────
+   Le pone a cada tabla el mismo pie que ya tenían la Torre y el Histórico:
+   cuántas filas se muestran, en qué tramo va y los pasos para moverse.
+
+   🔴 LO QUE NO SE HACE ACÁ. La Torre y el Histórico paginan EN EL MODELO —cortan
+   la lista antes de pintarla— y traen su propio pie. A esas dos no se les
+   agrega este paginado encima: se les puso el selector en el pie que ya
+   tenían. Paginar dos veces la misma tabla, una en el modelo y otra sobre el
+   DOM, es la forma exacta del error que costó dos correcciones esta semana:
+   dos lugares haciendo lo mismo por caminos distintos, y ninguno de los dos
+   equivocado por su cuenta. Se reconocen porque su envoltorio ya viene seguido
+   de un `.pie-grid`.
+
+   Las filas que quedan fuera de la página se ESCONDEN, no se sacan del
+   documento: así Exportar sigue entregando la tabla completa —lo filtrado, no
+   lo que alcanzó a caber en la pantalla— y en papel salen todas. Ver
+   `CSS_IMPRIMIR_VISTA`.
+
+   El pie aparece recién cuando hay más filas que la opción más chica. Con ocho
+   filas no hay nada que decidir, y un selector que no cambia nada es un botón
+   muerto en pantalla. */
+const paginaPorTabla = {};
+
+function paginarTabla(tabla, cuerpo, llave) {
+  const filas = [...cuerpo.children].filter((tr) => !tr.classList.contains('detalle'));
+
+  /* Un total o un subtítulo no puede quedar fuera de la página: la tabla
+     perdería su cierre y el número de abajo dejaría de cuadrar con lo de
+     arriba. Esas no se paginan, por la misma razón por la que no se ordenan. */
+  const conTotales = filas.some((tr) => tr.querySelector('td[colspan]'));
+  if (conTotales || filas.length <= TAMANOS_PAGINA[0]) return soltarPagina(tabla, filas);
+
+  const e = paginaPorTabla[llave] || (paginaPorTabla[llave] = { tam: TAMANO_PAGINA, pag: 1 });
+  const tam = tamanoEfectivo(e.tam, filas.length);
+  const paginas = Math.max(1, Math.ceil(filas.length / tam));
+  e.pag = Math.min(Math.max(1, e.pag), paginas);
+  const desde = (e.pag - 1) * tam;
+  const hasta = Math.min(desde + tam, filas.length);
+
+  let vistas = 0;
+  filas.forEach((tr, i) => {
+    const dentro = i >= desde && i < hasta;
+    verFila(tr, dentro);
+    tr.classList.remove('zebra-si', 'zebra-no');
+    if (!dentro || !tr.classList.contains('fila')) return;
+    /* La franja gris la reparte `nth-child`, que sigue contando las filas
+       escondidas: en la página 2 arrancaba corrida y eso se lee como tabla mal
+       pintada. Acá se numera sobre las que se ven. */
+    tr.classList.add(vistas % 2 ? 'zebra-si' : 'zebra-no');
+    vistas++;
+  });
+
+  pintarPiePaginas(tabla, llave, e, { total: filas.length, desde, hasta, paginas });
+}
+
+// El desplegable abierto viaja pegado a su fila, acá igual que al ordenar.
+function verFila(tr, dentro) {
+  tr.classList.toggle('fuera-de-pagina', !dentro);
+  const sig = tr.nextElementSibling;
+  if (sig && sig.classList.contains('detalle')) sig.classList.toggle('fuera-de-pagina', !dentro);
+}
+
+/* La tabla dejó de necesitar página —se filtró y quedaron doce filas—: se
+   muestran todas y se saca el pie. Si no, quedaba un «Página 1 de 1» colgado
+   abajo de una tabla que ya no paginaba. */
+function soltarPagina(tabla, filas) {
+  filas.forEach((tr) => { verFila(tr, true); tr.classList.remove('zebra-si', 'zebra-no'); });
+  const pie = piePaginasDe(tabla);
+  if (pie) pie.remove();
+}
+
+const cajaDe = (tabla) => tabla.closest('.grid-envoltorio') || tabla;
+
+/* Los pies que ya vienen pegados abajo de la tabla, en orden. Puede haber uno
+   de la pantalla —Personal dice cuántas cuentas hay— y el de páginas. */
+function piesDe(tabla) {
+  const pies = [];
+  let n = cajaDe(tabla).nextElementSibling;
+  while (n && n.classList.contains('pie-grid')) { pies.push(n); n = n.nextElementSibling; }
+  return pies;
+}
+
+function piePaginasDe(tabla) {
+  return piesDe(tabla).find((p) => p.classList.contains('pie-paginas')) || null;
+}
+
+/* 🔴 SE RECONOCE POR EL SELECTOR, no por tener pie. Cuatro paneles —Bodega,
+   Documentos, Presupuesto y el Consolidado— traían un pie que decía «Mostrando
+   60 de 102» y una tabla cortada en 60 sin ninguna forma de ver el resto. Eso
+   no es paginar: es esconder 42 órdenes con cara de estar informando. Se les
+   sacó el corte y este paginado se hace cargo. Si el guard fuera «tiene pie»,
+   habrían quedado exactamente como estaban. */
+function paginaSola(tabla) {
+  return piesDe(tabla).some((p) => !p.classList.contains('pie-paginas') && p.querySelector('select'));
+}
+
+function pintarPiePaginas(tabla, llave, e, n) {
+  let pie = piePaginasDe(tabla);
+  if (!pie) {
+    pie = document.createElement('div');
+    pie.className = 'pie-grid pie-paginas';
+    // Debajo del pie que la pantalla ya traía, si trae uno: primero lo que la
+    // pantalla dice de su tabla, después de a cuántas se está mirando.
+    const pies = piesDe(tabla);
+    (pies.length ? pies[pies.length - 1] : cajaDe(tabla)).insertAdjacentElement('afterend', pie);
+  }
+
+  /* Sólo se pinta el paso que lleva a alguna parte: en la primera página no hay
+     «Anterior» que apretar. Un botón apagado ocupa el mismo lugar y no hace
+     nada, que es lo que acá no se quiere. */
+  const pasos =
+    (e.pag > 1 ? '<button type="button" class="btn secundario" data-paso="-1">Anterior</button>' : '') +
+    (n.paginas > 1 ? '<span class="info">Página ' + e.pag + ' de ' + n.paginas + '</span>' : '') +
+    (e.pag < n.paginas ? '<button type="button" class="btn secundario" data-paso="1">Siguiente</button>' : '');
+
+  pie.innerHTML =
+    '<div class="info">' + (e.tam
+      ? 'Mostrando ' + fMiles(n.desde + 1) + '–' + fMiles(n.hasta) + ' de ' + fMiles(n.total)
+      : 'Mostrando las ' + fMiles(n.total) + ' filas') + '</div>' +
+    '<div class="ctrl">' + selectorTamano('', e.tam) + pasos + '</div>';
+
+  // Se vuelve a paginar en el lugar, sin repintar la pantalla entera: lo único
+  // que cambia son las filas que se ven y este mismo pie.
+  const rehacer = () => paginarTabla(tabla, tabla.querySelector('tbody'), llave);
+
+  pie.querySelector('select').addEventListener('change', (ev) => {
+    e.tam = Number(ev.target.value) || 0;
+    e.pag = 1;
+    rehacer();
+  });
+  pie.querySelectorAll('[data-paso]').forEach((b) => b.addEventListener('click', () => {
+    e.pag += Number(b.dataset.paso);
+    rehacer();
+    /* Los pasos están abajo de la tabla: sin esto, al apretar Siguiente la
+       página nueva arranca fuera de la pantalla y parece que no pasó nada. */
+    cajaDe(tabla).scrollIntoView({ block: 'start' });
+  }));
 }
 
 /* ── Ensanchar ───────────────────────────────────────────────────────── */

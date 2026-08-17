@@ -1895,6 +1895,22 @@ const Modelo = (function () {
       const v = crudo === '' ? 0 : Number(crudo);
       l.precio_unitario = isNaN(v) || v < 0 ? 0 : Math.round(v);
     }
+
+    /* La pieza de bodega sigue a su línea: es la MISMA pieza. Sin esto,
+       corregir el proveedor o el precio en el presupuesto dejaba a bodega con
+       los datos viejos, que es la redigitación que este sistema vino a
+       eliminar. El código interno NO se pisa si bodega ya le puso el suyo. */
+    const rep = repuestoDeLinea(linea_id);
+    if (rep) {
+      rep.descripcion = l.descripcion;
+      rep.cantidad = l.cantidad || 1;
+      rep.proveedor = l.proveedor || '';
+      rep.precio_unitario = l.precio_unitario || 0;
+      if (l.codigo && !rep.codigo_interno) rep.codigo_interno = l.codigo;
+      const resp = db.responsable_pago.find((x) => !!x.es_taller === Reglas.esProveedorTaller(l.proveedor));
+      if (resp) rep.responsable_pago_id = resp.id;
+    }
+
     recalcularPresupuesto(l.presupuesto_id);
     tocado();
     return { ok: true, motivo: '' };
@@ -1931,8 +1947,52 @@ const Modelo = (function () {
       proveedor: Reglas.normalizarProveedor(linea.proveedor)
     }));
     recalcularPresupuesto(pid);
+
+    /* 🔴 PONER EL REPUESTO EN EL PRESUPUESTO **ES** PEDIRLO.
+       Textual de Marco, 16-08-2026: «se pide cuando uno pone repuestos en el
+       presupuesto». Antes la pieza nacia al APROBAR la OR, y habia un boton
+       «Pedir repuestos a bodega» para el caso de encargarlas antes. Los dos
+       sobran: la lista de repuestos del presupuesto ES el pedido, y bodega
+       tiene que verla desde que se escribe — que es cuando el evaluador ya
+       sabe que esa pieza hay que comprarla.
+
+       El presupuesto puede seguir en borrador: eso no cambia el hecho de que
+       la pieza esta pedida. Lo que dice si la compania la va a pagar es el
+       estado de la OR, y eso bodega lo ve en la orden. */
+    if (linea.proceso === 'cambio') {
+      const puesta = db.presupuesto_linea[db.presupuesto_linea.length - 1];
+      bajarRepuestoABodega(p, puesta);
+    }
+
     tocado();
     return { ok: true, motivo: '' };
+  }
+
+  /* Crea en bodega la pieza de UNA linea de Cambio. Es el unico lugar que
+     escribe un repuesto nacido de un presupuesto: lo usan el alta de la linea
+     y `generar_repuestos_desde_presupuesto`, que quedo como red para los
+     presupuestos anteriores a este cambio y para las versiones nuevas. */
+  function bajarRepuestoABodega(p, l) {
+    /* Quien paga sale del PROVEEDOR: si la pieza la puso la compania, el
+       taller no la desembolso. Al escribir la linea todavia no hay proveedor
+       —se llena despues, en la fila—, asi que entra como de la compania y
+       `actualizar_linea_presupuesto` lo corrige cuando se escriba. */
+    const delTaller = Reglas.esProveedorTaller(l.proveedor);
+    const resp = db.responsable_pago.find((x) => !!x.es_taller === delTaller);
+    db.repuesto.push({
+      id: nuevoId('rep'), ot_id: p.ot_id, presupuesto_linea_id: l.id,
+      descripcion: l.descripcion, cantidad: l.cantidad || 1,
+      codigo_interno: l.codigo || '', codigo_externo: '',
+      proveedor: l.proveedor || '', precio_unitario: l.precio_unitario || 0,
+      responsable_pago_id: (resp || db.responsable_pago[0] || {}).id || 'rp-1',
+      fecha_solicitud: HOY, fecha_bodega: null,
+      fecha_entrega_area: null, observacion: '', recibido_por: null
+    });
+  }
+
+  /* La pieza que nacio de esta linea, si es que nacio. */
+  function repuestoDeLinea(linea_id) {
+    return db.repuesto.find((r) => r.presupuesto_linea_id === linea_id) || null;
   }
 
   function quitar_linea_presupuesto(linea_id) {
@@ -1941,6 +2001,17 @@ const Modelo = (function () {
     const p = db.presupuesto.find((x) => x.id === l.presupuesto_id);
     if (p && p.estado !== 'borrador')
       return { ok: false, motivo: 'El presupuesto ya no está en borrador: no se edita.' };
+
+    /* La pieza se va con su línea. Pero si YA LLEGÓ a bodega, no: está en el
+       taller, alguien la recibió y la firmó. Borrar la línea la haría
+       desaparecer del sistema con la pieza puesta en la repisa. */
+    const rep = repuestoDeLinea(linea_id);
+    if (rep && rep.fecha_bodega)
+      return { ok: false, motivo: 'No se puede quitar «' + l.descripcion + '»: el repuesto YA LLEGÓ ' +
+        'a bodega. Si la pieza no va, bodega tiene que devolverla primero — así queda por qué ' +
+        'volvió y quién la recibió.' };
+    if (rep) db.repuesto = db.repuesto.filter((x) => x.id !== rep.id);
+
     db.presupuesto_linea = db.presupuesto_linea.filter((x) => x.id !== linea_id);
     recalcularPresupuesto(l.presupuesto_id);
     tocado();
@@ -2105,27 +2176,9 @@ const Modelo = (function () {
     let n = 0;
     lineas.forEach((l) => {
       if (yaPedida(l)) return;   // idempotente, por linaje
-      /* Lo que se escribió en el bloque Repuestos del presupuesto BAJA
-         completo a bodega: código, cantidad, proveedor y precio. Es lo que
-         pidió Marco el 16-08-2026 —"de ahí mismo sacaremos los repuestos que
-         debiesen fluir a Bodega"— y evita que bodega tenga que volver a
-         escribir a mano lo que el evaluador ya escribió.
-
-         Quién paga sale del PROVEEDOR, no de un valor por omisión: si la
-         pieza la puso la compañía, el taller no la desembolsó. Antes entraba
-         todo como `rp-1` y el responsable de pago decía lo mismo para una
-         pieza que pagó el taller y una que puso la aseguradora. */
-      const delTaller = Reglas.esProveedorTaller(l.proveedor);
-      const resp = db.responsable_pago.find((x) => !!x.es_taller === delTaller);
-      db.repuesto.push({
-        id: nuevoId('rep'), ot_id: p.ot_id, presupuesto_linea_id: l.id,
-        descripcion: l.descripcion, cantidad: l.cantidad,
-        codigo_interno: l.codigo || '', codigo_externo: '',
-        proveedor: l.proveedor || '', precio_unitario: l.precio_unitario || 0,
-        responsable_pago_id: (resp || db.responsable_pago[0] || {}).id || 'rp-1',
-        fecha_solicitud: HOY, fecha_bodega: null,
-        fecha_entrega_area: null, observacion: '', recibido_por: null
-      });
+      // Mismo escritor que usa el alta de la línea: una sola forma de crear
+      // una pieza, o terminan existiendo dos con reglas distintas.
+      bajarRepuestoABodega(p, l);
       n++;
     });
     if (!n) return { ok: false, motivo: 'Los repuestos de este presupuesto ya estaban pedidos.' };

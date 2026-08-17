@@ -1005,6 +1005,46 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
 }
 .tira-tempario .pie { display: block; font-size: 10.5px; color: var(--gris); margin-top: 2px; }
 
+/* La franja de agregar línea, con la forma del sistema actual: encabezados
+   arriba, el campo de descripción ANCHO —es el que más se escribe y el que
+   más largo queda: «neumatico sailun terramax sv301 235/55R19 delantero
+   derecho» no cabe en una casilla de 180px—, el desplegable OP y Enviar. */
+.agregar-linea {
+  border: 1px solid var(--borde); border-radius: 3px;
+  background: var(--superficie); margin-bottom: 14px; overflow: hidden;
+}
+.agregar-linea .rot,
+.agregar-linea .fila { display: grid; grid-template-columns: 1fr 220px 150px; }
+.agregar-linea .rot {
+  background: var(--superficie-2); border-bottom: 1px solid var(--borde);
+}
+.agregar-linea .rot span {
+  padding: 5px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--gris);
+  border-right: 1px solid var(--borde);
+}
+.agregar-linea .rot span:last-child { border-right: none; }
+.agregar-linea .fila { gap: 0; align-items: stretch; }
+.agregar-linea .fila > * { margin: 0; border-radius: 0; }
+.agregar-linea .fila input,
+.agregar-linea .fila select {
+  width: 100%; height: 100%; border: none; border-right: 1px solid var(--borde);
+  padding: 8px 10px; font-size: 13px; background: var(--superficie); color: var(--texto);
+}
+.agregar-linea .fila input:focus,
+.agregar-linea .fila select:focus { outline: 2px solid var(--acento); outline-offset: -2px; }
+.agregar-linea .fila .btn { border-radius: 0; height: 100%; }
+.agregar-linea .pie {
+  padding: 6px 10px; font-size: 11px; color: var(--gris);
+  border-top: 1px solid var(--borde); background: var(--superficie-2);
+}
+@media (max-width: 820px) {
+  .agregar-linea .rot { display: none; }
+  .agregar-linea .fila { grid-template-columns: 1fr; }
+  .agregar-linea .fila input,
+  .agregar-linea .fila select { border-right: none; border-bottom: 1px solid var(--borde); }
+}
+
 .bloque-presu {
   border: 1px solid var(--borde); border-radius: 3px;
   background: var(--superficie); margin-bottom: 14px; overflow: hidden;

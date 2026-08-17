@@ -38,14 +38,14 @@
 /* Las tres operaciones del desplegable «OP» del sistema actual. El orden es
    el de la pantalla real. */
 const PROCESOS = [
-  { codigo: 'cambio',  nombre: 'Cambio',  ayuda: 'La pieza se reemplaza. Crea su fila en Repuestos y baja a bodega al aprobar' },
+  { codigo: 'cambio',  nombre: 'Cambio',  ayuda: 'La pieza se reemplaza. Crea su fila en Repuestos y queda pedida a bodega al escribirla' },
   { codigo: 'reparar', nombre: 'Reparar', ayuda: 'La pieza se repara. Se le ponen horas de reparación y de pintura' },
   { codigo: 'externo', nombre: 'Externo', ayuda: 'Trabajo a terceros. Se cobra su precio, sin horas' }
 ];
 
 function presuEstado() {
   ui.presupuesto = ui.presupuesto || { otId: null, presupuestoId: null, busqueda: '',
-    linea: { proceso: 'reparar', descripcion: '' } };
+    linea: { proceso: '', descripcion: '' } };
   return ui.presupuesto;
 }
 
@@ -353,6 +353,41 @@ function grillaPresupuesto(o, pr, editable, $) {
       </div>
     </div>`;
 
+  /* ── Agregar una línea ────────────────────────────────
+     Arriba de todo y con la forma del sistema actual: una franja con los
+     encabezados «Descripción» y «OP», el campo de descripción ANCHO —que es
+     el que más se escribe: «neumatico sailun terramax sv301 235/55R19
+     delantero derecho» no cabe en una casilla de 180px— y el botón Enviar.
+
+     Es UN formulario para los TRES bloques: la operación decide a cuál va.
+     Cambio crea la línea de mano de obra Y su fila en Repuestos; Reparar solo
+     la de mano de obra; Externo va al bloque de trabajos externos. Estaba al
+     pie del bloque 1 y se leía como si fuera solo de ahí.
+
+     Pedido de Marco el 16-08-2026: «debiese ser exactamente igual a cómo está
+     en el sistema original... partamos dejándolo igual y después hagamos
+     upgrades». */
+  const formLinea = !editable ? '' : `
+  <div class="agregar-linea">
+    <div class="rot"><span class="desc">Descripción</span><span class="op">OP</span><span></span></div>
+    <div class="fila">
+      <input id="l-desc" value="${esc(p.linea.descripcion)}"
+        placeholder="Tal como se escribe: «neumatico sailun terramax sv301 235/55R19 delantero derecho»">
+      <select id="l-op">
+        <option value="">Seleccione</option>
+        ${PROCESOS.map((x) => '<option value="' + x.codigo + '"' +
+          (p.linea.proceso === x.codigo ? ' selected' : '') + ' title="' + esc(x.ayuda) + '">' +
+          esc(x.nombre) + '</option>').join('')}
+      </select>
+      <button class="btn" id="l-agregar">Enviar</button>
+    </div>
+    <div class="pie">La operación manda la línea a su bloque:
+      <strong>Cambio</strong> a Mano de Obra y a Repuestos ·
+      <strong>Reparar</strong> a Mano de Obra ·
+      <strong>Externo</strong> a Trabajos externos.
+      Las horas y los precios se escriben después, en la propia fila.</div>
+  </div>`;
+
   /* ── Bloque 1 · Mano de Obra ───────────────────────────────────────── */
   const filaMO = (l, i) => {
     const sub = COL_HORAS.reduce((s, c) => s + (Number(l[c.campo]) || 0), 0) * pr.tempario;
@@ -401,23 +436,6 @@ function grillaPresupuesto(o, pr, editable, $) {
         }).join('')}
         <td class="num"><strong>${$(t.manoObra)}</strong></td><td></td></tr></tfoot>
     </table></div>
-    ${editable ? `
-    <div class="rejilla-campos" style="margin-top:10px">
-      <div class="campo"><label>Descripción</label>
-        <input id="l-desc" value="${esc(p.linea.descripcion)}"
-          placeholder="Tal como se escribe: «marco de puerta trasero derecho»"></div>
-      <div class="campo"><label>OP · operación</label>
-        <select id="l-op">
-          ${PROCESOS.map((x) => '<option value="' + x.codigo + '"' +
-            (p.linea.proceso === x.codigo ? ' selected' : '') + '>' + esc(x.nombre) +
-            '</option>').join('')}
-        </select></div>
-      <div class="campo"><label>&nbsp;</label>
-        <button class="btn" id="l-agregar">Enviar</button></div>
-    </div>
-    <span class="ayuda">Las horas se escriben en la fila, después. Las tres columnas quedan
-      habilitadas siempre: una pieza se puede reparar <strong>y</strong> pintar.
-      La operación <strong>Cambio</strong> crea además su fila en Repuestos.</span>` : ''}
   </section>`;
 
   /* ── Bloque 2 · Repuestos ──────────────────────────────────────────── */
@@ -447,7 +465,7 @@ function grillaPresupuesto(o, pr, editable, $) {
 
   const bloqueRep = `
   <section class="bloque-presu repuestos">
-    ${cabBloquePresu(2, 'Repuestos', 'Las piezas que compra el taller. Bajan a Bodega al aprobar',
+    ${cabBloquePresu(2, 'Repuestos', 'Las piezas del trabajo. Escribirlas acá es pedirlas a Bodega',
       t.repuestos, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:130px">Código</th><th style="width:84px">Cantidad</th>
@@ -460,10 +478,11 @@ function grillaPresupuesto(o, pr, editable, $) {
       <tfoot><tr><td colspan="5" style="text-align:right"><strong>Subtotal</strong></td>
         <td class="num"><strong>${$(t.repuestos)}</strong></td></tr></tfoot>
     </table></div>
-    <span class="ayuda">Estas piezas son las que <strong>bajan a Bodega</strong> cuando se aprueba
-      la OR, con su código, cantidad, proveedor y precio — bodega no las vuelve a escribir.
-      Sólo se le cobran al cliente las que pone el taller: escribir <strong>DYP</strong> en
-      cualquier forma es el mismo proveedor.</span>
+    <span class="ayuda"><strong>Escribir la pieza acá es pedirla.</strong> Baja a Bodega en el
+      momento —con su código, cantidad, proveedor y precio, sin que bodega la vuelva a
+      escribir— y no espera la aprobación de la compañía: cuando el evaluador la anota,
+      ya sabe que hay que comprarla. Sólo se le cobran al cliente las que pone el taller:
+      escribir <strong>DYP</strong> en cualquier forma es el mismo proveedor.</span>
   </section>`;
 
   /* ── Bloque 3 · Externos (T.O.T.) ──────────────────────────────────── */
@@ -533,7 +552,7 @@ function grillaPresupuesto(o, pr, editable, $) {
     Object.keys(vistos).sort().map((v) => '<option value="' + esc(v) + '">').join('') +
     '</datalist>';
 
-  return datalist + cabTempario + bloqueMO + bloqueRep + bloqueExt + cierre;
+  return datalist + cabTempario + formLinea + bloqueMO + bloqueRep + bloqueExt + cierre;
 }
 
 function vPresupuestoDetalle(o, pr) {
@@ -558,13 +577,13 @@ function vPresupuestoDetalle(o, pr) {
     ${editable ? '<button class="btn" data-presu-estado="enviado">Enviar a la compañía</button>' : ''}
     ${pr.estado === 'enviado' ? '<button class="btn" data-presu-estado="aprobado">Marcar aprobado</button>' +
       '<button class="btn secundario" data-presu-estado="rechazado">Marcar rechazado</button>' : ''}
-    ${/* 🔶 PEDIR REPUESTOS ANTES DE LA APROBACIÓN (F-1 de la auditoría). Al
-         aprobar se piden solos; este botón es para el caso que describió el
-         cliente: bodega encarga las piezas mientras el auto está afuera
-         esperando, sin haber vuelto la respuesta de la compañía. No está
-         deshabilitado nunca — se aprieta y la regla explica si no había nada
-         que pedir o si ya estaban pedidos. */''}
-    <button class="btn secundario" id="presu-pedir">Pedir repuestos a bodega</button>
+    ${/* SIN botón «Pedir repuestos a bodega» (16-08-2026, Marco): «eso no
+         debería estar ya que se pide por los repuestos y eso es
+         automáticamente». Y tiene razón: las piezas salen del bloque
+         Repuestos y bajan solas cuando la OR se aprueba. Un botón que hace lo
+         mismo que ya pasa solo enseña a desconfiar de lo automático — el
+         usuario lo aprieta «por si acaso» y nunca sabe cuál de los dos
+         caminos movió la pieza. */''}
     <button class="btn secundario" id="presu-version">Crear versión nueva</button>
     ${Modelo.puede('presupuesto.montos')
       ? '<button class="btn secundario" id="presu-pdf" data-pr="' + esc(pr.id) + '">' +
@@ -737,19 +756,6 @@ function pPresupuesto() {
           ' a bodega.' : ''));
   }));
 
-  const pedir = document.getElementById('presu-pedir');
-  if (pedir) pedir.addEventListener('click', () => {
-    const o = Modelo.otPorId(p.otId);
-    const actual = p.presupuestoId ? o.presupuestos.find((x) => x.id === p.presupuestoId)
-                                   : o.presupuestos[o.presupuestos.length - 1];
-    if (!actual) return avisar({ ok: false, motivo: 'Esta orden todavía no tiene presupuesto.' });
-    ejecutar(() => Modelo.generar_repuestos_desde_presupuesto(actual.id),
-      (r) => 'Se pidieron ' + (r.creados || 0) +
-        ((r.creados || 0) === 1 ? ' repuesto' : ' repuestos') + ' a bodega.');
-  });
-
-  /* La pregunta del cliente: ¿este trabajo requiere repuestos? Si no, la
-     columna no se dibuja. */
   /* Declarar la pérdida total. Pide el fundamento por escrito y avisa que
      cierra la orden: es un estado terminal y no se vuelve atrás — regla del
      propio cliente, "esa vez se cerró como rechazado y tengo que reingresar el
@@ -818,7 +824,15 @@ function pPresupuesto() {
        la propia fila, que es como se arma un presupuesto de verdad: primero
        se anota todo lo que hay que hacer mirando el auto, y después se le
        ponen los tiempos. */
-    const op = v('l-op') || 'reparar';
+    /* El desplegable parte en «Seleccione», igual que el original. Sin
+       operación no se sabe a qué bloque va la línea, así que se avisa en vez
+       de elegir una por el usuario: adivinar «Reparar» le mete horas a una
+       pieza que quería cambiar, y eso se descubre cuando el presupuesto ya
+       salió. El botón NO se deshabilita — se aprieta y la regla explica. */
+    const op = v('l-op');
+    if (!op) return avisar({ ok: false, motivo:
+      'Falta la operación. Cambio compra la pieza, Reparar la arregla y Externo la manda a un tercero: ' +
+      'el sistema no puede elegir por ti cuál de las tres es.' });
     p.linea.proceso = op;
     ejecutar(() => Modelo.agregar_linea_presupuesto(pr.id, {
       proceso: op, descripcion: v('l-desc')

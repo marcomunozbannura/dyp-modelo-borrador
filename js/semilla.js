@@ -1054,7 +1054,13 @@ const Semilla = (function () {
          Los dos hitos van como FECHAS, no como booleanos: es la corrección que
          permite medir cuánto demora un repuesto — con los booleanos del
          original eso no se puede calcular. §C.14. */
-      if (!sinPresupuesto && estadoPre === 'aprobado') {
+      /* La pieza nace CUANDO SE ESCRIBE en el presupuesto, no cuando la OR
+         se aprueba: es la regla que fijo Marco el 16-08-2026. Por eso acá
+         ya no se pregunta por el estado — un borrador con una línea de
+         Cambio tiene su repuesto pedido igual, y bodega lo ve. Las que
+         están fuera de las 41 marcadas llegan todas, así que la cifra de
+         control «con repuesto pendiente» no se mueve. */
+      if (!sinPresupuesto) {
         lineasCambio.forEach((linea, r) => {
           // La primera de una orden marcada queda pendiente a propósito: son
           // las 41 de la tarjeta "con repuesto pendiente".

@@ -1040,7 +1040,16 @@ const Pruebas = (function () {
 
         const todos = Modelo.avisosDe(o.id);
         const alEnviar = todos.filter((a) => /envia/i.test(a.asunto || ''));
-        const conMonto = alEnviar.filter((a) => !/\$0\b/.test(a.detalle || '') && /\$/.test(a.detalle || ''));
+        /* Se mira el monto DEL TRABAJO, que es el que va antes de la palabra
+           «neto». Antes se buscaba «$0» en cualquier parte del texto y desde
+           que el aviso nombra el deducible —«…deducible $40.000 · quedan $0»—
+           un aviso correcto se leía como uno vacío. La prueba vigilaba lo
+           que importa; el que estaba mal escrito era su filtro. */
+        const montoDelTrabajo = (a) => (/(\$[\d.]+) neto/.exec(a.detalle || '') || [])[1] || '';
+        const conMonto = alEnviar.filter((a) => {
+          const m = montoDelTrabajo(a);
+          return m && m !== '$0';
+        });
 
         push({
           nombre: 'El aviso a la compañía sale al enviar, no al crear la OR vacía',
@@ -1120,6 +1129,62 @@ const Pruebas = (function () {
           paso: bien,
           detalle: 'DM ' + g.horas_dm + ' · Rep ' + g.horas_rep + ' · Pint ' + g.horas_pint +
             ' · precio ' + g.precio_unitario + (bien ? '' : '  ← algo se fue a cero')
+        });
+      })();
+
+      /* 🔴 ESCRIBIR EL REPUESTO EN EL PRESUPUESTO **ES** PEDIRLO.
+         Regla que fijó Marco el 16-08-2026: «se pide cuando uno pone
+         repuestos en el presupuesto». Antes la pieza nacía al aprobar la OR y
+         había un botón para pedirlas antes; los dos se eliminaron. Lo que se
+         vigila acá es la cadena entera, porque cada eslabón se puede romper
+         solo: que Reparar NO cree pieza, que Cambio SÍ y sin esperar
+         aprobación, que editar la línea arrastre a la pieza de bodega, y que
+         aprobar no la duplique. */
+      (function () {
+        const o = abiertaCualquiera();
+        const enBodega = () => Modelo.base().repuesto.filter((r) => r.ot_id === o.id).length;
+        const partida = enBodega();
+
+        const cr = Modelo.crear_presupuesto(o.id, { lineas: [] });
+        const alCrear = enBodega();
+        Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
+          { proceso: 'reparar', descripcion: 'Puerta trasera izquierda' });
+        const trasReparar = enBodega();
+        Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
+          { proceso: 'cambio', descripcion: 'Foco delantero derecho' });
+        const trasCambio = enBodega();
+
+        /* El estado se copia AHORA, no se lee al final: `Modelo.base()`
+           devuelve la fila viva, así que después de aprobar decía «aprobado» y
+           la prueba se caía sola diciendo que la pieza no se pidió en
+           borrador — cuando sí lo hizo. */
+        const estadoAlPedir = Modelo.base().presupuesto
+          .find((x) => x.id === cr.presupuesto_id).estado;
+        const lc = Modelo.base().presupuesto_linea
+          .filter((l) => l.presupuesto_id === cr.presupuesto_id && l.proceso === 'cambio')[0];
+
+        Modelo.actualizar_linea_presupuesto(lc.id, { proveedor: 'dyp', precio_unitario: '145.000' });
+        const rep = Modelo.base().repuesto.find((r) => r.presupuesto_linea_id === lc.id) || {};
+
+        Modelo.cambiar_estado_presupuesto(cr.presupuesto_id, 'enviado');
+        Modelo.cambiar_estado_presupuesto(cr.presupuesto_id, 'aprobado');
+        const trasAprobar = enBodega();
+
+        const bien = alCrear === partida && trasReparar === partida &&
+          trasCambio === partida + 1 && estadoAlPedir === 'borrador' &&
+          rep.proveedor === 'DYP' && rep.precio_unitario === 145000 &&
+          trasAprobar === trasCambio;
+
+        push({
+          nombre: 'Poner un repuesto en el presupuesto lo pide a bodega, sin esperar la aprobación',
+          intento: 'Crear una OR, agregarle una línea Reparar y una Cambio, editarla y aprobar',
+          esperado: 'Reparar no pide nada · Cambio pide en el acto y en borrador · ' +
+                    'editar arrastra la pieza · aprobar no duplica',
+          paso: bien,
+          detalle: 'bodega ' + partida + ' → tras Reparar ' + trasReparar + ' → tras Cambio ' +
+            trasCambio + ' (con la OR en «' + estadoAlPedir + '») → tras aprobar ' + trasAprobar +
+            ' · la pieza quedó con proveedor ' + (rep.proveedor || '—') + ' y precio ' +
+            (rep.precio_unitario || 0)
         });
       })();
 

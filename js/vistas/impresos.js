@@ -399,78 +399,120 @@ function impresoRecepcion(o) {
   </div>` + pieImpreso();
 }
 
-/* ── 2 · Presupuesto / OR ──────────────────────────────────────────────── */
+/* ── 2 · Presupuesto (la OR) ───────────────────────────────────────────
+   Rehecho el 16-08-2026 sobre el documento real que trajo Marco —la OR
+   23505-18401-001— y con su encargo textual: «la misma misma lógica pero con
+   el UPGRADE en un mejor formato y un mejor PDF como estilo tabla».
 
-/* El presupuesto es el documento que sale del taller y llega a la aseguradora
-   o al cliente, así que es el único que se ve por fuera. El del sistema actual
-   es un PDF antiguo, no editable, y fue el dolor #2 de la reunión.
+   La lógica del original, que se respeta al pie:
 
-   Este se rehizo entero (decisión del 13-08-2026) con un criterio: que se lea
-   como una planilla. Una fila por trabajo, y el monto CAE EN LA COLUMNA de su
-   tipo —repuesto, mano de obra o externo—, con los totales de cada columna al
-   pie. Se lee en las dos direcciones: a lo largo, qué se le hace a cada pieza;
-   a lo alto, cuánto pesa cada tipo de trabajo.
+   · Tres secciones por COLUMNA DE TIEMPO, no por operación: Desmontar y
+     montar · Reparar · Pintar. Una misma pieza aparece en dos si se reparó y
+     se pintó — es un solo trabajo con dos tiempos.
+   · Cada renglón vale `horas × tempario`, y cada sección lleva su subtotal.
+   · Repuestos con proveedor, y Trabajos Externos (T.O.T.) aparte.
+   · El cierre: Mano de Obra + Repuestos + T.O.T. = Subtotal neto, menos el
+     deducible, más IVA.
 
-   Todo lo que se compara va alineado a la derecha y con cifras de ancho fijo,
-   que es lo que permite leer una columna de números de un vistazo. Y solo hay
-   siete columnas: cada una que se agrega es una que hay que explicar. */
+   Lo que se agrega, y es la diferencia:
+
+   🔶 LAS HORAS SE MUESTRAN. El documento original imprime sólo el peso y
+      esconde el tiempo, así que la compañía discute el monto sin ver de dónde
+      sale y el taller no puede defenderlo. Acá van las horas, la tarifa y el
+      resultado, en la misma línea. Es más difícil de regatear un número que
+      se explica solo.
+   🔶 EL REPUESTO QUE NO SE COBRA SE VE. En el original la pieza que pone la
+      compañía sale con «$0» y el documento pierde cuánto vale. Acá dice
+      quién la pone y el precio de referencia queda registrado.
+   🔶 SALE COMPLETO. El PDF anterior de este prototipo imprimía una sola
+      tabla; éste imprime las cinco secciones y el pie del documento. */
 
 function impresoPresupuesto(o, p) {
-  if (!p) return '<div style="padding:20mm;text-align:center">Esta orden no tiene presupuestos.</div>';
-
-  const BLOQUES = [
-    { rot: 'Repuestos',    proc: 'cambio',  pie: 'Piezas que se reemplazan' },
-    { rot: 'Mano de obra', proc: 'reparar', pie: 'Trabajo del taller' },
-    { rot: 'Externos',     proc: 'externo', pie: 'Trabajos a terceros' }
-  ];
-  const iva = Reglas.parametro(Modelo.base(), 'iva', 19);
+  const db = Modelo.base();
+  const ivaPct = Reglas.parametro(db, 'iva', 19);
   const estado = ESTADO_PRESUPUESTO[p.estado] ? ESTADO_PRESUPUESTO[p.estado].txt : p.estado;
+  const t = p.totales || Reglas.totalesPresupuesto(p.lineas, p.tempario, o.deducible, ivaPct);
+  const lineas = p.lineas || [];
+  const hs = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
 
-  /* Una fila por trabajo, y el monto cae en LA COLUMNA que le corresponde:
-     repuesto, mano de obra o externo. Así se lee de dos maneras a la vez —a lo
-     largo, qué se le hace a cada pieza; a lo alto, cuánto pesa cada tipo de
-     trabajo en el total— y el pie de la tabla suma cada columna.
-
-     Es el formato de planilla que se usa en el rubro, y reemplaza al de tres
-     listas apiladas: ahí, para saber cuánto era mano de obra, había que ir a
-     buscar el subtotal de un bloque en medio del documento. */
-  const COLS = [
-    { proc: 'cambio',  rot: 'Repuestos' },
-    { proc: 'reparar', rot: 'Mano de obra' },
-    { proc: 'externo', rot: 'Externos' }
+  /* Una sección por columna de tiempo. Sólo entran las líneas con horas en
+     esa columna: un renglón en $0 no dice nada y alarga el documento. */
+  const SECCIONES = [
+    { campo: 'horas_dm',   rot: 'Desmontar y montar' },
+    { campo: 'horas_rep',  rot: 'Reparar' },
+    { campo: 'horas_pint', rot: 'Pintar' }
   ];
 
-  // Se ordenan por tipo para que las columnas se lean en diagonal, sin bandas.
-  const orden = { cambio: 0, reparar: 1, externo: 2 };
-  const lineas = p.lineas.slice().sort((a, b) => (orden[a.proceso] || 0) - (orden[b.proceso] || 0));
+  const seccionHoras = (s) => {
+    const suyas = lineas.filter((l) => Number(l[s.campo]) > 0);
+    if (!suyas.length) return '';
+    const horas = suyas.reduce((a, l) => a + Number(l[s.campo]), 0);
+    return `
+    <h2>${esc(s.rot)}</h2>
+    <table><thead><tr>
+      <th style="width:10mm">N°</th><th>Descripción</th>
+      <th class="n" style="width:20mm">Horas</th>
+      <th class="n" style="width:24mm">Valor hora</th>
+      <th class="n" style="width:26mm">Precio</th>
+    </tr></thead><tbody>
+      ${suyas.map((l, i) => '<tr><td class="n">' + (i + 1) + '</td>' +
+        '<td>' + esc(l.descripcion) + '</td>' +
+        '<td class="n">' + hs(l[s.campo]) + '</td>' +
+        '<td class="n">' + fMonto(p.tempario) + '</td>' +
+        '<td class="n">' + fMonto(Math.round(Number(l[s.campo]) * p.tempario)) + '</td></tr>').join('')}
+    </tbody><tfoot><tr>
+      <td colspan="2" style="text-align:right"><strong>Subtotal</strong></td>
+      <td class="n"><strong>${hs(horas)}</strong></td><td></td>
+      <td class="n"><strong>${fMonto(Math.round(horas * p.tempario))}</strong></td>
+    </tr></tfoot></table>`;
+  };
 
-  const acum = { cambio: 0, reparar: 0, externo: 0 };
-  const filas = lineas.map((l, i) => {
-    const monto = l.cantidad * l.precio_unitario;
-    acum[l.proceso] = (acum[l.proceso] || 0) + monto;
-    return '<tr>' +
-      '<td class="c">' + (i + 1) + '</td>' +
-      '<td>' + esc(l.descripcion) + '</td>' +
-      '<td class="n">' + l.cantidad + '</td>' +
-      COLS.map((c) => '<td class="n' + (l.proceso === c.proc ? ' puesto' : '') + '">' +
-        (l.proceso === c.proc ? fMonto(monto) : '') + '</td>').join('') +
-      '<td class="n destaca">' + fMonto(monto) + '</td></tr>';
-  }).join('');
+  /* Repuestos. El que pone la compañía se imprime igual —con su precio de
+     referencia— pero rotulado, y no suma. */
+  const reps = lineas.filter((l) => l.proceso === 'cambio');
+  const seccionRepuestos = !reps.length ? '' : `
+    <h2>Repuestos</h2>
+    <table><thead><tr>
+      <th style="width:22mm">Código</th><th class="n" style="width:14mm">Cant.</th>
+      <th>Descripción</th><th style="width:28mm">Proveedor</th>
+      <th class="n" style="width:24mm">Precio unit.</th>
+      <th class="n" style="width:26mm">Se cobra</th>
+    </tr></thead><tbody>
+      ${reps.map((l) => {
+        const cobra = Reglas.esProveedorTaller(l.proveedor);
+        return '<tr><td>' + esc(l.codigo || '—') + '</td>' +
+          '<td class="n">' + (l.cantidad || 1) + '</td>' +
+          '<td>' + esc(l.descripcion) + '</td>' +
+          '<td>' + esc(l.proveedor || '—') + '</td>' +
+          '<td class="n">' + fMonto(l.precio_unitario || 0) + '</td>' +
+          '<td class="n">' + (cobra ? fMonto(Reglas.cobroRepuesto(l))
+            : '<span style="color:#666">lo pone ' + esc(l.proveedor || 'un tercero') + '</span>') +
+          '</td></tr>';
+      }).join('')}
+    </tbody><tfoot><tr>
+      <td colspan="5" style="text-align:right"><strong>Subtotal</strong></td>
+      <td class="n"><strong>${fMonto(t.repuestos)}</strong></td>
+    </tr></tfoot></table>`;
 
-  /* Sin columna de HORAS (decisión del 13-08-2026). El taller no cobra por
-     hora y el valor hora se sacó del sistema, así que mostrarlas sueltas
-     invita a dividir el monto por las horas y sacar una tarifa que no existe.
-     Las horas siguen cargándose en la pantalla del presupuesto —sirven para
-     estimar el trabajo—; lo que no van es al documento que sale del taller. */
-  const pie = '<tr class="cierre-t">' +
-    '<td colspan="2" class="rot">Totales por tipo de trabajo</td>' +
-    '<td class="n">' + lineas.reduce((s, l) => s + l.cantidad, 0) + '</td>' +
-    COLS.map((c) => '<td class="n">' + fMonto(acum[c.proc] || 0) + '</td>').join('') +
-    '<td class="n destaca">' + fMonto(p.neto) + '</td></tr>';
+  const exts = lineas.filter((l) => l.proceso === 'externo');
+  const seccionExternos = !exts.length ? '' : `
+    <h2>Trabajos externos · T.O.T.</h2>
+    <table><thead><tr>
+      <th style="width:22mm">Código</th><th>Descripción</th>
+      <th style="width:34mm">Proveedor</th><th class="n" style="width:26mm">Precio</th>
+    </tr></thead><tbody>
+      ${exts.map((l) => '<tr><td>' + esc(l.codigo || '—') + '</td>' +
+        '<td>' + esc(l.descripcion) + '</td>' +
+        '<td>' + esc(l.proveedor || '—') + '</td>' +
+        '<td class="n">' + fMonto(l.precio_unitario || 0) + '</td></tr>').join('')}
+    </tbody><tfoot><tr>
+      <td colspan="3" style="text-align:right"><strong>Subtotal</strong></td>
+      <td class="n"><strong>${fMonto(t.tot)}</strong></td>
+    </tr></tfoot></table>`;
 
-  const resumen = COLS.filter((c) => acum[c.proc])
-    .map((c) => '<div class="lin"><span>' + esc(c.rot) + '</span><span>' +
-      fMonto(acum[c.proc]) + '</span></div>').join('');
+  const cerroTotal = (rot, val, fuerte) =>
+    '<tr' + (fuerte ? ' class="cierre-t"' : '') + '><td>' + esc(rot) + '</td>' +
+    '<td class="n"' + (fuerte ? ' style="font-weight:700"' : '') + '>' + val + '</td></tr>';
 
   return `
   <div class="cab-presu">
@@ -485,8 +527,9 @@ function impresoPresupuesto(o, p) {
         <tr><td>N° OR</td><td><strong>${esc(p.numeroOR)}</strong></td></tr>
         <tr><td>Versión</td><td>${p.version}</td></tr>
         <tr><td>Orden de trabajo</td><td>${o.numeroOT}</td></tr>
-        <tr><td>Fecha</td><td>${fFecha(HOY)}</td></tr>
+        <tr><td>Fecha</td><td>${fFechaHora(HOY)}</td></tr>
         <tr><td>Estado</td><td><strong>${esc(estado)}</strong></td></tr>
+        <tr><td>Tempario</td><td>${fMonto(p.tempario)} la hora</td></tr>
       </table>
     </div>
   </div>
@@ -515,43 +558,49 @@ function impresoPresupuesto(o, p) {
     </div>
   </div>
 
-  <table class="detalle">
-    <thead>
-      <tr class="grupos">
-        <th colspan="3" class="izq">Detalle del trabajo</th>
-        <th colspan="3">Valorización por tipo de trabajo</th>
-        <th rowspan="2" style="width:28mm">Total línea</th>
-      </tr>
-      <tr>
-        <th style="width:10mm">Ítem</th>
-        <th>Descripción</th>
-        <th style="width:14mm">Cant.</th>
-        <th style="width:27mm">Repuestos</th>
-        <th style="width:27mm">Mano de obra</th>
-        <th style="width:26mm">Externos</th>
-      </tr>
-    </thead>
-    <tbody>${filas || '<tr><td colspan="7" style="text-align:center;padding:8mm;color:#888">' +
-      'Este presupuesto todavía no tiene líneas cargadas.</td></tr>'}</tbody>
-    ${lineas.length ? '<tfoot>' + pie + '</tfoot>' : ''}
-  </table>
+  ${SECCIONES.map(seccionHoras).join('')}
+  ${seccionRepuestos}
+  ${seccionExternos}
+
+  ${!lineas.length ? '<div style="text-align:center;padding:8mm;color:#888">' +
+    'Este presupuesto todavía no tiene líneas cargadas.</div>' : ''}
 
   <div class="cierre">
     <div class="condiciones">
-      <div class="ficha-tit">Condiciones</div>
+      <div class="ficha-tit">Observaciones</div>
+      ${p.observacion
+        ? '<div style="white-space:pre-wrap">' + esc(p.observacion) + '</div>'
+        : '<div style="color:#888">Sin observaciones.</div>'}
+      <div class="ficha-tit" style="margin-top:4mm">Condiciones</div>
       <ul>
-        <li>Valores en pesos chilenos. Deducible de ${fMonto(o.deducible)} a cargo del cliente,
-            contra la entrega.</li>
-        <li>Los repuestos se piden una vez aprobado; los plazos dependen del proveedor.</li>
+        <li>Valores en pesos chilenos. La mano de obra se calcula a
+            ${fMonto(p.tempario)} la hora sobre los tiempos detallados.</li>
+        <li>Deducible de ${fMonto(o.deducible)} a cargo del cliente, contra la entrega.</li>
+        <li>Los repuestos que aporta la compañía se detallan con su valor de referencia y
+            no se cobran.</li>
         <li>Todo trabajo no descrito acá se presupuesta aparte antes de ejecutarse.</li>
         <li>Válido por 30 días corridos desde la emisión.</li>
       </ul>
     </div>
     <div class="totales">
-      ${resumen}
-      <div class="lin"><span>Neto</span><span>${fMonto(p.neto)}</span></div>
-      <div class="lin"><span>IVA ${iva}%</span><span>${fMonto(p.iva)}</span></div>
-      <div class="lin total"><span>TOTAL</span><span>${fMonto(p.total)}</span></div>
+      <table style="width:100%">
+        <tbody>
+          ${cerroTotal('Mano de Obra', fMonto(t.manoObra))}
+          ${cerroTotal('Repuestos neto', fMonto(t.repuestos))}
+          ${cerroTotal('T.O.T. neto', fMonto(t.tot))}
+          ${cerroTotal('Subtotal neto', fMonto(t.subtotalNeto), true)}
+          ${cerroTotal('Deducible neto', (t.deducible ? '&minus; ' : '') + fMonto(t.deducible))}
+          ${cerroTotal('Total neto', fMonto(t.neto), true)}
+          ${cerroTotal('IVA ' + ivaPct + '%', fMonto(t.iva))}
+          ${cerroTotal('TOTAL', fMonto(t.total), true)}
+        </tbody>
+      </table>
+      <div style="margin-top:8mm;display:flex;gap:8mm">
+        <div style="flex:1;border-top:1px solid #333;padding-top:1.5mm;text-align:center;font-size:8px">
+          Evaluador</div>
+        <div style="flex:1;border-top:1px solid #333;padding-top:1.5mm;text-align:center;font-size:8px">
+          Firma autorización</div>
+      </div>
     </div>
   </div>
 

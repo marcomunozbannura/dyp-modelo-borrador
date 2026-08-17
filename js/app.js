@@ -710,8 +710,12 @@ function ejecutarAccion(accion) {
           taller y cuánta espera aprobación de la compañía.</td></tr>
         <tr><td><strong>Selector de rol</strong> (arriba)</td><td>El operario ve las líneas del
           presupuesto pero no los valores.</td></tr>
-        <tr><td><strong>Procesos → Probar reglas</strong></td><td>16 pruebas: cada una intenta algo
-          prohibido y falla <em>por la regla</em>, con el motivo explicado.</td></tr>
+        <tr><td><strong>Presupuesto → una OR</strong></td><td>El <strong>tempario</strong> por las
+          horas de DM, Reparar y Pintar. Una pieza puede reparar <em>y</em> pintar, y el repuesto
+          que pone la compañía no se cobra. Los repuestos bajan solos a Bodega al aprobar.</td></tr>
+        <tr><td><strong>Procesos → Probar reglas</strong></td><td>Cada prueba intenta algo
+          prohibido y falla <em>por la regla</em>, con el motivo explicado. Una compara la
+          aritmética contra el PDF real de la OR 23505-18401-001.</td></tr>
       </tbody></table></div>`);
   }
 

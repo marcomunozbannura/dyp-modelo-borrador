@@ -903,11 +903,15 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
    La pantalla de carga se parece al documento que sale: cada monto en la
    columna de su tipo, y la última fila sirve para escribir. */
 .pregunta-rep { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; font-size: 12.5px; }
-table.grid.grilla-presu td.apagada { background: var(--superficie-3); }
-table.grid.grilla-presu tr.fila-carga td { padding: 3px 4px; background: var(--acento-bg); }
-table.grid.grilla-presu tr.fila-carga input { width: 100%; margin: 0; }
-table.grid.grilla-presu tfoot td { border-top: 1px solid var(--borde-fuerte); background: var(--superficie-2); padding: 5px 8px; }
-table.grid.grilla-presu tr.fila-total td { background: var(--acento-bg); font-size: 13px; }
+/* El pie de las tablas del presupuesto: los subtotales de cada bloque y de
+   cada columna de horas. Antes esto vivía atado a `.grilla-presu`, la tabla
+   única que había; ahora son tres tablas —Mano de Obra, Repuestos y
+   Externos— y el pie tiene que verse igual en las tres. */
+table.grid tfoot td { border-top: 1px solid var(--borde-fuerte);
+  background: var(--superficie-2); padding: 5px 8px; }
+/* Las horas y los pesos van pegados a la derecha en su celda, para que las
+   cifras se lean en columna. */
+table.grid td.num input[type="number"] { text-align: right; }
 
 /* ───────── Firma del cliente ─────────
    `touch-action:none` es lo que hace que se pueda firmar con el dedo: sin eso

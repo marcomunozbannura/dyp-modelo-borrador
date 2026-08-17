@@ -666,6 +666,15 @@ const Semilla = (function () {
       { clave: 'correlativo_ot', nombre: 'Próximo número de OT', valor: ULTIMA_OT + 1, tipo: 'numero',
         ayuda: 'Correlativo de cinco dígitos, sin año ni local. Al 12-08-2026 el sistema real iba por ' + ULTIMA_OT + '.' },
       { clave: 'iva', nombre: 'IVA', valor: 19, tipo: 'numero', ayuda: 'Porcentaje aplicado al neto del presupuesto.' },
+      /* 🔶 EL TEMPARIO VUELVE (16-08-2026). Se había sacado el 13-08 creyendo
+         que el taller cotizaba un precio por trabajo. El PDF de la OR
+         23505-18401-001 que trajo Marco muestra que no: cada línea lleva
+         horas en Desmontar y montar, Reparar y Pintar, y el precio de cada
+         columna es HORAS × TEMPARIO. Las cifras de ese documento cuadran al
+         peso con esa fórmula. Es el valor por omisión: cada presupuesto
+         guarda el suyo, para que subir la tarifa no cambie una OR ya firmada. */
+      { clave: 'tempario', nombre: 'Tempario (valor hora)', valor: 10000, tipo: 'numero',
+        ayuda: 'Valor de la hora de mano de obra. Multiplica las horas de Desmontar y montar, Reparar y Pintar.' },
       { clave: 'retencion_fotos_meses', nombre: 'Retención de fotografías (meses)', valor: 12, tipo: 'numero',
         ayuda: 'Hoy las fotos se borran al año POR FALTA DE DISCO, no por política. Acá es una decisión de negocio.' },
       /* Nadie en el taller sabe comprimir una foto, y no tiene por qué: lo hace
@@ -846,11 +855,15 @@ const Semilla = (function () {
       // día y el orden importa cuando hay un reclamo.
       const fecha_entrega_real = viva ? null : diasHora(entre(1, diasIngreso - 1));
 
+      /* El deducible de la póliza. Se calcula ANTES de la orden porque el
+         presupuesto lo resta del neto, y así los dos leen el mismo número. */
+      const deducibleOT = comp ? entre(0, 8) * 25000 : 0;
+
       orden_trabajo.push({
         id: ot_id, numero_ot, recepcion_id: rec_id, vehiculo_id: veh_id, cliente_id: cli_id,
         tipo_ingreso_id: tipo, compania_id: comp,
         siniestro: comp ? 'SIN-' + numero_ot : null,
-        deducible: comp ? entre(0, 8) * 25000 : 0,
+        deducible: deducibleOT,
         liquidador: comp ? NOM[idx % NOM.length] + ' ' + APE[idx % APE.length] : null,
         prioridad_id: rnd() > 0.88 ? 'pri-2' : 'pri-1',
         /* El compromiso lleva hora igual que el ingreso: la columna Fecha de
@@ -954,26 +967,36 @@ const Semilla = (function () {
       const id_reparacion = 18000 + (numero_ot % 900);
       const pid = 'pr-' + (++seqPre);
       const nL = sinPresupuesto ? 0 : entre(2, 6);
-      let neto = 0;
       const lineasCambio = [];
       for (let l = 0; l < nL; l++) {
         const proceso = elegir(['cambio', 'reparar', 'externo']);
-        const horas = proceso === 'reparar' ? entre(1, 12) * 0.5 : null;
-        const cant = 1;
-        // La mano de obra se cotiza por trabajo, no por hora. Las horas quedan
-        // como estimación y no multiplican nada — ver la nota del tempario.
-        const venta = proceso === 'reparar' ? entre(8, 60) * 5000
-                                            : entre(12, 380) * 1000;
+        /* Las horas, en centésimas, como vienen en el documento real
+           (1,78 · 4,16 · 6,24). Cambiar es desmontar y montar; reparar lleva
+           su tiempo de reparación y casi siempre también de pintura —una
+           puerta que se repara hay que pintarla—; externo no lleva horas
+           porque el trabajo lo hace un tercero y se cobra su factura. */
+        const cent = (a, b) => entre(a, b) / 100;
         const linea = {
           id: pid + '-l' + (l + 1), presupuesto_id: pid, orden: l + 1, proceso,
           descripcion: elegir(['Paragolpes delantero', 'Tapabarro izquierdo', 'Foco delantero derecho',
             'Puerta trasera izquierda', 'Capó', 'Espejo lateral derecho', 'Parabrisas',
             'Maletero', 'Rejilla frontal', 'Moldura lateral']),
-          horas, cantidad: cant, precio_unitario: venta
+          horas_dm:   proceso === 'cambio'  ? cent(20, 200) : 0,
+          horas_rep:  proceso === 'reparar' ? cent(100, 700) : 0,
+          horas_pint: proceso === 'reparar' && rnd() > 0.25 ? cent(100, 950) : 0,
+          codigo: '', cantidad: 1,
+          /* El proveedor decide si se cobra. Dos de cada tres piezas las pone
+             la compañía —y entonces el taller no las cobra—; el resto las
+             compra el taller. Escrito ya normalizado: en el original la misma
+             DYP aparece de cuatro formas distintas. */
+          proveedor: proceso === 'cambio'
+            ? (rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular'))
+            : (proceso === 'externo' ? elegir(['Vidriería Central', 'Tapicería Norte', 'Alineación Sur']) : ''),
+          precio_unitario: proceso === 'cambio' ? entre(12, 380) * 1000
+            : (proceso === 'externo' ? entre(8, 60) * 1000 : 0)
         };
         presupuesto_linea.push(linea);
         if (proceso === 'cambio') lineasCambio.push(linea);
-        neto += venta * cant;
       }
 
       /* Estado del presupuesto, con sus fechas. Se sortea siempre —aunque
@@ -989,7 +1012,10 @@ const Semilla = (function () {
       if (conRepPend && !lineasCambio.length && nL) {
         const primera = presupuesto_linea[presupuesto_linea.length - nL];
         primera.proceso = 'cambio';
-        primera.horas = null;
+        primera.horas_rep = 0; primera.horas_pint = 0;
+        primera.horas_dm = entre(20, 200) / 100;
+        primera.proveedor = rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular');
+        primera.precio_unitario = entre(12, 380) * 1000;
         lineasCambio.push(primera);
       }
 
@@ -997,13 +1023,20 @@ const Semilla = (function () {
       const diasEnvio = Math.max(0, diasIngreso - entre(1, 3));
       const diasResp  = Math.max(0, diasEnvio - entre(1, 5));
 
-      const ivaPct = 19;
+      /* Los totales con la MISMA fórmula del motor: horas × tempario en las
+         tres columnas, más los repuestos que puso el taller, más los
+         externos, menos el deducible. Calcularlos aparte acá era la puerta
+         para que la demostración mostrara un número y la pantalla otro. */
+      const tempario = 10000;
+      const tot = Reglas.totalesPresupuesto(
+        presupuesto_linea.filter((l) => l.presupuesto_id === pid),
+        tempario, deducibleOT, 19);
       if (sinPresupuesto) { seqPre--; } else
       presupuesto.push({
         id: pid, ot_id, id_reparacion, correlativo: 1,
         numero_or: Reglas.formatoOR(numero_ot, id_reparacion),
-        version: 1, estado: estadoPre,
-        neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
+        version: 1, estado: estadoPre, tempario, observacion: '',
+        neto: tot.neto, iva: tot.iva, total: tot.total,
         // Un borrador no se ha mandado y un enviado no tiene respuesta: las
         // fechas siguen al estado en vez de quedar las tres en nulo.
         enviado_at: estadoPre === 'borrador' ? null : dias(diasEnvio),
@@ -1033,7 +1066,15 @@ const Semilla = (function () {
             id: 'rep-' + (++seqRep), ot_id, presupuesto_linea_id: linea.id,
             // La descripción es la de la línea: es la MISMA pieza, no otra.
             descripcion: linea.descripcion,
-            cantidad: linea.cantidad, responsable_pago_id: rnd() > 0.78 ? 'rp-2' : 'rp-1',
+            /* El código, el proveedor y el precio BAJAN de la línea: es lo
+               que el evaluador escribió en el bloque Repuestos y lo que
+               bodega tiene que ver sin volver a teclearlo. Y quién paga sale
+               del proveedor, no de un sorteo: si la pieza la puso la
+               compañía, el taller no la desembolsó. */
+            cantidad: linea.cantidad,
+            codigo_interno: '', codigo_externo: '',
+            proveedor: linea.proveedor, precio_unitario: linea.precio_unitario,
+            responsable_pago_id: Reglas.esProveedorTaller(linea.proveedor) ? 'rp-2' : 'rp-1',
             fecha_solicitud: dias(dPedido),
             fecha_bodega: llego ? dias(dBodega) : null,
             fecha_entrega_area: llego && rnd() > 0.4 ? dias(dArea) : null,

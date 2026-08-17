@@ -542,6 +542,82 @@ const Reglas = (function () {
     return db.operacion.some((o) => o.llave === llave);
   }
 
+  /* ── Presupuesto · el proveedor y la aritmética ────────────────────────
+     Reconstruido desde la OR 23505-18401-001 del sistema real (PDF que trajo
+     Marco el 16-08-2026). Las cifras de ese documento cuadran al peso con
+     esta fórmula, y por eso vive acá y no en la vista: es la regla, no la
+     pantalla.
+
+     UNA línea de mano de obra puede cobrar en las TRES columnas —una puerta
+     se repara Y se pinta— y cada columna es horas × tempario. El impreso
+     agrupa por COLUMNA (Desmontar y montar · Reparar · Pintar), no por
+     operación, que es lo que hacía ver el original como tres tablas
+     distintas cuando en realidad es una sola con tres tiempos. */
+
+  /* El proveedor del repuesto decide si se cobra. En el sistema actual es
+     texto libre y el mismo taller aparece escrito «DYP», «Dyp», «dyp» y
+     «DyP» —cuatro proveedores distintos para el buscador y para cualquier
+     suma—. Acá se normaliza: si dice D&P en cualquier forma, es el taller.
+     Textual de Marco: «que debiese ser DYP, Dyp, dyp DyP y no mas». */
+  const PROVEEDOR_TALLER = 'DYP';
+  function normalizarProveedor(txt) {
+    const t = String(txt == null ? '' : txt).trim();
+    if (!t) return '';
+    // d y p · d&p · dyp · d-p, con o sin espacios y en cualquier caja.
+    if (/^d\s*[y&\-]?\s*p$/i.test(t)) return PROVEEDOR_TALLER;
+    return t;
+  }
+  const esProveedorTaller = (txt) => normalizarProveedor(txt) === PROVEEDOR_TALLER;
+
+  /* Lo compró el taller → se le cobra al cliente. Lo puso la compañía → el
+     taller no desembolsó nada y no lo cobra; la pieza igual queda registrada
+     con su precio de referencia, que es lo que el original perdía al
+     escribir $0 en el papel. */
+  function cobroRepuesto(linea) {
+    const bruto = (Number(linea.cantidad) || 0) * (Number(linea.precio_unitario) || 0);
+    return esProveedorTaller(linea.proveedor) ? bruto : 0;
+  }
+
+  const horasDe = (l) => ({
+    dm:   Number(l.horas_dm)   || 0,
+    rep:  Number(l.horas_rep)  || 0,
+    pint: Number(l.horas_pint) || 0
+  });
+
+  /* Los totales del presupuesto, en el mismo orden y con los mismos nombres
+     del documento que firma la compañía. `deducible` viene de la ORDEN, no
+     del presupuesto: es lo que la póliza descuenta, y se resta del neto
+     antes del IVA. */
+  function totalesPresupuesto(lineas, tempario, deducible, ivaPct) {
+    const ls = lineas || [];
+    const tarifa = Number(tempario) || 0;
+    const h = { dm: 0, rep: 0, pint: 0 };
+    ls.forEach((l) => {
+      const x = horasDe(l);
+      h.dm += x.dm; h.rep += x.rep; h.pint += x.pint;
+    });
+    const dm = Math.round(h.dm * tarifa);
+    const reparar = Math.round(h.rep * tarifa);
+    const pintar = Math.round(h.pint * tarifa);
+    const manoObra = dm + reparar + pintar;
+
+    const repuestos = ls.filter((l) => l.proceso === 'cambio')
+      .reduce((s, l) => s + cobroRepuesto(l), 0);
+    const tot = ls.filter((l) => l.proceso === 'externo')
+      .reduce((s, l) => s + (Number(l.precio_unitario) || 0), 0);
+
+    const subtotalNeto = manoObra + repuestos + tot;
+    const ded = Math.min(Number(deducible) || 0, subtotalNeto);
+    const neto = subtotalNeto - ded;
+    const iva = Math.round(neto * (Number(ivaPct) || 0) / 100);
+    return {
+      horas: h, tempario: tarifa,
+      dm, reparar, pintar, manoObra,
+      repuestos, tot, subtotalNeto,
+      deducible: ded, neto, iva, total: neto + iva
+    };
+  }
+
   return {
     // parámetros
     parametro, metaDias, kpiReparacion,
@@ -562,6 +638,9 @@ const Reglas = (function () {
     puedeAbrirDetencion, puedeCerrarDetencion,
     // OR
     formatoOR, siguienteCorrelativoOR, numeroORDisponible,
+    // presupuesto
+    PROVEEDOR_TALLER, normalizarProveedor, esProveedorTaller, cobroRepuesto,
+    horasDe, totalesPresupuesto,
     // catálogos
     USOS, usosDeFila,
     puedeGuardarCatalogo, puedeEliminarCatalogo, puedeDarDeBajaCatalogo,

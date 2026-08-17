@@ -6,13 +6,16 @@
    `Externos` · `Observación`) y los tres procesos (`Cambio` · `Reparar` ·
    `Externo`).
 
-   🔶 SIN TEMPARIO (decisión del 13-08-2026). Estaba como selector en el
-      formulario y proponía la venta multiplicando las horas por una tarifa de
-      $10.000. Se saca por lo mismo que se sacó la columna de horas del
-      documento impreso: el taller no cobra por hora, cotiza un precio por
-      trabajo, y tener la tarifa a la vista invita a que la compañía divida el
-      monto por las horas y discuta un valor hora que no existe. La venta
-      ahora se escribe.
+   🔶 EL TEMPARIO VUELVE (16-08-2026). Se había sacado el 13-08 creyendo que
+      el taller cotizaba un precio por trabajo. El PDF de la OR
+      23505-18401-001 demuestra que no: cada línea lleva horas en DM, Reparar
+      y Pintar, y el precio de cada columna es HORAS × TEMPARIO. Las once
+      cifras de ese documento cuadran al peso con la fórmula que hay en
+      `Reglas.totalesPresupuesto`, y hay una prueba que las compara para que
+      si alguien la toca se caiga antes de una reunión.
+
+      Textual de Marco: «Ya entendí que el tempario después se multiplica por
+      las horas que colocan y te va dando el valor a cobrar de la operación».
 
    Lo que se corrige:
 
@@ -32,15 +35,17 @@
       presupuestado en órdenes que todavía no se entregan.
    ──────────────────────────────────────────────────────────────────────── */
 
+/* Las tres operaciones del desplegable «OP» del sistema actual. El orden es
+   el de la pantalla real. */
 const PROCESOS = [
-  { codigo: 'cambio',  nombre: 'Cambio',  bloque: 'Repuestos',    ayuda: 'La pieza se reemplaza. Genera pedido a bodega' },
-  { codigo: 'reparar', nombre: 'Reparar', bloque: 'Mano de Obra', ayuda: 'La pieza se repara. Se cotiza un precio por el trabajo' },
-  { codigo: 'externo', nombre: 'Externo', bloque: 'Externos',     ayuda: 'Trabajo a terceros' }
+  { codigo: 'cambio',  nombre: 'Cambio',  ayuda: 'La pieza se reemplaza. Crea su fila en Repuestos y baja a bodega al aprobar' },
+  { codigo: 'reparar', nombre: 'Reparar', ayuda: 'La pieza se repara. Se le ponen horas de reparación y de pintura' },
+  { codigo: 'externo', nombre: 'Externo', ayuda: 'Trabajo a terceros. Se cobra su precio, sin horas' }
 ];
 
 function presuEstado() {
   ui.presupuesto = ui.presupuesto || { otId: null, presupuestoId: null, busqueda: '',
-    linea: { proceso: 'reparar', descripcion: '', cantidad: 1, horas: '', precio_unitario: '' } };
+    linea: { proceso: 'reparar', descripcion: '' } };
   return ui.presupuesto;
 }
 
@@ -239,86 +244,268 @@ function vPresupuestoOT(o) {
    es no, la columna no se dibuja y hay una cosa menos que mirar. Es la mitad
    de la simplificación que pedía: no sacar funciones, sacar de la vista lo que
    este trabajo no usa. */
-function requiereRepuestos(pr) {
+/* ── La grilla del presupuesto ─────────────────────────────────────────
+   Reconstruida el 16-08-2026 desde el documento real (OR 23505-18401-001) y
+   las tres pantallas del sistema actual que trajo Marco. Son los mismos tres
+   bloques del original —Mano de Obra · Repuestos · Externos— pero con la
+   aritmética a la vista, que es lo que allá no está.
+
+   Cómo se arma, y por qué así:
+
+   · Se elige el TEMPARIO una vez, arriba. Es el valor de la hora y multiplica
+     las tres columnas de tiempo. Queda guardado EN el presupuesto: si mañana
+     sube la tarifa, una OR ya firmada no puede cambiar de monto sola.
+
+   · Se escribe DESCRIPCIÓN + OP y se agrega. La operación es Cambio, Reparar
+     o Externo, igual que el desplegable «OP» del original.
+
+   · Cada línea lleva las TRES columnas de horas habilitadas —DM, Reparar y
+     Pintar—, textual de Marco: «igual deben quedar las tres columnas
+     habilitadas porque pueden reparar y pintar y se le asigna hora». Una
+     puerta que se repara hay que pintarla, y el original obligaba a decidir
+     una sola.
+
+   · Cada columna cobra `horas × tempario`, y el valor se ve EN LA LÍNEA. En
+     el original se escriben horas y la plata recién aparece en el PDF: el
+     evaluador cotiza a ciegas y descubre el monto cuando ya lo mandó.
+
+   · Una línea de operación **Cambio** crea además su fila en Repuestos, con la
+     descripción heredada. Ahí van el código, la cantidad, el proveedor y el
+     precio — y ES LO QUE BAJA A BODEGA cuando la OR se aprueba.
+
+   · El PROVEEDOR decide si el repuesto se cobra: si la pieza la puso el
+     taller, se cobra; si la puso la compañía, no la desembolsó nadie acá. Y
+     «DYP», «Dyp», «dyp» y «DyP» son EL MISMO proveedor — en el original son
+     cuatro, y por eso ninguna suma por proveedor sirve. */
+
+function fHoras(n) {
+  const v = Number(n) || 0;
+  return v ? v.toFixed(2).replace('.', ',') : '';
+}
+
+/* Las tres columnas de tiempo del documento. El impreso agrupa por ESTAS, no
+   por la operación: una misma línea sale en Reparar y en Pintar. */
+const COL_HORAS = [
+  { campo: 'horas_dm',   rot: 'DM (horas)',   bloque: 'Desmontar y montar',
+    ayuda: 'Horas de desmontar y montar la pieza' },
+  { campo: 'horas_rep',  rot: 'Rep (horas)',  bloque: 'Reparar',
+    ayuda: 'Horas de reparación de la pieza' },
+  { campo: 'horas_pint', rot: 'Pint (horas)', bloque: 'Pintar',
+    ayuda: 'Horas de pintura' }
+];
+
+const OP_ROT = { cambio: 'C', reparar: 'R', externo: 'E' };
+
+/* El presupuesto abierto: el elegido, o el ultimo de la orden. Lo usan
+   los manejadores del tempario, la observacion y la linea nueva. */
+function presuActual() {
   const p = presuEstado();
-  // Si ya hay líneas de repuestos, la respuesta está dada por los hechos.
-  if ((pr.lineas || []).some((l) => l.proceso === 'cambio')) return true;
-  return p.conRepuestos !== false;
+  const o = Modelo.otPorId(p.otId);
+  if (!o || !o.presupuestos.length) return null;
+  return (p.presupuestoId && o.presupuestos.find((x) => x.id === p.presupuestoId)) ||
+    o.presupuestos[o.presupuestos.length - 1];
 }
 
 function grillaPresupuesto(o, pr, editable, $) {
   const p = presuEstado();
-  const conRep = requiereRepuestos(pr);
-  const hayLineasRep = (pr.lineas || []).some((l) => l.proceso === 'cambio');
+  const t = pr.totales ||
+    Reglas.totalesPresupuesto(pr.lineas, pr.tempario, o.deducible, 19);
+  const lineas = pr.lineas || [];
+  const manoObra = lineas.filter((l) => l.proceso !== 'externo');
+  const repuestos = lineas.filter((l) => l.proceso === 'cambio');
+  const externos = lineas.filter((l) => l.proceso === 'externo');
 
-  // Una columna por bloque, como el documento que sale.
-  const cols = [{ codigo: 'reparar', bloque: 'Mano de Obra' }]
-    .concat(conRep ? [{ codigo: 'cambio', bloque: 'Repuestos' }] : [])
-    .concat([{ codigo: 'externo', bloque: 'Externos' }]);
+  /* ── Tempario ──────────────────────────────────────────────────────── */
+  const temparios = [8000, 9000, 10000, 12000, 15000, 18000];
+  const opcionesTemp = temparios.concat(
+    temparios.indexOf(pr.tempario) >= 0 ? [] : [pr.tempario]).sort((a, b) => a - b);
+  const horasTotales = t.horas.dm + t.horas.rep + t.horas.pint;
 
-  const monto = (l, codigo) => (l.proceso === codigo ? l.cantidad * l.precio_unitario : null);
-  const subtotal = (codigo) => (pr.lineas || [])
-    .filter((l) => l.proceso === codigo)
-    .reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
+  const cabTempario = `
+    <div class="rejilla-campos" style="margin-bottom:11px">
+      <div class="campo"><label>Tempario · valor de la hora</label>
+        ${editable
+          ? '<select id="presu-tempario">' + opcionesTemp.map((v) =>
+              '<option value="' + v + '"' + (v === pr.tempario ? ' selected' : '') + '>' +
+              $(v) + '</option>').join('') + '</select>'
+          : '<div class="dato"><span class="v">' + $(pr.tempario) + '</span></div>'}
+        <span class="ayuda">Multiplica las horas de las tres columnas</span></div>
+      <div class="campo"><label>Mano de obra acumulada</label>
+        <div class="dato"><span class="v">${$(t.manoObra)}
+          <span style="color:var(--gris-2);font-weight:400">· ${fHoras(horasTotales) || '0'} h</span>
+        </span></div>
+        <span class="ayuda">DM ${$(t.dm)} · Reparar ${$(t.reparar)} · Pintar ${$(t.pintar)}</span></div>
+    </div>`;
 
-  const filas = (pr.lineas || []).map((l) =>
-    '<tr><td>' + esc(l.descripcion) + '</td>' +
-    '<td class="num">' + l.cantidad + '</td>' +
-    '<td class="num">' + (l.horas ? String(l.horas).replace('.', ',') : '—') + '</td>' +
-    cols.map((c) => {
-      const m = monto(l, c.codigo);
-      return '<td class="num' + (m === null ? ' apagada' : '') + '">' +
-        (m === null ? '' : $(m)) + '</td>';
-    }).join('') +
-    '<td>' + (editable ? '<button class="quitar" data-quitarlinea="' + esc(l.id) + '">&times;</button>' : '') +
-    '</td></tr>').join('');
+  /* ── Bloque 1 · Mano de Obra ───────────────────────────────────────── */
+  const filaMO = (l, i) => {
+    const sub = COL_HORAS.reduce((s, c) => s + (Number(l[c.campo]) || 0), 0) * pr.tempario;
+    return '<tr><td class="num">' + (i + 1) + '</td>' +
+      '<td>' + esc(l.descripcion) + '</td>' +
+      '<td class="num"><span class="et ' + (l.proceso === 'cambio' ? 'azul' : 'gris') +
+        '" title="' + esc(l.proceso) + '">' + OP_ROT[l.proceso] + '</span></td>' +
+      COL_HORAS.map((c) => '<td class="num">' + (editable
+        ? '<input type="number" step="0.01" min="0" style="width:80px" ' +
+          'data-horas="' + esc(l.id) + '" data-campo="' + c.campo + '" ' +
+          'value="' + esc(fHoras(l[c.campo])) + '" placeholder="0" title="' + esc(c.ayuda) + '">'
+        : (fHoras(l[c.campo]) || '—')) +
+        // El peso de cada columna, debajo del tiempo. Es la cuenta que el
+        // original no muestra hasta que el PDF ya salió.
+        (Number(l[c.campo]) ? '<div class="ayuda" style="margin:2px 0 0">' +
+          $(Math.round(Number(l[c.campo]) * pr.tempario)) + '</div>' : '') + '</td>').join('') +
+      '<td class="num"><strong>' + $(Math.round(sub)) + '</strong></td>' +
+      '<td>' + (editable ? '<button class="quitar" data-quitarlinea="' + esc(l.id) +
+        '" title="Quitar la línea">&times;</button>' : '') + '</td></tr>';
+  };
 
-  // La fila de carga vive DENTRO de la tabla: se escribe donde se va a ver.
-  const filaCarga = editable ? '<tr class="fila-carga">' +
-    '<td><input id="l-desc" value="' + esc(p.linea.descripcion) + '" ' +
-      'placeholder="Descripción — tal como se escribe, sin código"></td>' +
-    '<td><input type="number" id="l-cant" value="' + esc(p.linea.cantidad) + '" min="1" title="Cantidad"></td>' +
-    '<td><input type="number" id="l-horas" step="0.5" value="' + esc(p.linea.horas) + '" ' +
-      'title="Horas — sólo para estimar, no multiplica" ' +
-      (p.linea.proceso === 'reparar' ? '' : 'disabled') + '></td>' +
-    cols.map((c) => '<td><input type="number" data-venta="' + c.codigo + '" ' +
-      'value="' + (p.linea.proceso === c.codigo ? esc(p.linea.precio_unitario) : '') + '" ' +
-      'placeholder="0" title="Escribe el monto en la columna que corresponde"></td>').join('') +
-    '<td><button class="btn" id="l-agregar" title="Agregar la línea">+</button></td></tr>' : '';
-
-  return `
-  <fieldset class="bloque"><legend>Detalle del presupuesto</legend>
-    ${editable ? `
-    <div class="pregunta-rep">
-      <span>¿Este trabajo requiere repuestos?</span>
-      <button class="chip${conRep ? ' activo' : ''}" data-conrep="si">Sí</button>
-      <button class="chip${!conRep ? ' activo' : ''}" data-conrep="no"
-        ${hayLineasRep ? 'disabled title="Ya hay repuestos cargados: quítalos primero"' : ''}>No</button>
-      ${hayLineasRep ? '<span class="ayuda">Ya hay repuestos en el presupuesto.</span>' : ''}
-    </div>` : ''}
-
-    <div class="grid-envoltorio"><table class="grid grilla-presu">
-      <thead><tr>
-        <th>Descripción</th><th style="width:60px">Cant.</th><th style="width:64px">Horas</th>
-        ${cols.map((c) => '<th class="num">' + esc(c.bloque) + '</th>').join('')}
-        <th style="width:44px"></th>
-      </tr></thead>
-      <tbody>
-        ${filas || (editable ? '' : '<tr><td colspan="' + (cols.length + 4) +
-          '" style="color:var(--gris-2);padding:8px">Este presupuesto no tiene líneas.</td></tr>')}
-        ${filaCarga}
-      </tbody>
-      <tfoot>
-        <tr><td colspan="3" style="text-align:right"><strong>Subtotales</strong></td>
-          ${cols.map((c) => '<td class="num"><strong>' + $(subtotal(c.codigo)) + '</strong></td>').join('')}
-          <td></td></tr>
-        <tr class="fila-total"><td colspan="3" style="text-align:right"><strong>Neto</strong></td>
-          <td class="num" colspan="${cols.length}"><strong>${$(pr.neto)}</strong></td><td></td></tr>
-      </tfoot>
+  const bloqueMO = `
+  <fieldset class="bloque"><legend>Mano de Obra</legend>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th style="width:44px">N°</th><th>Descripción</th><th style="width:52px">OP</th>
+        ${COL_HORAS.map((c) => '<th class="num" style="width:106px" title="' + esc(c.ayuda) +
+          '">' + esc(c.rot) + '</th>').join('')}
+        <th class="num" style="width:112px">Valor</th><th style="width:44px"></th></tr></thead>
+      <tbody>${manoObra.length ? manoObra.map(filaMO).join('')
+        : '<tr><td colspan="8" style="color:var(--gris-2);padding:9px">Todavía no hay líneas. ' +
+          'Se escriben abajo: descripción y operación.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right"><strong>Subtotal</strong></td>
+        ${COL_HORAS.map((c) => {
+          const h = manoObra.reduce((s, l) => s + (Number(l[c.campo]) || 0), 0);
+          return '<td class="num"><strong>' + (fHoras(h) || '0') + '</strong>' +
+            '<div class="ayuda" style="margin:2px 0 0">' + $(Math.round(h * pr.tempario)) +
+            '</div></td>';
+        }).join('')}
+        <td class="num"><strong>${$(t.manoObra)}</strong></td><td></td></tr></tfoot>
     </table></div>
-    ${editable ? '<span class="ayuda">Escribe el monto en la columna del tipo de trabajo. ' +
-      'Las horas son sólo para estimar: no multiplican nada ni salen en el documento.</span>' : ''}
+    ${editable ? `
+    <div class="rejilla-campos" style="margin-top:10px">
+      <div class="campo"><label>Descripción</label>
+        <input id="l-desc" value="${esc(p.linea.descripcion)}"
+          placeholder="Tal como se escribe: «marco de puerta trasero derecho»"></div>
+      <div class="campo"><label>OP · operación</label>
+        <select id="l-op">
+          ${PROCESOS.map((x) => '<option value="' + x.codigo + '"' +
+            (p.linea.proceso === x.codigo ? ' selected' : '') + '>' + esc(x.nombre) +
+            '</option>').join('')}
+        </select></div>
+      <div class="campo"><label>&nbsp;</label>
+        <button class="btn" id="l-agregar">Enviar</button></div>
+    </div>
+    <span class="ayuda">Las horas se escriben en la fila, después. Las tres columnas quedan
+      habilitadas siempre: una pieza se puede reparar <strong>y</strong> pintar.
+      La operación <strong>Cambio</strong> crea además su fila en Repuestos.</span>` : ''}
   </fieldset>`;
+
+  /* ── Bloque 2 · Repuestos ──────────────────────────────────────────── */
+  const campoLinea = (l, nombre, tipo, ancho, extra) => (editable
+    ? '<input type="' + tipo + '" style="width:' + ancho + '" data-rep="' + esc(l.id) + '" ' +
+      'data-campo="' + nombre + '" value="' + esc(l[nombre] == null ? '' : l[nombre]) + '"' +
+      (extra || '') + '>'
+    : esc(l[nombre] === '' || l[nombre] == null ? '—' : l[nombre]));
+
+  const filaRep = (l) => {
+    const cobra = Reglas.esProveedorTaller(l.proveedor);
+    return '<tr><td>' + campoLinea(l, 'codigo', 'text', '110px', ' placeholder="El de bodega"') + '</td>' +
+      '<td class="num">' + campoLinea(l, 'cantidad', 'number', '70px', ' min="1"') + '</td>' +
+      /* La descripción NO se edita acá: es la de la línea de mano de obra. Si
+         se pudiera cambiar quedarían dos nombres para la misma pieza, que es
+         justo lo que hace impresentable el listado de bodega del original. */
+      '<td>' + esc(l.descripcion) +
+        '<div class="ayuda" style="margin:2px 0 0">de la línea con operación Cambio</div></td>' +
+      '<td>' + campoLinea(l, 'proveedor', 'text', '152px',
+        ' placeholder="DYP, SURA, …" list="lista-proveedores"') + '</td>' +
+      '<td class="num">' + campoLinea(l, 'precio_unitario', 'number', '120px', ' min="0" placeholder="0"') + '</td>' +
+      '<td class="num">' + (cobra
+        ? '<strong>' + $(Reglas.cobroRepuesto(l)) + '</strong>'
+        : '<span class="et gris" title="La pieza la pone ' + esc(l.proveedor || 'un tercero') +
+          ': el taller no la desembolsó, así que no la cobra">no se cobra</span>') + '</td></tr>';
+  };
+
+  const bloqueRep = `
+  <fieldset class="bloque" style="margin-top:12px"><legend>Repuestos</legend>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th style="width:130px">Código</th><th style="width:84px">Cantidad</th>
+        <th>Descripción</th><th style="width:172px">Proveedor</th>
+        <th class="num" style="width:130px">Precio unitario</th>
+        <th class="num" style="width:126px">Se cobra</th></tr></thead>
+      <tbody>${repuestos.length ? repuestos.map(filaRep).join('')
+        : '<tr><td colspan="6" style="color:var(--gris-2);padding:9px">Sin repuestos. ' +
+          'Aparecen solos al agregar una línea con operación <strong>Cambio</strong>.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right"><strong>Subtotal</strong></td>
+        <td class="num"><strong>${$(t.repuestos)}</strong></td></tr></tfoot>
+    </table></div>
+    <span class="ayuda">Estas piezas son las que <strong>bajan a Bodega</strong> cuando se aprueba
+      la OR, con su código, cantidad, proveedor y precio — bodega no las vuelve a escribir.
+      Sólo se le cobran al cliente las que pone el taller: escribir <strong>DYP</strong> en
+      cualquier forma es el mismo proveedor.</span>
+  </fieldset>`;
+
+  /* ── Bloque 3 · Externos (T.O.T.) ──────────────────────────────────── */
+  const filaExt = (l) =>
+    '<tr><td>' + campoLinea(l, 'codigo', 'text', '110px', '') + '</td>' +
+    '<td>' + esc(l.descripcion) + '</td>' +
+    '<td>' + campoLinea(l, 'proveedor', 'text', '172px',
+      ' placeholder="Quién lo hace" list="lista-proveedores"') + '</td>' +
+    '<td class="num">' + campoLinea(l, 'precio_unitario', 'number', '120px', ' min="0" placeholder="0"') + '</td>' +
+    '<td>' + (editable ? '<button class="quitar" data-quitarlinea="' + esc(l.id) +
+      '" title="Quitar">&times;</button>' : '') + '</td></tr>';
+
+  const bloqueExt = `
+  <fieldset class="bloque" style="margin-top:12px"><legend>Trabajos externos · T.O.T.</legend>
+    <div class="grid-envoltorio"><table class="grid">
+      <thead><tr><th style="width:130px">Código</th><th>Descripción</th>
+        <th style="width:190px">Proveedor</th><th class="num" style="width:130px">Precio</th>
+        <th style="width:44px"></th></tr></thead>
+      <tbody>${externos.length ? externos.map(filaExt).join('')
+        : '<tr><td colspan="5" style="color:var(--gris-2);padding:9px">Sin trabajos externos. ' +
+          'Se agregan con la operación <strong>Externo</strong>.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right"><strong>Subtotal</strong></td>
+        <td class="num"><strong>${$(t.tot)}</strong></td><td></td></tr></tfoot>
+    </table></div>
+  </fieldset>`;
+
+  /* ── El cierre del documento ───────────────────────────────────────── */
+  const fila = (rot, val, fuerte, nota) =>
+    '<tr><td>' + esc(rot) + (nota ? ' <span class="ayuda">' + esc(nota) + '</span>' : '') + '</td>' +
+    '<td class="num"' + (fuerte ? ' style="font-weight:700"' : '') + '>' + val + '</td></tr>';
+
+  const cierre = `
+  <div class="rejilla-campos" style="margin-top:12px;align-items:start">
+    <fieldset class="bloque"><legend>Observación</legend>
+      ${editable
+        ? '<textarea id="presu-obs" rows="6" placeholder="Lo que la compañía tiene que leer junto ' +
+          'al monto">' + esc(pr.observacion) + '</textarea>' +
+          '<div style="margin-top:8px"><button class="btn secundario" id="presu-obs-guardar">' +
+          'Guardar la observación</button></div>'
+        : (pr.observacion
+          ? '<div class="nota">' + esc(pr.observacion) + '</div>'
+          : '<div class="ayuda">Sin observación.</div>')}
+    </fieldset>
+    <fieldset class="bloque"><legend>Totales</legend>
+      <div class="grid-envoltorio"><table class="grid"><tbody>
+        ${fila('Mano de Obra', $(t.manoObra))}
+        ${fila('Repuestos neto', $(t.repuestos))}
+        ${fila('T.O.T. neto', $(t.tot))}
+        ${fila('Subtotal neto', $(t.subtotalNeto), true)}
+        ${fila('Deducible neto', t.deducible ? '&minus; ' + $(t.deducible) : $(0), false, 'de la póliza')}
+        ${fila('Total neto', $(t.neto), true)}
+        ${fila('IVA 19%', $(t.iva))}
+        ${fila('Total', $(t.total), true)}
+      </tbody></table></div>
+    </fieldset>
+  </div>`;
+
+  /* Los proveedores que ya se usaron, para que quien escribe no invente una
+     quinta forma del mismo nombre. Es la sugerencia, no una jaula: un
+     proveedor nuevo se escribe igual. */
+  const vistos = {};
+  (Modelo.torre() || []).forEach((x) => (x.presupuestos || []).forEach((y) =>
+    (y.lineas || []).forEach((l) => { if (l.proveedor) vistos[l.proveedor] = true; })));
+  const datalist = '<datalist id="lista-proveedores">' +
+    Object.keys(vistos).sort().map((v) => '<option value="' + esc(v) + '">').join('') +
+    '</datalist>';
+
+  return datalist + cabTempario + bloqueMO + bloqueRep + bloqueExt + cierre;
 }
 
 function vPresupuestoDetalle(o, pr) {
@@ -331,9 +518,6 @@ function vPresupuestoDetalle(o, pr) {
      PostgreSQL con RLS. */
   const veMontos = Modelo.puede('presupuesto.montos');
   const $ = (n) => (veMontos ? fMonto(n) : '<span title="Este rol no ve los montos">•••••</span>');
-  const porBloque = {};
-  PROCESOS.forEach((x) => { porBloque[x.bloque] = pr.lineas.filter((l) => l.proceso === x.codigo); });
-
   const repuestosPedidos = o.repuestos.filter((r) => pr.lineas.some((l) => l.id === r.presupuesto_linea_id));
 
   return `
@@ -554,50 +738,75 @@ function pPresupuesto() {
       () => { p.otId = null; p.presupuestoId = null; render(); });
   });
 
-  document.querySelectorAll('[data-conrep]').forEach((b) => b.addEventListener('click', () => {
-    p.conRepuestos = b.dataset.conrep === 'si';
-    render();
-  }));
+  /* ── Tempario ─────────────────────────────────────────────────────────
+     Cambiarlo recalcula el presupuesto entero: son horas por tarifa. */
+  const selTemp = document.getElementById('presu-tempario');
+  if (selTemp) selTemp.addEventListener('change', () => {
+    const pr = presuActual();
+    if (!pr) return;
+    ejecutar(() => Modelo.fijar_tempario_presupuesto(pr.id, selTemp.value),
+      (r) => 'Tempario en ' + fMonto(Number(selTemp.value)) + ' la hora. Recalculado.');
+  });
 
-  /* El proceso ya no se elige en un desplegable: sale de EN QUÉ COLUMNA se
-     escribió el monto, que es como se lee el documento. Escribir en una
-     columna limpia las otras — una línea es de un tipo, no de dos. */
-  document.querySelectorAll('[data-venta]').forEach((inp) => {
-    inp.addEventListener('input', () => {
-      p.linea.proceso = inp.dataset.venta;
-      p.linea.precio_unitario = inp.value;
-      document.querySelectorAll('[data-venta]').forEach((otro) => {
-        if (otro !== inp) otro.value = '';
-      });
-      // Las horas sólo aplican a mano de obra.
-      const h = document.getElementById('l-horas');
-      if (h) h.disabled = inp.dataset.venta !== 'reparar';
+  /* ── Las horas de cada línea ──────────────────────────────────────────
+     Se guardan al salir del campo, no en cada tecla: escribir «1,78» son
+     cuatro pulsaciones y cuatro guardados serían cuatro hechos en el
+     expediente para un solo dato. */
+  document.querySelectorAll('[data-horas]').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      const cambios = {};
+      cambios[inp.dataset.campo] = inp.value;
+      ejecutar(() => Modelo.actualizar_linea_presupuesto(inp.dataset.horas, cambios), null);
     });
+  });
+
+  /* ── Los campos de Repuestos y Externos ─────────────────────────────── */
+  document.querySelectorAll('[data-rep]').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      const cambios = {};
+      cambios[inp.dataset.campo] = inp.value;
+      ejecutar(() => Modelo.actualizar_linea_presupuesto(inp.dataset.rep, cambios),
+        inp.dataset.campo === 'proveedor'
+          // El proveedor es el que decide si se cobra: cuando cambia, vale la
+          // pena decir en qué quedó, porque puede mover el total.
+          ? () => (Reglas.esProveedorTaller(inp.value)
+              ? 'Proveedor DYP: esta pieza se le cobra al cliente.'
+              : (String(inp.value).trim()
+                ? 'Proveedor ' + String(inp.value).trim() + ': la pone un tercero, no se cobra.'
+                : 'Sin proveedor: no se cobra hasta que se diga quién la pone.'))
+          : null);
+    });
+  });
+
+  /* ── La observación ───────────────────────────────────────────────── */
+  const obsGuardar = document.getElementById('presu-obs-guardar');
+  if (obsGuardar) obsGuardar.addEventListener('click', () => {
+    const pr = presuActual();
+    const ta = document.getElementById('presu-obs');
+    if (!pr || !ta) return;
+    ejecutar(() => Modelo.fijar_observacion_presupuesto(pr.id, ta.value), 'Observación guardada.');
   });
 
   const agregar = document.getElementById('l-agregar');
   if (agregar) agregar.addEventListener('click', () => {
-    const o = Modelo.otPorId(p.otId);
-    const actual = p.presupuestoId ? o.presupuestos.find((x) => x.id === p.presupuestoId)
-                                   : o.presupuestos[o.presupuestos.length - 1];
+    const pr = presuActual();
+    if (!pr) return;
     const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-    /* La venta se escribe, no se calcula. El tempario salió del presupuesto
-       (decisión del 13-08-2026): multiplicaba las horas por una tarifa de
-       $10.000 para proponer el monto, y este taller no cotiza así — cotiza un
-       precio por trabajo. Dejar la tarifa a la vista invitaba a que la
-       compañía dividiera el monto por las horas y discutiera un valor hora que
-       no existe. Las horas quedan como estimación del trabajo, sin multiplicar
-       nada y sin salir en el documento. */
-    const horas = Number(v('l-horas')) || null;
-    // El campo vacío viaja como `null` para que el motor lo distinga de un 0
-    // escrito a propósito. Uno es un olvido; el otro, una decisión.
-    const campoVenta = document.querySelector('[data-venta="' + p.linea.proceso + '"]');
-    const venta = String(campoVenta ? campoVenta.value : '').trim();
-    ejecutar(() => Modelo.agregar_linea_presupuesto(actual.id, {
-      proceso: p.linea.proceso, descripcion: v('l-desc'),
-      cantidad: Number(v('l-cant')) || 1, horas,
-      precio_unitario: venta === '' ? null : Number(venta)
-    }), 'Línea agregada.');
+    /* La línea entra con la descripción y la operación, y nada más. Las horas
+       —y el precio del repuesto o del trabajo externo— se escriben después en
+       la propia fila, que es como se arma un presupuesto de verdad: primero
+       se anota todo lo que hay que hacer mirando el auto, y después se le
+       ponen los tiempos. */
+    const op = v('l-op') || 'reparar';
+    p.linea.proceso = op;
+    ejecutar(() => Modelo.agregar_linea_presupuesto(pr.id, {
+      proceso: op, descripcion: v('l-desc')
+    }), op === 'cambio'
+      ? 'Línea agregada. Su repuesto quedó abajo: ponle el proveedor y el precio.'
+      : (op === 'externo'
+        ? 'Trabajo externo agregado. Ponle el proveedor y el precio abajo.'
+        : 'Línea agregada. Ponle las horas en DM, Reparar o Pintar.'),
+      () => { p.linea.descripcion = ''; });
   });
 
   document.querySelectorAll('[data-quitarlinea]').forEach((b) => b.addEventListener('click', () =>

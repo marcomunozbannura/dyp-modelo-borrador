@@ -267,10 +267,10 @@ const Pruebas = (function () {
         const o = abiertaCualquiera();
         const cr = Modelo.crear_presupuesto(o.id, { lineas: [] });
         Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
-          { proceso: 'reparar', descripcion: 'Desabolladura', horas: 4, precio_unitario: 40000 });
+          { proceso: 'reparar', descripcion: 'Desabolladura', horas_rep: 4 });
         const env = Modelo.cambiar_estado_presupuesto(cr.presupuesto_id, 'enviado');
         const r = Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
-          { proceso: 'reparar', descripcion: 'Otra cosa', precio_unitario: 10000 });
+          { proceso: 'reparar', descripcion: 'Otra cosa', horas_rep: 1 });
         const v2 = Modelo.nueva_version_presupuesto(cr.presupuesto_id);
         /* Hasta el 15-08-2026 esta prueba exigía que la versión nueva tuviera
            una OR DISTINTA: con el correlativo, la v1 era `-001` y la v2 `-002`.
@@ -990,7 +990,8 @@ const Pruebas = (function () {
         const cre = Modelo.crear_presupuesto(o.id, { lineas: [] });
         const pid = cre.presupuesto_id;
         const lin = Modelo.agregar_linea_presupuesto(pid, {
-          proceso: 'cambio', descripcion: 'Paragolpes delantero', cantidad: 1, precio_unitario: 180000 });
+          proceso: 'cambio', descripcion: 'Paragolpes delantero', cantidad: 1,
+          horas_dm: 1.2, proveedor: 'DYP', precio_unitario: 180000 });
         const env = Modelo.cambiar_estado_presupuesto(pid, 'enviado');
         const apr = Modelo.cambiar_estado_presupuesto(pid, 'aprobado');
 
@@ -1027,8 +1028,14 @@ const Pruebas = (function () {
         const alCrear = Modelo.avisosDe(o.id).slice(0, Modelo.avisosDe(o.id).length - antes);
         const externosAlCrear = alCrear.filter((a) => a.canal === 'compania' || a.canal === 'cliente');
 
+        /* Una línea que SÍ vale plata con la fórmula nueva: la mano de obra
+           sale de las horas por el tempario, no de un precio escrito. Con
+           `precio_unitario` a secas y sin proveedor, esta línea valía $0 —que
+           es correcto: una pieza que pone la compañía no se cobra— y el aviso
+           salía con «$0 neto», que es justo lo que esta prueba vigila. */
         Modelo.agregar_linea_presupuesto(pid, {
-          proceso: 'cambio', descripcion: 'Óptico derecho', cantidad: 1, precio_unitario: 240000 });
+          proceso: 'reparar', descripcion: 'Puerta trasera izquierda',
+          horas_rep: 6.5, horas_pint: 5.46 });
         Modelo.cambiar_estado_presupuesto(pid, 'enviado');
 
         const todos = Modelo.avisosDe(o.id);
@@ -1045,6 +1052,62 @@ const Pruebas = (function () {
             (externosAlCrear.length ? ' — «' + externosAlCrear[0].detalle + '», NO debería' : '') +
             '  ·  Al enviar: ' + alEnviar.length + ' aviso(s)' +
             (alEnviar.length ? ' — «' + alEnviar[0].detalle + '» para ' + alEnviar[0].para : '')
+        });
+      })();
+
+      /* 🔴 LA ARITMÉTICA DEL PRESUPUESTO, CONTRA EL DOCUMENTO REAL.
+         Es la OR 23505-18401-001 que trajo Marco el 16-08-2026, línea por
+         línea y con su tempario de $10.000. Si esta prueba se cae, el sistema
+         está calculando distinto que el papel que hoy firma la compañía — y
+         eso no se descubre mirando la pantalla, porque un total equivocado se
+         ve igual de bien que uno correcto. */
+      (function () {
+        const L = [
+          { proceso: 'cambio',  horas_dm: 1.78, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { proceso: 'cambio',  horas_dm: 0.42, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { proceso: 'cambio',  horas_dm: 0.22, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { proceso: 'cambio',  horas_dm: 0.65, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { proceso: 'reparar', horas_dm: 0,    horas_rep: 4.16, horas_pint: 6.24 },
+          { proceso: 'reparar', horas_dm: 0,    horas_rep: 6.5,  horas_pint: 5.46 },
+          { proceso: 'reparar', horas_dm: 0,    horas_rep: 6.79, horas_pint: 9.36 },
+          { proceso: 'reparar', horas_dm: 0,    horas_rep: 1.5,  horas_pint: 0 },
+          // Se cobra porque el proveedor es el taller. Las cuatro de arriba
+          // las pone la compañía y por eso no suman, aunque se registren.
+          { proceso: 'cambio',  horas_dm: 0, horas_rep: 0, horas_pint: 0, cantidad: 1, proveedor: 'dyp', precio_unitario: 14000 },
+          { proceso: 'externo', horas_dm: 0, horas_rep: 0, horas_pint: 0, precio_unitario: 17800 }
+        ];
+        const t = Reglas.totalesPresupuesto(L, 10000, 0, 19);
+        const papel = { dm: 30700, reparar: 189500, pintar: 210600, manoObra: 430800,
+          repuestos: 14000, tot: 17800, subtotalNeto: 462600, neto: 462600,
+          iva: 87894, total: 550494 };
+        const difieren = Object.keys(papel).filter((k) => t[k] !== papel[k]);
+        push({
+          nombre: 'El presupuesto calcula igual que el documento real (OR 23505-18401-001)',
+          intento: 'Cargar las 10 líneas de esa OR con tempario $10.000 y comparar los totales',
+          esperado: 'Los 10 números del PDF, al peso',
+          paso: !difieren.length,
+          detalle: difieren.length
+            ? difieren.map((k) => k + ': ' + t[k] + ' y el papel dice ' + papel[k]).join(' · ')
+            : 'Mano de obra ' + t.manoObra + ' (DM ' + t.dm + ' · Reparar ' + t.reparar +
+              ' · Pintar ' + t.pintar + ') + repuestos ' + t.repuestos + ' + T.O.T. ' + t.tot +
+              ' = ' + t.subtotalNeto + ' neto · IVA ' + t.iva + ' · total ' + t.total
+        });
+      })();
+
+      /* Las cuatro formas de escribir el mismo taller. En el original son
+         cuatro proveedores distintos para cualquier suma. */
+      (function () {
+        const variantes = ['DYP', 'Dyp', 'dyp', 'DyP', 'D&P', 'd y p'];
+        const malas = variantes.filter((v) => !Reglas.esProveedorTaller(v));
+        const falsoPositivo = ['sura', 'SURA', 'Mapfre', ''].filter((v) => Reglas.esProveedorTaller(v));
+        push({
+          nombre: 'DYP escrito de cualquier forma es el mismo proveedor, y sólo él se cobra',
+          intento: 'Normalizar ' + variantes.join(', ') + ' y comprobar que sura/Mapfre no se cuelan',
+          esperado: 'Las seis variantes son el taller · ninguna aseguradora lo es',
+          paso: !malas.length && !falsoPositivo.length,
+          detalle: malas.length ? 'No reconocidas: ' + malas.join(', ')
+            : (falsoPositivo.length ? 'Se colaron: ' + falsoPositivo.join(', ')
+              : 'Las seis dan «' + Reglas.PROVEEDOR_TALLER + '»; la pieza que pone la compañía no se cobra')
         });
       })();
 

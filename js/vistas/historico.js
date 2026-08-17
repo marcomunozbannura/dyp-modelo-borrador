@@ -50,12 +50,20 @@ function historicoEstado() {
    columnas de dinero que quedan del Histórico real. */
 function plataDe(o) {
   const z = { ventaMO: 0, ventaRep: 0, ventaToT: 0 };
-  o.presupuestos.forEach((p) => p.lineas.forEach((l) => {
-    const venta = (l.cantidad || 1) * (l.precio_unitario || 0);
-    if (l.proceso === 'reparar') z.ventaMO += venta;
-    else if (l.proceso === 'cambio') z.ventaRep += venta;
-    else z.ventaToT += venta;
-  }));
+  /* Los tres montos salen de `totales`, que es la MISMA cuenta del documento:
+     mano de obra = horas × tempario en las tres columnas; repuestos, sólo los
+     que puso el taller; T.O.T., los trabajos externos. Antes acá se sumaba
+     `cantidad × precio_unitario` por proceso, que con la fórmula nueva daba
+     cero en mano de obra —no hay precio escrito, hay horas— y cobraba de más
+     los repuestos que aporta la compañía. Dos sumas parecidas para el mismo
+     dato es cómo un informe y una pantalla terminan diciendo cosas distintas. */
+  o.presupuestos.forEach((p) => {
+    const t = p.totales;
+    if (!t) return;
+    z.ventaMO += t.manoObra;
+    z.ventaRep += t.repuestos;
+    z.ventaToT += t.tot;
+  });
   z.ventaTotal = z.ventaMO + z.ventaRep + z.ventaToT;
   return z;
 }

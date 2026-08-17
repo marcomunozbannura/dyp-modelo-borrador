@@ -353,6 +353,10 @@ const Modelo = (function () {
            mano —una pieza que no venía en el presupuesto—, que es el único
            caso legítimo de un repuesto sin línea. */
         presupuestoLineaId: r.presupuesto_linea_id || null,
+        // Bajan del bloque Repuestos del presupuesto: bodega ve la pieza con
+        // el proveedor y el precio con que se cotizó, sin reescribirlos.
+        proveedor: r.proveedor || '', precioUnitario: r.precio_unitario || 0,
+        loPoneElTaller: Reglas.esProveedorTaller(r.proveedor),
         codigoInterno: r.codigo_interno || '', codigoExterno: r.codigo_externo || '',
         responsablePago: (ix.respPago.get(r.responsable_pago_id) || {}).nombre,
         pagaTaller: !!(ix.respPago.get(r.responsable_pago_id) || {}).es_taller,
@@ -405,11 +409,18 @@ const Modelo = (function () {
         .sort((a, b) => a.version - b.version)
         .map((p) => {
           const lineas = (ix.lineasDePresupuesto.get(p.id) || []).sort((a, b) => a.orden - b.orden);
+          const tempario = p.tempario != null ? p.tempario : Reglas.parametro(db, 'tempario', 10000);
           return {
             id: p.id, version: p.version, numeroOR: p.numero_or, idReparacion: p.id_reparacion,
             correlativo: p.correlativo, estado: p.estado,
             neto: p.neto, iva: p.iva, total: p.total,
+            tempario, observacion: p.observacion || '',
             enviadoAt: p.enviado_at || null, resueltoAt: p.resuelto_at || null,
+            /* El desglose del documento, calculado acá una sola vez: la
+               pantalla y el impreso muestran los MISMOS números porque leen
+               la misma cuenta, no dos sumas parecidas. */
+            totales: Reglas.totalesPresupuesto(lineas, tempario, o.deducible,
+              Reglas.parametro(db, 'iva', 19)),
             lineas
           };
         }),
@@ -1767,27 +1778,31 @@ const Modelo = (function () {
     if (!libre.ok) return libre;
 
     const pid = nuevoId('pr');
-    const ivaPct = Number(Reglas.parametro(db, 'iva', 19));
-    const neto = (lineas || []).reduce((s, l) => s + (l.cantidad || 1) * (l.precio_unitario || 0), 0);
     const previos = db.presupuesto.filter((p) => p.ot_id === ot_id);
 
     db.presupuesto.push({
       id: pid, ot_id, id_reparacion: rep, correlativo: corr, numero_or,
       version: previos.length + 1, estado: 'borrador',
-      neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
+      // La tarifa vigente al abrir la OR, congelada en el documento.
+      tempario: Number(Reglas.parametro(db, 'tempario', 10000)),
+      observacion: '',
+      neto: 0, iva: 0, total: 0,
       enviado_at: null, resuelto_at: null
     });
     /* INTERNO. Al abrir la OR todavía no hay líneas ni monto: antes esto salía
        con `canal: compania` anunciándole a SURA un presupuesto de "0 líneas ·
        $0 neto" (F-2). Adentro sí sirve — dice que hay trabajo esperando que lo
        valoricen—; afuera, no. */
-    encolarAviso(ot_id, 'Presupuesto ' + numero_or + ' creado',
-      (lineas || []).length + ' líneas · ' + fPlata(neto) + ' neto · esperando valorización',
-      true);
     (lineas || []).forEach((l, i) => db.presupuesto_linea.push(Object.assign({
       id: pid + '-l' + (i + 1), presupuesto_id: pid, orden: i + 1, proceso: 'reparar',
-      descripcion: '', horas: null, cantidad: 1, precio_unitario: 0
-    }, l)));
+      descripcion: '', horas_dm: 0, horas_rep: 0, horas_pint: 0,
+      codigo: '', cantidad: 1, proveedor: '', precio_unitario: 0
+    }, l, { proveedor: Reglas.normalizarProveedor(l.proveedor) })));
+    recalcularPresupuesto(pid);
+
+    encolarAviso(ot_id, 'Presupuesto ' + numero_or + ' creado',
+      (lineas || []).length + ' líneas · ' + fPlata(totalesDe(pid).neto) +
+      ' neto · esperando valorización', true);
 
     tocado();
     return { ok: true, motivo: '', presupuesto_id: pid, numero_or };
@@ -1799,14 +1814,88 @@ const Modelo = (function () {
      intacta. Eso es lo que hace auditable la discusión con la compañía, y es
      imposible con el PDF actual. */
 
+  /* Los totales del presupuesto salen de `Reglas.totalesPresupuesto`, que es
+     la fórmula del documento real: mano de obra = horas × tempario en las
+     tres columnas, más los repuestos que puso el taller, más los trabajos
+     externos, menos el deducible de la póliza, más IVA. Acá sólo se guardan
+     los tres números que el resto del sistema ya leía —`neto`, `iva`,
+     `total`— para no tener que tocar cada pantalla que los muestra. */
+  function totalesDe(pid) {
+    const p = db.presupuesto.find((x) => x.id === pid);
+    if (!p) return null;
+    const o = db.orden_trabajo.find((x) => x.id === p.ot_id);
+    return Reglas.totalesPresupuesto(
+      db.presupuesto_linea.filter((l) => l.presupuesto_id === pid),
+      p.tempario != null ? p.tempario : Reglas.parametro(db, 'tempario', 10000),
+      o ? o.deducible : 0,
+      Reglas.parametro(db, 'iva', 19));
+  }
+
   function recalcularPresupuesto(pid) {
     const p = db.presupuesto.find((x) => x.id === pid);
     if (!p) return;
-    const lineas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid);
-    const ivaPct = Number(Reglas.parametro(db, 'iva', 19));
-    p.neto = lineas.reduce((s, l) => s + (l.cantidad || 1) * (l.precio_unitario || 0), 0);
-    p.iva = Math.round(p.neto * ivaPct / 100);
-    p.total = p.neto + p.iva;
+    const t = totalesDe(pid);
+    p.neto = t.neto; p.iva = t.iva; p.total = t.total;
+  }
+
+  /* El tempario queda GUARDADO en el presupuesto, no leído del parámetro cada
+     vez: si mañana el taller sube la tarifa, una OR firmada el mes pasado no
+     puede cambiar de monto sola. */
+  function fijar_tempario_presupuesto(pid, valor) {
+    const p = db.presupuesto.find((x) => x.id === pid);
+    if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
+    if (p.estado !== 'borrador')
+      return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado +
+        ' y no se edita. Para cambiar la tarifa hay que crear una versión nueva.' };
+    const v = Number(valor);
+    if (!v || v <= 0) return { ok: false, motivo: 'El tempario tiene que ser un valor hora mayor que cero.' };
+    p.tempario = Math.round(v);
+    recalcularPresupuesto(pid);
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
+  function fijar_observacion_presupuesto(pid, texto) {
+    const p = db.presupuesto.find((x) => x.id === pid);
+    if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
+    if (p.estado !== 'borrador')
+      return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado + ' y no se edita.' };
+    p.observacion = String(texto == null ? '' : texto);
+    tocado();
+    return { ok: true, motivo: '' };
+  }
+
+  /* Editar una línea ya puesta: las horas de cada columna, el proveedor, el
+     código y el precio. Es lo que se hace todo el rato mientras se arma la
+     OR —se pone la descripción primero y los tiempos después— y sin esto
+     había que borrar la línea y volver a escribirla. */
+  function actualizar_linea_presupuesto(linea_id, cambios = {}) {
+    const l = db.presupuesto_linea.find((x) => x.id === linea_id);
+    if (!l) return { ok: false, motivo: 'La línea no existe.' };
+    const p = db.presupuesto.find((x) => x.id === l.presupuesto_id);
+    if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
+    if (p.estado !== 'borrador')
+      return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado +
+        ' y no se edita. Para cambiarlo hay que crear una versión nueva.' };
+
+    ['horas_dm', 'horas_rep', 'horas_pint'].forEach((k) => {
+      if (!(k in cambios)) return;
+      const v = cambios[k] === '' || cambios[k] == null ? 0 : Number(cambios[k]);
+      // Horas negativas restarían plata sin dejar rastro de por qué.
+      l[k] = isNaN(v) || v < 0 ? 0 : v;
+    });
+    if ('descripcion' in cambios) l.descripcion = String(cambios.descripcion).trim();
+    if ('codigo' in cambios) l.codigo = String(cambios.codigo == null ? '' : cambios.codigo).trim();
+    if ('proveedor' in cambios) l.proveedor = Reglas.normalizarProveedor(cambios.proveedor);
+    if ('cantidad' in cambios) l.cantidad = Math.max(1, Math.round(Number(cambios.cantidad) || 1));
+    if ('precio_unitario' in cambios) {
+      const v = cambios.precio_unitario === '' || cambios.precio_unitario == null
+        ? 0 : Number(cambios.precio_unitario);
+      l.precio_unitario = isNaN(v) || v < 0 ? 0 : Math.round(v);
+    }
+    recalcularPresupuesto(l.presupuesto_id);
+    tocado();
+    return { ok: true, motivo: '' };
   }
 
   function agregar_linea_presupuesto(pid, linea) {
@@ -1819,24 +1908,26 @@ const Modelo = (function () {
     if (!linea.descripcion || !String(linea.descripcion).trim())
       return { ok: false, motivo: 'La línea necesita descripción.' };
     if (!['cambio', 'reparar', 'externo'].includes(linea.proceso))
-      return { ok: false, motivo: 'El proceso tiene que ser Cambio, Reparar o Externo.' };
-    /* La venta no puede quedar en blanco. Mientras existió el tempario, una
-       línea de mano de obra sin precio se calculaba sola —horas por tarifa— y
-       nunca quedaba vacía. Sacado el tempario (13-08-2026) eso ya no pasa, y
-       sin esta regla la línea entraba en $0 sin decir nada: un presupuesto que
-       sale así a la compañía se descubre cuando ya se mandó.
+      return { ok: false, motivo: 'La operación tiene que ser Cambio, Reparar o Externo.' };
+    /* La línea entra SIN horas y SIN precio, a propósito: así se trabaja el
+       presupuesto de verdad —primero se escribe todo lo que hay que hacer
+       mirando el auto, y después se le ponen los tiempos y los valores—. Lo
+       que antes obligaba a escribir la venta al agregar era una regla del
+       tiempo sin tempario; ahora la mano de obra la calcula la tarifa por las
+       horas y no puede quedar «vacía», queda en cero y se ve en cero.
 
-       Un CERO escrito a propósito sí se acepta —un trabajo de cortesía, una
-       línea que se muestra sin cobrar—. Lo que se rechaza es el campo vacío,
-       que es olvido, no decisión. */
-    if (linea.precio_unitario === null || linea.precio_unitario === undefined || linea.precio_unitario === '')
-      return { ok: false, motivo: 'Falta la venta de la línea "' + String(linea.descripcion).trim() +
-        '". Si de verdad va sin cobro, hay que escribir un 0.' };
+       Lo que sí se avisa, y en el momento de ENVIAR, es un presupuesto que
+       sale en $0: ese es el error caro, no la línea a medio llenar. */
     const n = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).length;
     db.presupuesto_linea.push(Object.assign({
       id: nuevoId('pl'), presupuesto_id: pid, orden: n + 1,
-      horas: null, cantidad: 1, precio_unitario: 0
-    }, linea));
+      horas_dm: 0, horas_rep: 0, horas_pint: 0,
+      codigo: '', cantidad: 1, proveedor: '', precio_unitario: 0
+    }, linea, {
+      // El proveedor se normaliza SIEMPRE: es el campo donde el original
+      // guarda cuatro formas de escribir el mismo taller.
+      proveedor: Reglas.normalizarProveedor(linea.proveedor)
+    }));
     recalcularPresupuesto(pid);
     tocado();
     return { ok: true, motivo: '' };
@@ -1916,8 +2007,16 @@ const Modelo = (function () {
        neto". El envío —el momento con valor de negocio— no disparaba nada. */
     if (['enviado', 'aprobado', 'rechazado'].includes(estado)) {
       const cuantas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).length;
+      /* El monto que se anuncia es el SUBTOTAL —lo que vale la reparación—,
+         no el neto. El neto ya trae descontado el deducible de la póliza, y
+         con un deducible alto un trabajo de $119.600 salía avisado como "$0
+         neto": aritmética correcta, mensaje falso. El deducible se nombra
+         aparte, que es como aparece en el documento que firma la compañía. */
+      const t = totalesDe(pid);
       encolarAviso(p.ot_id, 'Presupuesto ' + p.numero_or + ' ' + estado,
-        cuantas + (cuantas === 1 ? ' línea · ' : ' líneas · ') + montoTexto(p.neto) + ' neto' +
+        cuantas + (cuantas === 1 ? ' línea · ' : ' líneas · ') + montoTexto(t.subtotalNeto) + ' neto' +
+        (t.deducible ? ' · deducible ' + montoTexto(t.deducible) +
+          ' · quedan ' + montoTexto(t.neto) : '') +
         (pedidos ? ' · ' + pedidos + (pedidos === 1 ? ' repuesto pedido' : ' repuestos pedidos') +
           ' a bodega' : ''));
     }
@@ -1997,10 +2096,25 @@ const Modelo = (function () {
     let n = 0;
     lineas.forEach((l) => {
       if (yaPedida(l)) return;   // idempotente, por linaje
+      /* Lo que se escribió en el bloque Repuestos del presupuesto BAJA
+         completo a bodega: código, cantidad, proveedor y precio. Es lo que
+         pidió Marco el 16-08-2026 —"de ahí mismo sacaremos los repuestos que
+         debiesen fluir a Bodega"— y evita que bodega tenga que volver a
+         escribir a mano lo que el evaluador ya escribió.
+
+         Quién paga sale del PROVEEDOR, no de un valor por omisión: si la
+         pieza la puso la compañía, el taller no la desembolsó. Antes entraba
+         todo como `rp-1` y el responsable de pago decía lo mismo para una
+         pieza que pagó el taller y una que puso la aseguradora. */
+      const delTaller = Reglas.esProveedorTaller(l.proveedor);
+      const resp = db.responsable_pago.find((x) => !!x.es_taller === delTaller);
       db.repuesto.push({
         id: nuevoId('rep'), ot_id: p.ot_id, presupuesto_linea_id: l.id,
         descripcion: l.descripcion, cantidad: l.cantidad,
-        responsable_pago_id: 'rp-1', fecha_solicitud: HOY, fecha_bodega: null,
+        codigo_interno: l.codigo || '', codigo_externo: '',
+        proveedor: l.proveedor || '', precio_unitario: l.precio_unitario || 0,
+        responsable_pago_id: (resp || db.responsable_pago[0] || {}).id || 'rp-1',
+        fecha_solicitud: HOY, fecha_bodega: null,
         fecha_entrega_area: null, observacion: '', recibido_por: null
       });
       n++;
@@ -2762,6 +2876,9 @@ const Modelo = (function () {
     fijar_responsable_pago: 'el responsable de pago',
     crear_presupuesto: 'crear el presupuesto',
     agregar_linea_presupuesto: 'agregar una línea',
+    actualizar_linea_presupuesto: 'el cambio en la línea',
+    fijar_tempario_presupuesto: 'el tempario del presupuesto',
+    fijar_observacion_presupuesto: 'la observación del presupuesto',
     quitar_linea_presupuesto: 'quitar una línea',
     eliminar_presupuesto: 'eliminar el presupuesto',
     cambiar_estado_presupuesto: 'el cambio de estado del presupuesto',
@@ -2843,6 +2960,9 @@ const Modelo = (function () {
     // cuánto cuesta reparar. Son dos permisos porque son dos trabajos.
     crear_presupuesto: 'presupuesto.abrir',
     agregar_linea_presupuesto: 'presupuesto.crear',
+    actualizar_linea_presupuesto: 'presupuesto.crear',
+    fijar_tempario_presupuesto: 'presupuesto.crear',
+    fijar_observacion_presupuesto: 'presupuesto.crear',
     quitar_linea_presupuesto: 'presupuesto.crear',
     eliminar_presupuesto: 'presupuesto.crear',
     cambiar_estado_presupuesto: 'presupuesto.crear',
@@ -2944,6 +3064,8 @@ const Modelo = (function () {
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
     agregar_linea_presupuesto: 'presupuesto',
+    fijar_tempario_presupuesto: 'presupuesto',
+    fijar_observacion_presupuesto: 'presupuesto',
     apagar_alerta: 'bitacora', eliminar_media: 'media', renombrar_media: 'media'
   };
 
@@ -2956,7 +3078,7 @@ const Modelo = (function () {
       return f ? f.ot_id || null : null;
     }
     // La línea no conoce la orden: conoce su presupuesto, que sí la conoce.
-    if (nombre === 'quitar_linea_presupuesto') {
+    if (nombre === 'quitar_linea_presupuesto' || nombre === 'actualizar_linea_presupuesto') {
       const l = (db.presupuesto_linea || []).find((x) => x.id === args[0]);
       if (!l) return null;
       const p = db.presupuesto.find((x) => x.id === l.presupuesto_id);
@@ -3020,6 +3142,7 @@ const Modelo = (function () {
     fijar_codigo_repuesto,
     avisos, avisosDe,
     crear_presupuesto, agregar_linea_presupuesto, quitar_linea_presupuesto,
+    actualizar_linea_presupuesto, fijar_tempario_presupuesto, fijar_observacion_presupuesto,
     eliminar_presupuesto,
     cambiar_estado_presupuesto, nueva_version_presupuesto, generar_repuestos_desde_presupuesto,
     agregar_costo_adicional, costosDe,

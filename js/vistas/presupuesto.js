@@ -142,7 +142,10 @@ function listaPresupuestos(o) {
         '<span class="cod" data-or="' + esc(pr.id) + '">Presupuesto ' +
           esc(pr.numeroOR) + '</span>' +
         '<span class="et ' + esc(e.clase) + '">' + esc(e.txt) + '</span>' +
-        '<span class="et gris">v' + pr.version + '</span>' +
+        /* Sin «v1 · v2 · v3» (16-08-2026, Marco): «al final su identificador
+           es la OR». Y es cierto — la versión era ruido en una lista donde lo
+           que se elige es el documento, y el estado ya distingue la vigente
+           de las anuladas. */
         /* Lo mínimo para elegir sin abrir: cuántas líneas trae y cuándo se
            mandó. Dos OR del mismo monto y distinto tamaño se distinguen acá. */
         '<span class="et gris">' + cuantas + (cuantas === 1 ? ' línea' : ' líneas') + '</span>' +
@@ -193,7 +196,11 @@ function vPresupuestoListado() {
           '<td class="num">' + (o.presupuestos.length
             ? '<span data-or="' + esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '">' +
                 esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '</span>' +
-              (o.presupuestos.length > 1 ? ' <span class="et gris">v' + o.presupuestos.length + '</span>' : '')
+              /* Cuántos documentos hay bajo esa OR, no «v5»: la versión se
+                 sacó de la vista y dejar la letra v acá la traía de vuelta
+                 disfrazada. */
+              (o.presupuestos.length > 1 ? ' <span class="et gris">' + o.presupuestos.length +
+                ' documentos</span>' : '')
             /* «sin OR», no «sin presupuesto» (16-08-2026, Marco). Es la
                palabra del taller: la OR es el trabajo abierto sobre la orden, y
                lo que falta acá es justamente eso — todavía nadie abrió el

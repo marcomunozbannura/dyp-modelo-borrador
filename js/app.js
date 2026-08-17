@@ -1821,22 +1821,32 @@ function tarjetaDeOR(clave) {
   });
   if (!presu) return null;
 
+  /* Las piezas de ESTE presupuesto: las que nacieron de sus filas del bloque
+     Repuestos. Se cruza por el id de la línea, que es el vínculo que bodega
+     usa — no por descripción, que se repite entre versiones. */
+  const suyas = {};
+  (presu.lineas || []).forEach((l) => { if (l.bloque === 'repuesto') suyas[l.id] = true; });
+  const pedidos = orden.repuestos.filter((r) => r.presupuestoLineaId && suyas[r.presupuestoLineaId]);
+  const porLlegar = pedidos.filter((r) => !r.fechaBodega).length;
+
   return {
     titulo: 'OR ' + esc(presu.numeroOR),
     filas: [
       ['Vehículo', '<span class="patente">' + esc(orden.patente) + '</span> ' + esc(orden.marca || '')],
-      ['Estado', '<span class="et">' + esc(presu.estado) + '</span> ' +
-        '<span style="color:var(--gris-2)">versión ' + presu.version + '</span>'],
+      ['Estado', '<span class="et">' + esc(presu.estado) + '</span>'],
       ['Neto', fMonto(presu.neto)],
       ['Total', '<strong>' + fMonto(presu.total) + '</strong>'],
-      ['Líneas', presu.lineas.length + (presu.lineas.length === 1 ? ' línea' : ' líneas')],
-      // "Sin enviar" contradecía al estado cuando la fecha no está grabada.
-      // El rótulo dice de qué se está hablando: es la FECHA la que falta, no
-      // el envío. Es la diferencia entre "no pasó" y "no lo registramos".
-      ['Fecha de envío', presu.enviadoAt ? fFechaHora(presu.enviadoAt)
-        : '<span style="color:var(--gris-2)">sin registrar</span>'],
-      ['Fecha de respuesta', presu.resueltoAt ? fFechaHora(presu.resueltoAt)
-        : '<span style="color:var(--gris-2)">sin registrar</span>']
+      /* 🔶 REPUESTOS EN VEZ DE LÍNEAS Y FECHAS (16-08-2026, Marco). Las
+         líneas y las dos fechas no cambian ninguna decisión al pasar el
+         mouse; lo que sí la cambia es si ese trabajo depende de una pieza
+         que todavía no llega. La cuenta sale de las filas del bloque
+         Repuestos de ESTA OR, que son las que bajaron a bodega. */
+      ['¿Necesita repuestos?', pedidos.length
+        ? '<strong>Sí</strong>' : '<span style="color:var(--gris-2)">No</span>'],
+      ['Repuestos solicitados', pedidos.length
+        ? pedidos.length + (porLlegar ? ' <span class="et roja">' + porLlegar +
+            ' por llegar</span>' : ' <span class="et verde">todos llegaron</span>')
+        : '<span style="color:var(--gris-2)">—</span>']
     ],
     pie: 'Clic para abrir la OT ' + esc(orden.numeroOT),
     ot: orden.numeroOT

@@ -127,7 +127,7 @@ function pantallaIngreso(motivo) {
 
       ${mostrar ? `
       <div class="claves-demo">
-        <div class="tit"><span>Cuentas del modelo borrador</span>
+        <div class="tit"><span>Cuentas de demostración</span>
           <button type="button" id="ing-nunca">No mostrarlas más</button></div>
         <table><tbody>
           ${gente.map((p) => '<tr><td><strong>' + esc(p.nombre) + '</strong>' +
@@ -144,7 +144,7 @@ function pantallaIngreso(motivo) {
       </div>` : ''}
 
       <div class="firma">Automotora D y P · Sistema de control de taller<br>
-        Arttmize SpA · modelo borrador</div>
+        Arttmize SpA</div>
     </div>
   </div>`;
 

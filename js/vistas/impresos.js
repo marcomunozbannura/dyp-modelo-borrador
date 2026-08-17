@@ -292,7 +292,7 @@ function cabeceraImpreso(o, titulo, extra) {
 
 function pieImpreso() {
   return '<div class="pie"><span>Automotora D y P · documento generado por el sistema de control de taller</span>' +
-    '<span>Arttmize SpA · modelo borrador</span></div>';
+    '<span>Arttmize SpA</span></div>';
 }
 
 const campoImpreso = (k, v) => '<div class="c"><span class="k">' + esc(k) + '</span><span class="v">' + v + '</span></div>';

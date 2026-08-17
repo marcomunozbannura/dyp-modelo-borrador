@@ -633,7 +633,7 @@ const MENUS = {
     { texto: 'Repuestos pendientes', icono: 'repuesto', accion: 'ir:repuestos' }
   ],
   Ayuda: [
-    { texto: 'Qué es este modelo borrador', icono: 'info', accion: 'acerca' },
+    { texto: 'Acerca del sistema', icono: 'info', accion: 'acerca' },
     { texto: 'Qué se puede probar acá', icono: 'check', accion: 'guia' }
   ]
 };
@@ -683,7 +683,7 @@ function ejecutarAccion(accion) {
   if (accion === 'ir-modulo') return dialogoIrAModulo();
 
   if (accion === 'acerca') {
-    return dialogo('Modelo borrador · Automotora DyP', `
+    return dialogo('Automotora DyP · Control de Taller', `
       <p>Esto <strong>no es el sistema</strong>: es un modelo para probar cómo debería funcionar,
       con datos inventados y rotulados como tales. Corre entero en este computador, sin internet y
       sin base de datos.</p>
@@ -951,7 +951,7 @@ function ir(vista) {
   if (ui.registroOT) {
     ui.registroOT = null;
     document.body.classList.remove('ventana-registro');
-    document.title = 'Automotora DyP · Control de Taller — Modelo Borrador';
+    document.title = 'Automotora DyP · Control de Taller';
     if (window.location.hash.indexOf('ot=') >= 0) window.location.hash = 'vista=' + vista;
     pintarMenu();
     montarRol();
@@ -1400,17 +1400,32 @@ function abrirFicha(numero, tab, modo) {
 const VENTANA_DOBLE_CLIC = 450;
 const memoriaClic = { clave: null, t: 0 };
 
-function conDobleClic(el, clave, alDoble, alSimple) {
-  el.addEventListener('click', () => {
+/* `abridor` acota DESDE DÓNDE se puede abrir con doble clic. Sin él, el gesto
+   vive en todo `el` —la fila entera—, que es lo que hacía que seleccionar
+   texto de cualquier celda terminara abriendo una pestaña. Con él, el clic
+   simple sigue funcionando en toda la fila y el doble clic sólo cuenta sobre
+   esa celda. */
+function conDobleClic(el, clave, alDoble, alSimple, abridor) {
+  const abre = (ev) => !abridor || (ev.target && abridor.contains(ev.target));
+
+  el.addEventListener('click', (ev) => {
     const ahora = new Date().getTime();
-    if (memoriaClic.clave === clave && ahora - memoriaClic.t < VENTANA_DOBLE_CLIC) {
+    if (memoriaClic.clave === clave && ahora - memoriaClic.t < VENTANA_DOBLE_CLIC && abre(ev)) {
       memoriaClic.clave = null; memoriaClic.t = 0;
       if (alDoble() !== false) return;
     }
     memoriaClic.clave = clave; memoriaClic.t = ahora;
     if (alSimple) alSimple();
   });
-  el.addEventListener('dblclick', (ev) => { ev.preventDefault(); alDoble(); });
+  el.addEventListener('dblclick', (ev) => {
+    if (!abre(ev)) return;
+    ev.preventDefault(); alDoble();
+  });
+
+  if (abridor) {
+    abridor.classList.add('abre-ot');
+    abridor.title = 'Doble clic abre la orden en otra pestaña';
+  }
   /* Sin `title`. Lo tenia, y el globo del navegador se montaba encima de la
      etiqueta de datos —que dice bastante mas que el globo— y tapaba la fila de
      abajo. El gesto ya esta explicado en el subtitulo del panel. */
@@ -1483,7 +1498,24 @@ function dobleClicPorFilas(selector, opciones) {
       tr.classList.add('solo-flecha');
       flecha.addEventListener('click', (ev) => { ev.stopPropagation(); alternar(); });
     } else {
-      conDobleClic(tr, 'ot-' + n, () => { abrirFicha(n); return true; }, alternar);
+      /* 🔴 EL DOBLE CLIC ABRE SÓLO DESDE LA COLUMNA OT (16-08-2026, Marco:
+         «en casi todos los paneles me deja clickear y abrir otra pantalla y
+         no quiero eso»). Estaba enganchado a la FILA entera, así que un doble
+         clic para seleccionar una descripción, una patente o un cliente
+         abría una pestaña que nadie pidió — y en una tabla de diecinueve
+         columnas eso pasa todo el rato.
+
+         La celda de la OT se busca por su CONTENIDO: es la que dice el mismo
+         número que `data-ot` de la fila. Buscarla por posición fallaba, porque
+         las seis tablas no tienen la OT en la misma columna y esta función
+         además les inserta la flecha adelante. Si no se encuentra —una tabla
+         que no muestra la OT—, el clic simple sigue desplegando y no queda
+         ningún doble clic suelto. */
+      const celdas = [...tr.children];
+      const celdaOT = celdas.find((td) => td.textContent.trim() === String(n)) ||
+        celdas.find((td) => td.textContent.trim().replace(/\s+/g, ' ') === String(n));
+      conDobleClic(tr, 'ot-' + n,
+        () => { abrirFicha(n); return true; }, alternar, celdaOT || null);
     }
 
     if (n !== abierta) return;

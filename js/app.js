@@ -1445,6 +1445,16 @@ function conDobleClic(el, clave, alDoble, alSimple, abridor) {
    qué desplegar nada en Bodega. */
 const abiertoPorPanel = {};
 
+/* Abrir o cerrar el detalle de una fila desde AFUERA de la flecha —un botón
+   «Ver», por ejemplo—. Existe para que ese botón no se arme su propio estado:
+   el Presupuesto tenía el suyo (`p.abierta`) además de éste, y con los dos
+   abiertos la fila pintaba la lista DOS VECES. Un solo dueño del estado. */
+function alternarDetalle(clave) {
+  const v = ui.vista;
+  abiertoPorPanel[v] = (abiertoPorPanel[v] === String(clave)) ? null : String(clave);
+  render();
+}
+
 /* `opciones` es opcional y los seis paneles siguen llamándolo sin nada:
 
    · soloFlecha  — despliega SÓLO la flecha de la izquierda, no la fila entera,

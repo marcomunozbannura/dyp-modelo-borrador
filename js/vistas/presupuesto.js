@@ -56,40 +56,10 @@ function vPresupuesto() {
 
 /* ── Listado ───────────────────────────────────────────────────────────── */
 
-/* 🟰 LA FILA QUE SE DESPLIEGA AL APRETAR `Ver` (15-08-2026).
-
-   Es como funciona el original: `Ver` no abre otra pantalla, abre una línea
-   DEBAJO de la orden con cada presupuesto y sus cuatro acciones —`Ver PDF`,
-   `Editar Presupuesto`, `Enviar`, `Anular`—. Tiene sentido: una OT puede tener
-   varias OR, y desde el listado hay que poder elegir sobre CUÁL se actúa sin
-   perder de vista la lista.
-
-   Cada acción se muestra solo si se puede hacer sobre ese presupuesto:
-   `Editar` y `Enviar` mueren cuando deja de ser borrador —lo enviado no se
-   edita, se versiona—, y `Anular` no aplica a lo ya resuelto ni a lo ya
-   anulado. Se ocultan en vez de rechazarse porque acá no hay una regla que
-   explicar: el estado del presupuesto ya está a la vista en su etiqueta. */
-function filaDesplegada(o) {
-  const veMontos = Modelo.puede('presupuesto.montos');
-  const cols = 10;
-
-  const acciones = (pr) => {
-    const b = [];
-    if (veMontos) b.push('<button class="btn secundario chico" data-pr-pdf="' + esc(pr.id) +
-      '" data-pr-ot="' + esc(o.id) + '">' + ico('imprimir') + 'Ver PDF</button>');
-    if (pr.estado === 'borrador') {
-      b.push('<button class="btn secundario chico" data-pr-editar="' + esc(pr.id) +
-        '" data-pr-ot="' + esc(o.id) + '">' + ico('editar') + 'Editar Presupuesto</button>');
-      b.push('<button class="btn secundario chico" data-pr-enviar="' + esc(pr.id) + '">Enviar</button>');
-    }
-    if (pr.estado !== 'anulado' && pr.estado !== 'aprobado' && pr.estado !== 'rechazado')
-      b.push('<button class="btn secundario chico" data-pr-anular="' + esc(pr.id) + '">Anular</button>');
-    return b.join(' ');
-  };
-
-  return '<tr class="fila-presu-desplegada"><td colspan="' + cols + '">' +
-    listaPresupuestos(o) + '</td></tr>';
-}
+/* `filaDesplegada` se elimina. Envolvia la lista en su propio <tr> para
+   que el listado la pintara inline, y ese era el segundo camino que
+   duplicaba el desplegable. Ahora la fila la inyecta `dobleClicPorFilas`
+   y lo unico que hace falta es la lista: `listaPresupuestos`. */
 
 /* La lista sola, sin la fila que la envuelve. La usan los DOS caminos que
    abren una orden en este panel —el botón «Ver» y el doble clic—, para que
@@ -227,11 +197,15 @@ function vPresupuestoListado() {
             '<button class="btn secundario chico" data-presu-ot="' + esc(o.id) + '">' +
               ico('editar') + 'Generar</button>' +
             (o.presupuestos.length
-              ? '<button class="btn secundario chico" data-presu-ver-fila="' + esc(o.id) + '">' +
+              ? '<button class="btn secundario chico" data-presu-ver-fila="' + esc(o.numeroOT) + '">' +
                 ico('imprimir') + 'Ver</button>'
               : '') +
-          '</span></td></tr>' +
-          (p.abierta === o.id ? filaDesplegada(o) : '');
+          /* 🔴 SIN fila propia acá. La pintaba este listado Y la pintaba
+             `dobleClicPorFilas`, cada uno con su estado: el botón «Ver» con
+             `p.abierta` y la flecha con el del panel. Con los dos abiertos la
+             lista salía DOS VECES. Ahora el botón mueve el MISMO estado que
+             la flecha y hay un solo dueño. */
+          '</span></td></tr>';
       }).join('')}</tbody>
     </table></div>
     <div class="pie-grid"><div class="info">Mostrando ${Math.min(60, filas.length)} de ${filas.length}</div></div>
@@ -769,10 +743,10 @@ function pPresupuesto() {
      abre una a la vez: con 60 filas, dejarlas todas abiertas convierte el
      listado en una lista de presupuestos y se pierde la lista de órdenes. */
   document.querySelectorAll('[data-presu-ver-fila]').forEach((b) => b.addEventListener('click', (ev) => {
+    // Mueve el MISMO estado que la flecha de la fila. Tenía el suyo y por eso
+    // se podían abrir los dos a la vez, pintando la lista dos veces.
     ev.stopPropagation();
-    const id = b.dataset.presuVerFila;
-    p.abierta = (p.abierta === id) ? null : id;
-    render();
+    alternarDetalle(b.dataset.presuVerFila);
   }));
 
   document.querySelectorAll('[data-pr-pdf]').forEach((b) => b.addEventListener('click', (ev) => {

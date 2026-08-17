@@ -448,124 +448,106 @@ function impresoPresupuesto(o, p) {
   const lineas = p.lineas || [];
   const hs = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
 
-  /* ── UNA SOLA TABLA ────────────────────────────────────────────────
-     Todo el trabajo en un cuadro: la mano de obra separada por OP —Cambio,
-     Reparar, Externo—, los repuestos y los trabajos externos. Cada grupo con
-     su subtotal, y las horas cayendo en su columna.
+  /* ── LA TABLA, CON LAS COLUMNAS DEL EXCEL DE MARCO ─────────────────
+     N° · Descripción · Cantidad · Desmontar y Montar · Reparar · Pintar ·
+     Repuestos · Externos · Total neto · IVA · Total con IVA.
 
-     Antes eran tres tablas apiladas. Con una sola, el que firma recorre el
-     documento de arriba abajo y no tiene que ir juntando subtotales
-     repartidos por la hoja. */
-  const COLS = [
-    { campo: 'horas_dm',   rot: 'Desmontar y montar' },
-    { campo: 'horas_rep',  rot: 'Reparar' },
-    { campo: 'horas_pint', rot: 'Pintar' }
+     TODO EN PESOS, incluidas las tres de mano de obra: «todos estos valores
+     en $». Las horas se quedan en la pantalla, que es donde se escriben; el
+     papel que firma la compañía muestra plata.
+
+     Una fila por ítem —da lo mismo si es mano de obra, repuesto o externo— y
+     el monto cayendo en SU columna. Eso ya separa Cambio, Reparar y Externo
+     sin títulos de grupo: la separación SON las columnas. Antes las agrupé
+     con encabezados y quedó cargado. */
+  const MONEDA = [
+    { id: 'dm',   rot: 'Desmontar y montar' },
+    { id: 'rep',  rot: 'Reparar' },
+    { id: 'pint', rot: 'Pintar' },
+    { id: 'reps', rot: 'Repuestos' },
+    { id: 'ext',  rot: 'Externos' }
   ];
-  const OP_LARGO = { cambio: 'Cambio', reparar: 'Reparar', externo: 'Externo' };
-  const NCOL = 4 + COLS.length;   // N°, descripción, detalle, cant. + horas + valor
 
-  const grupo = (rot) =>
-    '<tr class="grupo-t"><td colspan="' + NCOL + '" class="rot">' + esc(rot) + '</td></tr>';
-
-  const subtotal = (rot, horas, monto) =>
-    '<tr class="cierre-t"><td colspan="4" class="rot">' + esc(rot) + '</td>' +
-    COLS.map((c) => '<td class="n">' + (horas && horas[c.campo] ? hs(horas[c.campo]) : '') + '</td>').join('') +
-    '<td class="n destaca">' + fMonto(monto) + '</td></tr>';
-
+  const suma = { dm: 0, rep: 0, pint: 0, reps: 0, ext: 0 };
   let nfila = 0;
-  const cuerpo = [];
 
-  // ── Mano de obra, un grupo por OP ────────────────────────────────────
-  ['cambio', 'reparar', 'externo'].forEach((op) => {
-    const suyas = lineas.filter((l) => Reglas.esManoObra(l) && l.proceso === op);
-    if (!suyas.length) return;
-    cuerpo.push(grupo('Mano de obra · ' + OP_LARGO[op]));
-    const acum = { horas_dm: 0, horas_rep: 0, horas_pint: 0 };
-    let suma = 0;
-    suyas.forEach((l) => {
-      let total = 0;
-      const celdas = COLS.map((c) => {
-        const h = Number(l[c.campo]) || 0;
-        acum[c.campo] += h;
-        const monto = Math.round(h * p.tempario);
-        total += monto;
-        return '<td class="n' + (h ? ' puesto' : '') + '">' +
-          (h ? hs(h) + '<div style="font-size:7.5px;color:#555">' + fMonto(monto) + '</div>' : '') + '</td>';
-      }).join('');
-      suma += total;
-      cuerpo.push('<tr><td class="n">' + (++nfila) + '</td>' +
-        '<td>' + esc(l.descripcion) + '</td>' +
-        '<td>' + esc(OP_LARGO[op]) + '</td><td class="n"></td>' +
-        celdas + '<td class="n destaca">' + fMonto(total) + '</td></tr>');
-    });
-    cuerpo.push(subtotal('Subtotal ' + OP_LARGO[op], acum, suma));
-  });
+  const filas = lineas.map((l) => {
+    const v = { dm: 0, rep: 0, pint: 0, reps: 0, ext: 0 };
+    let cant = '';
+    if (Reglas.esManoObra(l)) {
+      v.dm   = Math.round((Number(l.horas_dm)   || 0) * p.tempario);
+      v.rep  = Math.round((Number(l.horas_rep)  || 0) * p.tempario);
+      v.pint = Math.round((Number(l.horas_pint) || 0) * p.tempario);
+    } else if (Reglas.esRepuesto(l)) {
+      v.reps = Reglas.cobroRepuesto(l);
+      cant = l.cantidad || 1;
+    } else {
+      v.ext = Number(l.precio_unitario) || 0;
+    }
 
-  // ── Repuestos ────────────────────────────────────────────────────────
-  const reps = lineas.filter(Reglas.esRepuesto);
-  if (reps.length) {
-    cuerpo.push(grupo('Repuestos'));
-    reps.forEach((l) => {
-      const cobra = Reglas.esProveedorTaller(l.proveedor);
-      cuerpo.push('<tr><td class="n">' + (++nfila) + '</td>' +
-        '<td>' + esc(l.descripcion || '—') +
-          (l.codigo ? ' <span style="color:#777">· ' + esc(l.codigo) + '</span>' : '') + '</td>' +
-        '<td>' + esc(l.proveedor || '—') + '</td>' +
-        '<td class="n">' + (l.cantidad || 1) + '</td>' +
-        '<td class="n" colspan="' + COLS.length + '" style="color:#777">' +
-          (cobra ? 'unitario ' + fMonto(l.precio_unitario || 0)
-                 : 'referencia ' + fMonto(l.precio_unitario || 0) + ' · lo pone ' +
-                   esc(l.proveedor || 'un tercero')) + '</td>' +
-        '<td class="n destaca">' + fMonto(Reglas.cobroRepuesto(l)) + '</td></tr>');
-    });
-    cuerpo.push(subtotal('Subtotal repuestos', null, t.repuestos));
-  }
+    const neto = v.dm + v.rep + v.pint + v.reps + v.ext;
+    // Una línea en cero no se imprime: alarga el documento y no dice nada.
+    // El repuesto que pone la compañía sí va, con su rótulo: es parte del
+    // trabajo aunque no se cobre.
+    if (!neto && !Reglas.esRepuesto(l)) return '';
+    MONEDA.forEach((c) => { suma[c.id] += v[c.id]; });
 
-  // ── Trabajos externos ────────────────────────────────────────────────
-  const exts = lineas.filter(Reglas.esExterno);
-  if (exts.length) {
-    cuerpo.push(grupo('Trabajos externos · T.O.T.'));
-    exts.forEach((l) => {
-      cuerpo.push('<tr><td class="n">' + (++nfila) + '</td>' +
-        '<td>' + esc(l.descripcion || '—') +
-          (l.codigo ? ' <span style="color:#777">· ' + esc(l.codigo) + '</span>' : '') + '</td>' +
-        '<td>' + esc(l.proveedor || '—') + '</td><td class="n"></td>' +
-        '<td class="n" colspan="' + COLS.length + '"></td>' +
-        '<td class="n destaca">' + fMonto(l.precio_unitario || 0) + '</td></tr>');
-    });
-    cuerpo.push(subtotal('Subtotal trabajos externos', null, t.tot));
-  }
+    const iva = Math.round(neto * ivaPct / 100);
+    return '<tr><td class="n">' + (++nfila) + '</td>' +
+      '<td>' + esc(l.descripcion || '—') +
+        (Reglas.esRepuesto(l) && !Reglas.esProveedorTaller(l.proveedor)
+          ? ' <span style="color:#777">· lo pone ' + esc(l.proveedor || 'un tercero') + '</span>'
+          : (l.proveedor ? ' <span style="color:#777">· ' + esc(l.proveedor) + '</span>' : '')) + '</td>' +
+      '<td class="n">' + cant + '</td>' +
+      MONEDA.map((c) => '<td class="n' + (v[c.id] ? ' puesto' : '') + '">' +
+        (v[c.id] ? fMonto(v[c.id]) : '') + '</td>').join('') +
+      '<td class="n destaca">' + fMonto(neto) + '</td>' +
+      '<td class="n">' + fMonto(iva) + '</td>' +
+      '<td class="n destaca">' + fMonto(neto + iva) + '</td></tr>';
+  }).join('');
 
-  /* El deducible va EN la tabla, no en el pie. Es lo único que explica por
-     qué el neto no es la suma de arriba, y en el pie —que quedó en tres
-     líneas— no cabía sin volver a llenarlo de detalle. */
-  if (t.deducible) {
-    cuerpo.push('<tr class="cierre-t"><td colspan="4" class="rot">Subtotal de los trabajos</td>' +
-      '<td class="n" colspan="' + COLS.length + '"></td>' +
-      '<td class="n destaca">' + fMonto(t.subtotalNeto) + '</td></tr>');
-    cuerpo.push('<tr><td class="n"></td>' +
-      '<td colspan="3">Deducible de la póliza, a cargo del cliente contra la entrega</td>' +
-      '<td class="n" colspan="' + COLS.length + '"></td>' +
-      '<td class="n destaca">&minus; ' + fMonto(t.deducible) + '</td></tr>');
-  }
+  const netoTabla = MONEDA.reduce((a, c) => a + suma[c.id], 0);
+  const ivaTabla = Math.round(netoTabla * ivaPct / 100);
+
+  const pieTabla = '<tr class="cierre-t"><td colspan="3" class="rot">Totales</td>' +
+    MONEDA.map((c) => '<td class="n">' + fMonto(suma[c.id]) + '</td>').join('') +
+    '<td class="n destaca">' + fMonto(netoTabla) + '</td>' +
+    '<td class="n">' + fMonto(ivaTabla) + '</td>' +
+    '<td class="n destaca">' + fMonto(netoTabla + ivaTabla) + '</td></tr>';
+
+  /* El deducible va DEBAJO de la tabla, no adentro: no es un trabajo, es lo
+     que la póliza descuenta. Sin esta línea el documento mostraría el total
+     de arriba y otro distinto a pagar, sin decir por qué. Sólo aparece cuando
+     existe: en una OR particular no se dibuja. */
+  const cierreDeducible = !t.deducible ? '' : `
+    <table class="detalle" style="margin-top:2mm"><tbody>
+      <tr><td>Deducible de la póliza, a cargo del cliente contra la entrega</td>
+        <td class="n destaca" style="width:30mm">&minus; ${fMonto(t.deducible)}</td></tr>
+      <tr class="cierre-t"><td class="rot">Total a pagar</td>
+        <td class="n destaca">${fMonto(t.total)}</td></tr>
+    </tbody></table>`;
 
   const tablaUnica = !lineas.length ? '' : `
     <table class="detalle"><thead>
       <tr class="grupos">
-        <th colspan="4" class="izq">Detalle del trabajo</th>
-        <th colspan="${COLS.length}">Horas y valor por tipo de trabajo</th>
-        <th rowspan="2" style="width:26mm">Total línea</th>
+        <th colspan="3" class="izq">Detalle del trabajo</th>
+        <th colspan="${MONEDA.length}">Todos estos valores en $</th>
+        <th colspan="3">Totales</th>
       </tr>
       <tr>
-        <th style="width:9mm">N°</th><th>Descripción</th>
-        <th style="width:28mm">OP / proveedor</th><th style="width:12mm">Cant.</th>
-        ${COLS.map((c) => '<th style="width:24mm">' + esc(c.rot) + '</th>').join('')}
+        <th style="width:8mm">N°</th><th>Descripción</th><th style="width:14mm">Cantidad</th>
+        ${MONEDA.map((c) => '<th style="width:21mm">' + esc(c.rot) + '</th>').join('')}
+        <th style="width:22mm">Total neto</th>
+        <th style="width:19mm">IVA ${ivaPct}%</th>
+        <th style="width:23mm">Total con IVA</th>
       </tr>
     </thead>
-    <tbody>${cuerpo.join('')}</tbody></table>
-    <div style="font-size:8px;color:#666;margin-top:1mm">Las horas se valorizan a
-      ${fMonto(p.tempario)} la hora. Los repuestos que aporta la compañía se detallan con su
-      valor de referencia y no se cobran.</div>`;
+    <tbody>${filas}</tbody>
+    <tfoot>${pieTabla}</tfoot></table>
+    <div style="font-size:8px;color:#666;margin-top:1mm">La mano de obra se valoriza a
+      ${fMonto(p.tempario)} la hora sobre los tiempos cargados en el sistema. Los repuestos que
+      aporta la compañía se detallan y no se cobran.</div>
+    ${cierreDeducible}`;
 
   const cerroTotal = (rot, val, fuerte) =>
     '<tr' + (fuerte ? ' class="cierre-t"' : '') + '><td>' + esc(rot) + '</td>' +
@@ -633,18 +615,9 @@ function impresoPresupuesto(o, p) {
            se firma. */''}
     </div>
     <div class="totales">
-      <table style="width:100%">
-        <tbody>
-          ${/* Tres líneas y nada más: «el valor debiese ser el total neto, el
-               IVA separado y el total simplemente, no tanto detalle». El
-               desglose por tipo de trabajo ya está arriba, con su subtotal
-               grupo por grupo — repetirlo abajo era decir dos veces lo mismo
-               en el documento que firma la compañía. */''}
-          ${cerroTotal('Total neto', fMonto(t.neto), true)}
-          ${cerroTotal('IVA ' + ivaPct + '%', fMonto(t.iva))}
-          ${cerroTotal('TOTAL', fMonto(t.total), true)}
-        </tbody>
-      </table>
+      ${/* SIN caja de totales. La sumatoria vive en el pie de la tabla, como
+           en el Excel de Marco, y el deducible con su total a pagar van justo
+           debajo. Repetir el total aca era decirlo tres veces en una hoja. */''}
       <div style="margin-top:8mm;display:flex;gap:8mm">
         <div style="flex:1;border-top:1px solid #333;padding-top:1.5mm;text-align:center;font-size:8px">
           Evaluador</div>

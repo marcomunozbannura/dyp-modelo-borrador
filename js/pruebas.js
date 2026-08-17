@@ -1314,16 +1314,24 @@ const Pruebas = (function () {
          porque el deducible se comía el trabajo, y el PDF decía $64.022. Un
          sistema que muestra dos totales para la misma OR no se puede defender
          delante de una compañía, y no se ve hasta que alguien abre el PDF. */
-      ['Presupuestos con el monto guardado distinto al calculado',
+      ['Presupuestos donde la pantalla y el documento no dicen lo mismo',
         (function () {
-          const ivaPct = Reglas.parametro(db, 'iva', 19);
-          return db.presupuesto.filter((p) => {
-            const o = db.orden_trabajo.find((x) => x.id === p.ot_id);
-            const t = Reglas.totalesPresupuesto(
-              db.presupuesto_linea.filter((l) => l.presupuesto_id === p.id),
-              p.tempario, o ? o.deducible : 0, ivaPct);
-            return p.neto !== t.neto || p.iva !== t.iva || p.total !== t.total;
-          }).length;
+          /* Se compara lo que ve la PANTALLA contra lo que imprime el
+             DOCUMENTO, que es donde el desacuerdo hace daño. Antes se
+             comparaba contra lo guardado en la base, y eso pasaba en verde
+             mientras el navegador de Marco —con datos de una versión
+             anterior— mostraba $0 en el listado y $64.022 en el PDF: la copia
+             guardada sólo se refresca cuando alguien toca ese presupuesto.
+             Ahora ningún monto se lee de la copia; los dos salen de la misma
+             cuenta, y esta cifra lo comprueba. */
+          let malos = 0;
+          Modelo.torre().concat(Modelo.historico({ todo: true })).forEach((o) =>
+            (o.presupuestos || []).forEach((p) => {
+              if (!p.totales) { malos++; return; }
+              if (p.neto !== p.totales.neto || p.iva !== p.totales.iva ||
+                  p.total !== p.totales.total) malos++;
+            }));
+          return malos;
         })(), 0],
       ['Repuestos nacidos de una línea que no es «cambio»',
         (function () {

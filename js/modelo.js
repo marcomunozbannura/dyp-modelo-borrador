@@ -410,17 +410,29 @@ const Modelo = (function () {
         .map((p) => {
           const lineas = (ix.lineasDePresupuesto.get(p.id) || []).sort((a, b) => a.orden - b.orden);
           const tempario = p.tempario != null ? p.tempario : Reglas.parametro(db, 'tempario', 10000);
+          /* 🔴 EL MONTO SE CALCULA, NO SE LEE DE LO GUARDADO.
+             `presupuesto.neto/iva/total` son una copia que sólo se refresca
+             cuando alguien toca ese presupuesto. Un navegador con datos
+             guardados de antes seguía mostrando el número viejo —$0 en el
+             listado— mientras el PDF, que sí recalcula, mostraba $64.022. Es
+             el mismo desacuerdo de siempre, y esta vez ni siquiera se arregla
+             cambiando la fórmula: hay que dejar de leer la copia.
+
+             Los tres campos quedan por compatibilidad con las pantallas que
+             ya los leían, pero salen de `t`. Así no hay forma de que la
+             pantalla y el documento discrepen, ni hoy ni con datos viejos. */
+          const t = Reglas.totalesPresupuesto(lineas, tempario, o.deducible,
+            Reglas.parametro(db, 'iva', 19));
           return {
             id: p.id, version: p.version, numeroOR: p.numero_or, idReparacion: p.id_reparacion,
             correlativo: p.correlativo, estado: p.estado,
-            neto: p.neto, iva: p.iva, total: p.total,
+            neto: t.neto, iva: t.iva, total: t.total,
             tempario, observacion: p.observacion || '',
             enviadoAt: p.enviado_at || null, resueltoAt: p.resuelto_at || null,
-            /* El desglose del documento, calculado acá una sola vez: la
-               pantalla y el impreso muestran los MISMOS números porque leen
-               la misma cuenta, no dos sumas parecidas. */
-            totales: Reglas.totalesPresupuesto(lineas, tempario, o.deducible,
-              Reglas.parametro(db, 'iva', 19)),
+            /* El desglose del documento. Es LA MISMA cuenta que dio `neto`,
+               `iva` y `total` de arriba —se calcula una vez—, así que la
+               pantalla y el impreso no pueden mostrar números distintos. */
+            totales: t,
             lineas
           };
         }),

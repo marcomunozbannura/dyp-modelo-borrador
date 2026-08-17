@@ -90,10 +90,28 @@ function filaDesplegada(o) {
   return '<tr class="fila-presu-desplegada"><td colspan="' + cols + '">' +
     o.presupuestos.map((pr) => {
       const e = ESTADO_PRESUPUESTO[pr.estado] || { txt: pr.estado, clase: 'gris' };
+      /* 🔶 LA ETIQUETA DE DATOS, ACÁ TAMBIÉN (16-08-2026, Marco): «que pueda
+         ver una etiqueta de datos simple para saber qué documento abrir».
+         Es el caso real: una OT con tres OR y el mismo botón «Ver PDF» tres
+         veces. Sin saber qué hay adentro, abrirlas de a una es la única
+         forma — y son tres PDF que hay que cerrar.
+
+         El `data-or` es el mismo enganche que ya usa la torre y el listado:
+         al pasar el mouse sale monto, estado y fechas de ESE presupuesto. */
+      const cuantas = (pr.lineas || []).length;
       return '<div class="linea-presu">' +
-        '<span class="cod">Presupuesto ' + esc(pr.numeroOR) + '</span>' +
+        /* Se rotula con el ID del presupuesto, no con el número de OR: las
+           versiones comparten la OR y si no, el globo de la v2 mostraría los
+           montos de la v1. */
+        '<span class="cod" data-or="' + esc(pr.id) + '">Presupuesto ' +
+          esc(pr.numeroOR) + '</span>' +
         '<span class="et ' + esc(e.clase) + '">' + esc(e.txt) + '</span>' +
         '<span class="et gris">v' + pr.version + '</span>' +
+        /* Lo mínimo para elegir sin abrir: cuántas líneas trae y cuándo se
+           mandó. Dos OR del mismo monto y distinto tamaño se distinguen acá. */
+        '<span class="et gris">' + cuantas + (cuantas === 1 ? ' línea' : ' líneas') + '</span>' +
+        (pr.enviadoAt ? '<span class="et gris" title="Enviado a la compañía">enviada ' +
+          esc(fFechaHora(pr.enviadoAt)) + '</span>' : '') +
         '<span class="monto">' + (veMontos ? fMonto(pr.total) : '•••••') + '</span>' +
         '<span class="acc">' + acciones(pr) + '</span></div>';
     }).join('') + '</td></tr>';

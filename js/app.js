@@ -1805,10 +1805,17 @@ function tarjetaDeOT(clave) {
   };
 }
 
-function tarjetaDeOR(numeroOR) {
+/* La clave puede ser el NÚMERO de OR o el id de un presupuesto concreto.
+   Hace falta lo segundo desde que la fila desplegada muestra las versiones
+   una debajo de otra: las versiones CONSERVAN la OR —es el mismo trabajo
+   discutido de nuevo—, así que buscar por número devolvía siempre la v1 y el
+   globo de la v2 mostraba los montos de la v1. Justo en la pantalla donde se
+   elige qué documento abrir. */
+function tarjetaDeOR(clave) {
   let orden = null, presu = null;
   Modelo.torre().concat(Modelo.historico({ todo: true })).some((o) => {
-    const p = o.presupuestos.find((x) => String(x.numeroOR) === String(numeroOR));
+    const p = o.presupuestos.find((x) => x.id === clave) ||
+              o.presupuestos.find((x) => String(x.numeroOR) === String(clave));
     if (p) { orden = o; presu = p; return true; }
     return false;
   });

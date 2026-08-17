@@ -556,9 +556,10 @@ function impresoPresupuesto(o, p) {
     </thead>
     <tbody>${filas}</tbody>
     <tfoot>${pieTabla}</tfoot></table>
-    <div style="font-size:8px;color:#666;margin-top:1mm">La mano de obra se valoriza a
-      ${fMonto(p.tempario)} la hora sobre los tiempos cargados en el sistema. Los repuestos que
-      aporta la compañía se detallan y no se cobran.</div>
+    ${/* SIN la nota al pie de la tabla (16-08-2026, Marco). El tempario ya
+         esta en la ficha de arriba, con su propio rotulo, y el repuesto que
+         pone la compania lo dice su propia fila. Explicarlo otra vez abajo
+         era llenar de letra chica un documento que se lee por sus numeros. */''}
 `;
 
   const cerroTotal = (rot, val, fuerte) =>

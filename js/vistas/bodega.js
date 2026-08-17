@@ -422,8 +422,10 @@ function engancharRepuestos(otId) {
      el motivo es obligatorio — es lo que después explica en el expediente por
      qué el vehículo estuvo detenido. */
   document.querySelectorAll('[data-devolver]').forEach((x) => x.addEventListener('click', () => {
-    const motivo = prompt('¿Por qué se devuelve el repuesto? Queda en el expediente y ' +
-      'es lo que explica la demora ante la compañía.');
+    // Sólo la pregunta (16-08-2026, Marco). Dónde queda registrado se
+    // responde donde se ve —el globo de la vuelta, el historial y el
+    // expediente—, no en el cuadro que interrumpe para escribir.
+    const motivo = prompt('¿Por qué se devuelve el repuesto?');
     if (motivo === null) return;
     ejecutar(() => Modelo.devolver_repuesto(x.dataset.devolver, motivo),
       'Repuesto devuelto. Queda pendiente y el pedido vuelve a correr.');
@@ -431,9 +433,17 @@ function engancharRepuestos(otId) {
 }
 
 function accionesRepuesto(r) {
+  /* La vuelta, con EL MOTIVO de la última devolución en el globo. Marco
+     preguntó dónde quedaba ese texto: queda en el historial de la orden y en
+     el expediente —con su fecha y su autor—, pero acá, que es donde bodega
+     mira la pieza, no se veía. Ahora se ve sin salir de la fila. */
   const vueltas = (r.devoluciones || []).length;
+  const ultima = vueltas ? (r.devoluciones[vueltas - 1] || {}) : null;
   const marca = vueltas
-    ? ' <span class="et ambar" title="Devuelto ' + vueltas + ' vez(ces)">vuelta ' + (vueltas + 1) + '</span>'
+    ? ' <span class="et ambar" title="' + esc('Devuelta ' + vueltas +
+        (vueltas === 1 ? ' vez' : ' veces') +
+        (ultima && ultima.motivo ? ' · última: ' + ultima.motivo : '')) +
+      '">vuelta ' + (vueltas + 1) + '</span>'
     : '';
 
   if (!r.fechaBodega)
@@ -455,8 +465,22 @@ function pBodega() {
   // Doble clic abre la orden en pestaña nueva, igual que en la torre.
   /* SIN desplegable (16-08-2026, Marco: «no quiero que el apartado de Bodega
      tenga desplegable»). Acá no se estudia la orden: se marca que una pieza
-     llegó y que se entregó. Todo lo que hay que ver ya está en la fila, y el
-     expandible sólo agregaba una flecha que abre lo que no se usa. */
+     llegó y que se entregó.
+
+     Pero el doble clic SÍ abre la orden en otra pestaña, y SÓLO sobre el
+     número de OT — no sobre cualquier celda. Al sacar el desplegable me
+     llevé las dos cosas; y el genérico enganchaba la fila entera, así que un
+     doble clic al elegir texto de una descripción abría una pestaña que
+     nadie pidió. */
+  document.querySelectorAll('tr.fila[data-ot] td:first-child').forEach((td) => {
+    td.classList.add('abre-ot');
+    td.title = 'Doble clic abre la orden en otra pestaña';
+    td.addEventListener('dblclick', (ev) => {
+      ev.stopPropagation();
+      const fila = td.closest('[data-ot]');
+      if (fila && fila.dataset.ot) abrirFicha(fila.dataset.ot);
+    });
+  });
   const b = bodegaEstado();
 
   // El menú de entrada, y las pestañas de arriba una vez adentro: las dos

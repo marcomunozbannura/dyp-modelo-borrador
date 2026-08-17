@@ -153,7 +153,7 @@ function vFichaOT(o) {
   </div>
 
   ${cuerpo}
-  ${accionesOT(o)}`;
+`;
 }
 
 /* ── Pestaña · Ficha completa ──────────────────────────────────────────── */
@@ -554,79 +554,12 @@ function fichaFotos(o) {
   </div>`;
 }
 
-/* ── Acciones ──────────────────────────────────────────────────────────── */
-
-function accionesOT(o) {
-  if (o.cierraOrden) {
-    return '<div class="panel"><div class="cuerpo"><div class="nota">' + ico('candado') +
-      '<span>Esta orden está cerrada como <strong>' + esc(o.estadoNombre) +
-      '</strong> y no admite cambios. Para volver a trabajar el vehículo hay que ' +
-      'reingresarlo con una orden nueva.</span></div></div></div>';
-  }
-
-  const btn = (accion, icono, texto, clase) =>
-    '<button class="hbtn' + (clase ? ' ' + clase : '') + '" type="button" data-acc="' + accion +
-    '" data-ot="' + esc(o.id) + '">' + ico(icono) + esc(texto) + '</button>';
-
-  const estadosEntrega = Modelo.catalogo('estado')
-    .filter((e) => (e.alcanzable_en || []).indexOf('entrega') >= 0);
-
-  /* Cada grupo pide su permiso. Antes salían los tres siempre y el operario
-     tenía a mano "Entregar" y "Sacar del taller": el motor lo habría
-     rechazado, pero ofrecerle a alguien un botón que va a rebotar es enseñarle
-     a desconfiar de la pantalla. Lo que no le toca, no se dibuja. */
-  const grupos = [];
-  if (Modelo.puede('salida.registrar')) grupos.push(
-    '<div class="grupo-acc"><span class="rot-acc">Taller</span>' +
-    (o.fueraDeTaller
-      ? btn('reingreso', 'recepcion', 'Registrar reingreso', 'primario')
-      : btn('salida', 'exportar', 'Sacar del taller')) + '</div>');
-  if (Modelo.puede('ot.editar')) grupos.push(
-    '<div class="grupo-acc"><span class="rot-acc">Estado</span>' +
-    '<select id="sel-estado">' +
-    Modelo.catalogo('estado').filter((e) => (e.alcanzable_en || []).indexOf('ficha') >= 0)
-      .map((e) => '<option value="' + esc(e.codigo) + '"' + (e.codigo === o.estado ? ' selected' : '') +
-        '>' + esc(e.nombre) + '</option>').join('') +
-    '</select>' + btn('estado', 'editar', 'Cambiar estado') + '</div>');
-  if (Modelo.puede('entrega.registrar')) grupos.push(
-    '<div class="grupo-acc"><span class="rot-acc">Entrega</span>' +
-    '<select id="sel-entrega">' +
-    estadosEntrega.map((e) => '<option value="' + esc(e.codigo) + '">' + esc(e.nombre) + '</option>').join('') +
-    '</select>' + btn('entregar', 'check', 'Entregar') + '</div>');
-
-  /* Sin ninguna de las tres, el trabajo sobre esta orden pasa por la pestaña
-     Etapas: es literalmente lo único que el operario tiene que hacer acá. */
-  if (!grupos.length) return '';
-
-  return `
-  <div class="panel">
-    <div class="cab"><h2>${ico('taller', 'g')}Acciones</h2>
-      <span class="desc">Los botones no se deshabilitan: si la acción no corresponde, la regla explica por qué</span></div>
-    <div class="cuerpo">
-      <div class="acciones-ot">${grupos.join('')}</div>
-    </div>
-  </div>`;
-}
-
-function pAccionesOT(o) {
-  document.querySelectorAll('[data-acc]').forEach((b) => b.addEventListener('click', () => {
-    const ot = b.dataset.ot;
-    const val = (id) => { const s = document.getElementById(id); return s ? s.value : null; };
-    switch (b.dataset.acc) {
-      case 'salida':
-        return ejecutar(() => Modelo.registrar_salida(ot, 'espera_repuesto'),
-          'Vehículo fuera de taller, con fecha. El reloj de reparación quedó detenido.');
-      case 'reingreso':
-        return ejecutar(() => Modelo.registrar_reingreso(ot),
-          'Reingreso registrado. La reparación acumulada se reanudó y la estadía actual partió de cero.');
-      case 'estado':
-        return ejecutar(() => Modelo.cambiar_estado_ot(ot, val('sel-estado')), 'Estado cambiado.');
-      case 'entregar':
-        return ejecutar(() => Modelo.registrar_entrega(ot, { estado: val('sel-entrega'), fecha: HOY }),
-          'Orden entregada. Fecha de salida escrita y los relojes conservados en el Histórico.');
-    }
-  }));
-}
+/* 🔶 SIN el panel de ACCIONES (16-08-2026, Marco: «eliminar esto de
+   acciones, no sirve»). Eran tres cosas que ya tienen su lugar propio:
+   sacar del taller y entregar viven en Recepcion -> Entregar Unidad, y el
+   estado se cambia desde la torre. Tenerlas tambien al pie de la ficha era
+   un cuarto camino para lo mismo, y con un desplegable de entrega —
+   «Despachada por Perdida Total»— asomando en una orden que recien entra. */
 
 /* ── Cableado de la ficha ──────────────────────────────────────────────── */
 
@@ -688,6 +621,5 @@ function pFichaOT(o) {
     }));
   }
 
-  pAccionesOT(o);
   Media.pintar();
 }

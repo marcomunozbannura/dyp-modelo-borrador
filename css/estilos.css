@@ -1206,3 +1206,8 @@ table.grid.anidada td { font-size: 12px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* La celda de la OT que abre en otra pestaña con doble clic. El cursor lo
+   dice antes de que alguien lo descubra probando. */
+table.grid td.abre-ot { cursor: alias; }
+table.grid td.abre-ot:hover { text-decoration: underline; }

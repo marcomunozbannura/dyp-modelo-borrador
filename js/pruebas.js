@@ -582,7 +582,23 @@ const Pruebas = (function () {
          rechazado no ensucia el registro. */
       (function () {
         const o = Modelo.torre().find((x) => !x.fueraDeTaller) || Modelo.torre()[0];
-        const antes = Modelo.expedienteDe(o.numeroOT).hechos.length;
+
+        /* 🔴 LOS HECHOS NUEVOS SE IDENTIFICAN, NO SE CUENTAN DESDE EL FINAL.
+           Esto tomaba los dos ÚLTIMOS del expediente, dando por hecho que lo
+           recién escrito queda al final. No queda: el expediente ordena por
+           fecha, y `ahora()` es el día del calendario de la demostración con la
+           hora del reloj de verdad. Pasada la medianoche esa hora —00:14— es
+           anterior a la de todo lo sembrado ese día, que va entre las 8:00 y
+           las 17:59. El hecho nuevo se iba al principio y la prueba miraba dos
+           sembrados: "Repuesto pedido por SIN AUTOR" no era un fallo del
+           registro, era la prueba mirando el lugar equivocado.
+
+           Se cayó sola la madrugada del 17-08-2026 sin que nadie tocara el
+           motor. Una prueba que depende de la hora a la que se corre no sirve
+           para lo que existe. */
+        const llave = (h) => h.titulo + '|' + (+h.fecha) + '|' + h.seq;
+        const habia = new Set(Modelo.expedienteDe(o.numeroOT).hechos.map(llave));
+        const antes = habia.size;
 
         /* Con sesión abierta, que es la única forma en que el sistema se usa:
            la pantalla de ingreso no deja entrar sin ella. Sin fijarla, esta
@@ -603,7 +619,7 @@ const Pruebas = (function () {
         const mala = Modelo.escribir_bitacora(o.id, { asunto_id: 'no-existe', mensaje: 'x' });
 
         const ex = Modelo.expedienteDe(o.numeroOT);
-        const nuevos = ex.hechos.slice(antes);
+        const nuevos = ex.hechos.filter((h) => !habia.has(llave(h)));
         const conAutor = nuevos.filter((h) => h.quien).length;
 
         push({

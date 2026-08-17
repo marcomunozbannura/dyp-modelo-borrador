@@ -73,19 +73,10 @@ const CSS_IMPRESO = `
 .impreso .firma{border:1px solid #999;height:26mm}
 .impreso .fotos{display:flex;gap:4px;flex-wrap:wrap}
 .impreso .fotos img{width:44mm;height:32mm;object-fit:cover;border:1px solid #ccc}
-/* El sello va AL PIE de la hoja, no cruzado en diagonal sobre el texto.
-
-   Estaba como marca de agua rotada en el medio: aunque iba por detrás —z-index
-   0 contra 1—, se leía encima de las condiciones del presupuesto y del bloque
-   de totales, y en el PDF quedaba un "MODELO BO" gris atravesando el
-   documento. Un rótulo que estorba lo que tiene que rotular está mal puesto.
-
-   Abajo cumple lo mismo —nadie confunde este papel con uno real— y no se cruza
-   con nada. Sigue siendo lo último que se lee antes de cerrar la hoja. */
+/* Acá vivía la regla del sello «MODELO BORRADOR». Se borró con el rótulo el
+   16-08-2026: una clase que nadie usa es una invitación a volver a ponerlo. */
 .impreso .nota-legal{margin-top:8px;font-size:9.5px;color:#555;border-top:1px solid #ddd;
   padding-top:5px;line-height:1.45}
-.impreso .sello{margin-top:6px;text-align:center;font-size:13px;font-weight:800;
-  letter-spacing:7px;color:#9aa;border-top:1px solid #dde;padding-top:6px;pointer-events:none}
 /* El pie en el FLUJO de la hoja, empujado abajo con margin-top:auto. Estaba en
    position:absolute con bottom:8mm, y cuando el documento crecía se montaba
    encima del contenido: en el presupuesto quedaba escrito sobre la barra azul
@@ -221,11 +212,10 @@ const CSS_IMPRESO = `
   .impreso{width:auto;min-height:0;height:auto;box-shadow:none;padding:0;margin:0;
     background:#fff !important;display:block}
   .impreso .contenido{display:block}
-  /* El pie y el sello van donde caigan al final del documento. Estaban en
-     position:fixed, que en papel los clava en la esquina de CADA página y los
-     monta encima de lo que haya ahí — así se metía sobre la barra del TOTAL. */
+  /* El pie va donde caiga al final del documento. Estaba en position:fixed, que
+     en papel lo clava en la esquina de CADA página y lo monta encima de lo que
+     haya ahí — así se metía sobre la barra del TOTAL. */
   .impreso .pie{margin-top:14px}
-  .impreso .sello{margin-top:8px}
   /* Que la tabla no se parta dejando una fila huérfana al dar vuelta la hoja. */
   .impreso table{page-break-inside:auto}
   .impreso tr{page-break-inside:avoid}
@@ -862,14 +852,16 @@ function mostrarImpreso(cuerpo, nombre) {
       '<button id="imp-print">Imprimir o guardar como PDF</button>' +
       '<button class="sec" id="imp-cerrar">Cerrar</button>' +
     '</div>' +
-    /* El sello va ÚLTIMO en el HTML, no primero. Estaba arriba y se lo ponía
-       abajo con `order` de flexbox, pero al imprimir `.impreso` pasa a
-       `display:block` —hace falta para que las páginas se partan bien— y ahí
-       `order` deja de existir: en el PDF el rótulo salía en la cabecera. Puesto
-       al final del documento, queda abajo en la pantalla y en el papel. */
+    /* 🔷 SIN EL SELLO «MODELO BORRADOR» (16-08-2026, Marco, por segunda vez:
+       "acuérdate que te pedí que en todos los PDF sacaras lo del modelo
+       borrador, acá sigue apareciendo").
+
+       La primera vez lo saqué del cuerpo de cada documento —del presupuesto, de
+       la ficha— pero no de acá, que es el marco que envuelve a los CUATRO y les
+       agregaba el rótulo al final. Por eso reaparecía: se estaba quitando en
+       cuatro lugares y poniendo en uno solo. */
     '<div class="impreso">' +
-    '<div class="contenido">' + cuerpo + '</div>' +
-    '<div class="sello">MODELO BORRADOR</div></div>';
+    '<div class="contenido">' + cuerpo + '</div></div>';
   document.body.appendChild(velo);
   Media.pintar(velo);
 

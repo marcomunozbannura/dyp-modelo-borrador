@@ -306,6 +306,21 @@ function presuActual() {
     o.presupuestos[o.presupuestos.length - 1];
 }
 
+/* La cabecera de cada uno de los tres bloques. Van numerados y con su
+   subtotal a la derecha porque son TRES COSAS DISTINTAS que el documento
+   suma por separado, y en la pantalla anterior se leian como una sola tabla
+   larga. Textual de Marco: "debiese quedar clara la separacion entre Mano de
+   Obra / Repuestos / Trabajos externos - T.O.T.". */
+function cabBloquePresu(n, titulo, quePaga, subtotal, $) {
+  return '<div class="cab-bloque">' +
+    '<span class="orden">' + n + '</span>' +
+    '<div class="texto"><span class="tit">' + esc(titulo) + '</span>' +
+      '<span class="que">' + esc(quePaga) + '</span></div>' +
+    '<div class="monto"><span class="rot">Subtotal</span>' +
+      '<span class="val">' + $(subtotal) + '</span></div>' +
+  '</div>';
+}
+
 function grillaPresupuesto(o, pr, editable, $) {
   const p = presuEstado();
   const t = pr.totales ||
@@ -315,26 +330,45 @@ function grillaPresupuesto(o, pr, editable, $) {
   const repuestos = lineas.filter((l) => l.proceso === 'cambio');
   const externos = lineas.filter((l) => l.proceso === 'externo');
 
-  /* ── Tempario ──────────────────────────────────────────────────────── */
-  const temparios = [8000, 9000, 10000, 12000, 15000, 18000];
-  const opcionesTemp = temparios.concat(
-    temparios.indexOf(pr.tempario) >= 0 ? [] : [pr.tempario]).sort((a, b) => a - b);
+  /* ── Tempario ──────────────────────────────────────────────────────────
+     FIJO. Se muestra, no se elige. Lo mueve SÓLO administración, en
+     Configuración → Parámetros, y con el permiso `configuracion` que ningún
+     otro rol tiene. Pedido de Marco el 16-08-2026.
+
+     Y es lo correcto: el valor hora es una decisión del taller, no de quien
+     está cotizando un auto. Con un selector en esta pantalla, dos
+     evaluadores podían mandarle a la misma compañía dos tarifas distintas el
+     mismo día, y la discusión que sigue no la gana nadie.
+
+     El presupuesto guarda el suyo, congelado al abrirse la OR: si mañana
+     administración sube la tarifa, una OR ya cotizada no puede cambiar de
+     monto sola. Para recotizar con la tarifa nueva se crea una versión. */
+  const tempActual = Number(Reglas.parametro(Modelo.base(), 'tempario', 10000));
+  const desfasado = pr.tempario !== tempActual;
   const horasTotales = t.horas.dm + t.horas.rep + t.horas.pint;
 
   const cabTempario = `
-    <div class="rejilla-campos" style="margin-bottom:11px">
-      <div class="campo"><label>Tempario · valor de la hora</label>
-        ${editable
-          ? '<select id="presu-tempario">' + opcionesTemp.map((v) =>
-              '<option value="' + v + '"' + (v === pr.tempario ? ' selected' : '') + '>' +
-              $(v) + '</option>').join('') + '</select>'
-          : '<div class="dato"><span class="v">' + $(pr.tempario) + '</span></div>'}
-        <span class="ayuda">Multiplica las horas de las tres columnas</span></div>
-      <div class="campo"><label>Mano de obra acumulada</label>
-        <div class="dato"><span class="v">${$(t.manoObra)}
-          <span style="color:var(--gris-2);font-weight:400">· ${fHoras(horasTotales) || '0'} h</span>
-        </span></div>
-        <span class="ayuda">DM ${$(t.dm)} · Reparar ${$(t.reparar)} · Pintar ${$(t.pintar)}</span></div>
+    <div class="tira-tempario">
+      <div class="celda">
+        <span class="rot">Tempario · valor de la hora</span>
+        <span class="val">${$(pr.tempario)}</span>
+        <span class="pie">${editable
+          ? 'Fijado al abrir la OR. Lo cambia administración en Configuración → Parámetros'
+          : 'El que tenía el taller cuando se cotizó esta OR'}${
+          desfasado ? ' · <strong>hoy la tarifa es ' + $(tempActual) +
+            '</strong>: esta OR conserva la suya. Para recotizar, versión nueva' : ''}</span>
+      </div>
+      <div class="celda">
+        <span class="rot">Horas cargadas</span>
+        <span class="val">${fHoras(horasTotales) || '0'} h</span>
+        <span class="pie">DM ${fHoras(t.horas.dm) || '0'} ·
+          Reparar ${fHoras(t.horas.rep) || '0'} · Pintar ${fHoras(t.horas.pint) || '0'}</span>
+      </div>
+      <div class="celda destacada">
+        <span class="rot">Mano de obra</span>
+        <span class="val">${$(t.manoObra)}</span>
+        <span class="pie">horas × tempario</span>
+      </div>
     </div>`;
 
   /* ── Bloque 1 · Mano de Obra ───────────────────────────────────────── */
@@ -345,9 +379,16 @@ function grillaPresupuesto(o, pr, editable, $) {
       '<td class="num"><span class="et ' + (l.proceso === 'cambio' ? 'azul' : 'gris') +
         '" title="' + esc(l.proceso) + '">' + OP_ROT[l.proceso] + '</span></td>' +
       COL_HORAS.map((c) => '<td class="num">' + (editable
-        ? '<input type="number" step="0.01" min="0" style="width:80px" ' +
+        /* `type="text"` con `inputmode="decimal"`, NO `type=number`: el campo
+           numerico solo acepta el PUNTO como separador, asi que un "1,20"
+           -que es como se escribe una hora en Chile y como viene en el
+           documento real- lo rechaza y deja la casilla EN BLANCO. Quedaba el
+           valor en pesos debajo y la casilla vacia arriba: el evaluador
+           creeria que se le borraron las horas. El teclado del celular igual
+           abre en numeros por el `inputmode`. */
+        ? '<input type="text" inputmode="decimal" style="width:80px" ' +
           'data-horas="' + esc(l.id) + '" data-campo="' + c.campo + '" ' +
-          'value="' + esc(fHoras(l[c.campo])) + '" placeholder="0" title="' + esc(c.ayuda) + '">'
+          'value="' + esc(fHoras(l[c.campo])) + '" placeholder="0,00" title="' + esc(c.ayuda) + '">'
         : (fHoras(l[c.campo]) || '—')) +
         // El peso de cada columna, debajo del tiempo. Es la cuenta que el
         // original no muestra hasta que el PDF ya salió.
@@ -359,7 +400,8 @@ function grillaPresupuesto(o, pr, editable, $) {
   };
 
   const bloqueMO = `
-  <fieldset class="bloque"><legend>Mano de Obra</legend>
+  <section class="bloque-presu mano-obra">
+    ${cabBloquePresu(1, 'Mano de Obra', 'El trabajo del taller: horas \u00d7 tempario', t.manoObra, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:44px">N°</th><th>Descripción</th><th style="width:52px">OP</th>
         ${COL_HORAS.map((c) => '<th class="num" style="width:106px" title="' + esc(c.ayuda) +
@@ -394,7 +436,7 @@ function grillaPresupuesto(o, pr, editable, $) {
     <span class="ayuda">Las horas se escriben en la fila, después. Las tres columnas quedan
       habilitadas siempre: una pieza se puede reparar <strong>y</strong> pintar.
       La operación <strong>Cambio</strong> crea además su fila en Repuestos.</span>` : ''}
-  </fieldset>`;
+  </section>`;
 
   /* ── Bloque 2 · Repuestos ──────────────────────────────────────────── */
   const campoLinea = (l, nombre, tipo, ancho, extra) => (editable
@@ -422,7 +464,9 @@ function grillaPresupuesto(o, pr, editable, $) {
   };
 
   const bloqueRep = `
-  <fieldset class="bloque" style="margin-top:12px"><legend>Repuestos</legend>
+  <section class="bloque-presu repuestos">
+    ${cabBloquePresu(2, 'Repuestos', 'Las piezas que compra el taller. Bajan a Bodega al aprobar',
+      t.repuestos, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:130px">Código</th><th style="width:84px">Cantidad</th>
         <th>Descripción</th><th style="width:172px">Proveedor</th>
@@ -438,7 +482,7 @@ function grillaPresupuesto(o, pr, editable, $) {
       la OR, con su código, cantidad, proveedor y precio — bodega no las vuelve a escribir.
       Sólo se le cobran al cliente las que pone el taller: escribir <strong>DYP</strong> en
       cualquier forma es el mismo proveedor.</span>
-  </fieldset>`;
+  </section>`;
 
   /* ── Bloque 3 · Externos (T.O.T.) ──────────────────────────────────── */
   const filaExt = (l) =>
@@ -451,7 +495,9 @@ function grillaPresupuesto(o, pr, editable, $) {
       '" title="Quitar">&times;</button>' : '') + '</td></tr>';
 
   const bloqueExt = `
-  <fieldset class="bloque" style="margin-top:12px"><legend>Trabajos externos · T.O.T.</legend>
+  <section class="bloque-presu externos">
+    ${cabBloquePresu(3, 'Trabajos externos \u00b7 T.O.T.',
+      'Lo que hace un tercero y el taller factura', t.tot, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:130px">Código</th><th>Descripción</th>
         <th style="width:190px">Proveedor</th><th class="num" style="width:130px">Precio</th>
@@ -462,7 +508,7 @@ function grillaPresupuesto(o, pr, editable, $) {
       <tfoot><tr><td colspan="3" style="text-align:right"><strong>Subtotal</strong></td>
         <td class="num"><strong>${$(t.tot)}</strong></td><td></td></tr></tfoot>
     </table></div>
-  </fieldset>`;
+  </section>`;
 
   /* ── El cierre del documento ───────────────────────────────────────── */
   const fila = (rot, val, fuerte, nota) =>
@@ -738,15 +784,8 @@ function pPresupuesto() {
       () => { p.otId = null; p.presupuestoId = null; render(); });
   });
 
-  /* ── Tempario ─────────────────────────────────────────────────────────
-     Cambiarlo recalcula el presupuesto entero: son horas por tarifa. */
-  const selTemp = document.getElementById('presu-tempario');
-  if (selTemp) selTemp.addEventListener('change', () => {
-    const pr = presuActual();
-    if (!pr) return;
-    ejecutar(() => Modelo.fijar_tempario_presupuesto(pr.id, selTemp.value),
-      (r) => 'Tempario en ' + fMonto(Number(selTemp.value)) + ' la hora. Recalculado.');
-  });
+  /* El tempario ya no se elige acá: es fijo y lo mueve administración en
+     Configuración → Parámetros. Ver la nota en `grillaPresupuesto`. */
 
   /* ── Las horas de cada línea ──────────────────────────────────────────
      Se guardan al salir del campo, no en cada tecla: escribir «1,78» son

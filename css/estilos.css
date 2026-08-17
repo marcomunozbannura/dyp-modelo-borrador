@@ -971,6 +971,76 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
    La pantalla de carga se parece al documento que sale: cada monto en la
    columna de su tipo, y la última fila sirve para escribir. */
 .pregunta-rep { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; font-size: 12.5px; }
+/* ── Presupuesto · la tira del tempario y los tres bloques ──────────────
+   El presupuesto son TRES cosas que se suman por separado y que la compañía
+   discute por separado: la mano de obra, las piezas y lo que hace un tercero.
+   Apiladas como tres `fieldset` iguales se leían como una sola tabla larga.
+   Ahora cada una lleva su número, qué cobra y su subtotal a la derecha.
+   Pedido de Marco el 16-08-2026. */
+
+.tira-tempario {
+  display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1px;
+  background: var(--borde); border: 1px solid var(--borde);
+  border-radius: 3px; overflow: hidden; margin-bottom: 14px;
+}
+.tira-tempario .celda { background: var(--superficie-2); padding: 8px 11px; }
+.tira-tempario .celda.destacada { background: var(--acento-bg); }
+.tira-tempario .rot {
+  display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .7px;
+  text-transform: uppercase; color: var(--gris-2);
+}
+.tira-tempario .val {
+  display: block; font-size: 17px; font-weight: 700; color: var(--tinta);
+  font-variant-numeric: tabular-nums; margin-top: 1px;
+}
+.tira-tempario .pie { display: block; font-size: 10.5px; color: var(--gris); margin-top: 2px; }
+
+.bloque-presu {
+  border: 1px solid var(--borde); border-radius: 3px;
+  background: var(--superficie); margin-bottom: 14px; overflow: hidden;
+}
+/* Una franja de color por bloque, en el borde de arriba: a los tres metros de
+   distancia de una reunión es lo único que separa una tabla de la siguiente. */
+.bloque-presu.mano-obra { border-top: 3px solid var(--acento); }
+.bloque-presu.repuestos { border-top: 3px solid var(--ambar-texto); }
+.bloque-presu.externos  { border-top: 3px solid var(--violeta-texto); }
+
+.cab-bloque {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; background: var(--superficie-2);
+  border-bottom: 1px solid var(--borde);
+}
+.cab-bloque .orden {
+  flex: 0 0 auto; width: 21px; height: 21px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--tinta); color: var(--superficie);
+  font-size: 11px; font-weight: 700;
+}
+.cab-bloque .texto { flex: 1; min-width: 0; }
+.cab-bloque .tit {
+  display: block; font-size: 13.5px; font-weight: 700; color: var(--tinta);
+}
+.cab-bloque .que { display: block; font-size: 11px; color: var(--gris); }
+.cab-bloque .monto { flex: 0 0 auto; text-align: right; }
+.cab-bloque .monto .rot {
+  display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .7px;
+  text-transform: uppercase; color: var(--gris-2);
+}
+.cab-bloque .monto .val {
+  display: block; font-size: 16px; font-weight: 700; color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+/* El interior respira igual que un `fieldset`, pero sin su marco: el marco ya
+   lo pone el bloque. */
+.bloque-presu > .grid-envoltorio { border: none; }
+.bloque-presu > .rejilla-campos,
+.bloque-presu > .ayuda { padding: 0 12px 11px; }
+.bloque-presu > .rejilla-campos { padding-top: 11px; }
+
+@media (max-width: 900px) {
+  .tira-tempario { grid-template-columns: 1fr; }
+}
+
 /* El pie de las tablas del presupuesto: los subtotales de cada bloque y de
    cada columna de horas. Antes esto vivía atado a `.grilla-presu`, la tabla
    única que había; ahora son tres tablas —Mano de Obra, Repuestos y

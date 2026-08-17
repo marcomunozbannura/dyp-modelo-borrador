@@ -1094,6 +1094,35 @@ const Pruebas = (function () {
         });
       })();
 
+      /* 🔴 LAS HORAS SE ESCRIBEN CON COMA, Y EL PRECIO CON PUNTO DE MILES.
+         «1,78» es como se escribe una hora acá y como viene en el documento
+         real; «157.000» es como se escribe un precio. `Number()` devuelve NaN
+         con las dos, y la línea quedaba en CERO sin avisar: el evaluador
+         escribía, veía cómo se le borraba el campo, y el presupuesto salía
+         con menos plata de la que puso. Se descubrió mirando la pantalla
+         dibujada, no leyendo el código. */
+      (function () {
+        const o = abiertaCualquiera();
+        const cr = Modelo.crear_presupuesto(o.id, { lineas: [] });
+        Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
+          { proceso: 'cambio', descripcion: 'Puerta trasera izquierda' });
+        const l = Modelo.base().presupuesto_linea
+          .filter((x) => x.presupuesto_id === cr.presupuesto_id).pop();
+        Modelo.actualizar_linea_presupuesto(l.id,
+          { horas_dm: '1,78', horas_rep: '4,16', horas_pint: '6,24', precio_unitario: '157.000' });
+        const g = Modelo.base().presupuesto_linea.find((x) => x.id === l.id);
+        const bien = g.horas_dm === 1.78 && g.horas_rep === 4.16 &&
+                     g.horas_pint === 6.24 && g.precio_unitario === 157000;
+        push({
+          nombre: 'Las horas con coma y el precio con punto de miles se guardan enteros',
+          intento: 'Escribir 1,78 · 4,16 · 6,24 horas y $157.000 en una línea',
+          esperado: 'Se guardan tal cual, no en cero',
+          paso: bien,
+          detalle: 'DM ' + g.horas_dm + ' · Rep ' + g.horas_rep + ' · Pint ' + g.horas_pint +
+            ' · precio ' + g.precio_unitario + (bien ? '' : '  ← algo se fue a cero')
+        });
+      })();
+
       /* Las cuatro formas de escribir el mismo taller. En el original son
          cuatro proveedores distintos para cualquier suma. */
       (function () {

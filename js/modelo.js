@@ -1838,22 +1838,16 @@ const Modelo = (function () {
     p.neto = t.neto; p.iva = t.iva; p.total = t.total;
   }
 
-  /* El tempario queda GUARDADO en el presupuesto, no leído del parámetro cada
-     vez: si mañana el taller sube la tarifa, una OR firmada el mes pasado no
-     puede cambiar de monto sola. */
-  function fijar_tempario_presupuesto(pid, valor) {
-    const p = db.presupuesto.find((x) => x.id === pid);
-    if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
-    if (p.estado !== 'borrador')
-      return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado +
-        ' y no se edita. Para cambiar la tarifa hay que crear una versión nueva.' };
-    const v = Number(valor);
-    if (!v || v <= 0) return { ok: false, motivo: 'El tempario tiene que ser un valor hora mayor que cero.' };
-    p.tempario = Math.round(v);
-    recalcularPresupuesto(pid);
-    tocado();
-    return { ok: true, motivo: '' };
-  }
+  /* El TEMPARIO no tiene operacion propia: no se fija por presupuesto.
+     Lo mueve administracion en Configuracion -> Parametros, con el permiso
+     `configuracion`, y cada presupuesto congela el valor vigente al abrirse
+     la OR. Pedido de Marco el 16-08-2026: "el valor solo debiese poder
+     moverlo el administrador en configuracion en parametros".
+
+     Hubo una `fijar_tempario_presupuesto` mientras el selector vivio en la
+     pantalla del presupuesto. Se elimina en vez de dejarla sin llamador:
+     una operacion que escribe plata y que ninguna pantalla usa es una
+     puerta abierta que nadie vigila. */
 
   function fijar_observacion_presupuesto(pid, texto) {
     const p = db.presupuesto.find((x) => x.id === pid);
@@ -1878,9 +1872,14 @@ const Modelo = (function () {
       return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado +
         ' y no se edita. Para cambiarlo hay que crear una versión nueva.' };
 
+    /* Las horas llegan como TEXTO y con COMA: «1,20» es como se escribe una
+       hora en Chile y como viene en el documento real. `Number("1,20")` da
+       NaN, y sin esta línea el evaluador escribía 1,20, veía cómo se le
+       borraba, y la línea quedaba en cero sin que nadie avisara. */
+    const aNumero = (x) => Number(String(x).replace(/\s/g, '').replace(',', '.'));
     ['horas_dm', 'horas_rep', 'horas_pint'].forEach((k) => {
       if (!(k in cambios)) return;
-      const v = cambios[k] === '' || cambios[k] == null ? 0 : Number(cambios[k]);
+      const v = cambios[k] === '' || cambios[k] == null ? 0 : aNumero(cambios[k]);
       // Horas negativas restarían plata sin dejar rastro de por qué.
       l[k] = isNaN(v) || v < 0 ? 0 : v;
     });
@@ -1889,8 +1888,11 @@ const Modelo = (function () {
     if ('proveedor' in cambios) l.proveedor = Reglas.normalizarProveedor(cambios.proveedor);
     if ('cantidad' in cambios) l.cantidad = Math.max(1, Math.round(Number(cambios.cantidad) || 1));
     if ('precio_unitario' in cambios) {
-      const v = cambios.precio_unitario === '' || cambios.precio_unitario == null
-        ? 0 : Number(cambios.precio_unitario);
+      /* Mismo trato que las horas: acá se escribe «157.000» o «157000», y con
+         los puntos de miles `Number` devuelve NaN. Se limpian antes. */
+      const crudo = String(cambios.precio_unitario == null ? '' : cambios.precio_unitario)
+        .replace(/[$\s.]/g, '').replace(',', '.');
+      const v = crudo === '' ? 0 : Number(crudo);
       l.precio_unitario = isNaN(v) || v < 0 ? 0 : Math.round(v);
     }
     recalcularPresupuesto(l.presupuesto_id);
@@ -2041,6 +2043,13 @@ const Modelo = (function () {
     db.presupuesto.push({
       id: nid, ot_id: p.ot_id, id_reparacion: p.id_reparacion, correlativo: corr, numero_or,
       version: previos.length + 1, estado: 'borrador', neto: 0, iva: 0, total: 0,
+      /* La versión nueva toma el tempario VIGENTE, no el de la versión que
+         copia. Recotizar es volver a poner precio, y ponerlo con una tarifa
+         que el taller ya cambió es cotizar con un dato viejo. La versión
+         anterior conserva la suya intacta, que es de lo que se trata
+         versionar: la v1 sigue diciendo lo que decía cuando se mandó. */
+      tempario: Number(Reglas.parametro(db, 'tempario', 10000)),
+      observacion: p.observacion || '',
       enviado_at: null, resuelto_at: null
     });
     /* 🔴 EL LINAJE DE LA LÍNEA (F-1 de la auditoría del 16-08-2026).
@@ -2877,7 +2886,6 @@ const Modelo = (function () {
     crear_presupuesto: 'crear el presupuesto',
     agregar_linea_presupuesto: 'agregar una línea',
     actualizar_linea_presupuesto: 'el cambio en la línea',
-    fijar_tempario_presupuesto: 'el tempario del presupuesto',
     fijar_observacion_presupuesto: 'la observación del presupuesto',
     quitar_linea_presupuesto: 'quitar una línea',
     eliminar_presupuesto: 'eliminar el presupuesto',
@@ -2961,7 +2969,6 @@ const Modelo = (function () {
     crear_presupuesto: 'presupuesto.abrir',
     agregar_linea_presupuesto: 'presupuesto.crear',
     actualizar_linea_presupuesto: 'presupuesto.crear',
-    fijar_tempario_presupuesto: 'presupuesto.crear',
     fijar_observacion_presupuesto: 'presupuesto.crear',
     quitar_linea_presupuesto: 'presupuesto.crear',
     eliminar_presupuesto: 'presupuesto.crear',
@@ -3064,7 +3071,6 @@ const Modelo = (function () {
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
     agregar_linea_presupuesto: 'presupuesto',
-    fijar_tempario_presupuesto: 'presupuesto',
     fijar_observacion_presupuesto: 'presupuesto',
     apagar_alerta: 'bitacora', eliminar_media: 'media', renombrar_media: 'media'
   };
@@ -3142,7 +3148,7 @@ const Modelo = (function () {
     fijar_codigo_repuesto,
     avisos, avisosDe,
     crear_presupuesto, agregar_linea_presupuesto, quitar_linea_presupuesto,
-    actualizar_linea_presupuesto, fijar_tempario_presupuesto, fijar_observacion_presupuesto,
+    actualizar_linea_presupuesto, fijar_observacion_presupuesto,
     eliminar_presupuesto,
     cambiar_estado_presupuesto, nueva_version_presupuesto, generar_repuestos_desde_presupuesto,
     agregar_costo_adicional, costosDe,

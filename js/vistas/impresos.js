@@ -156,6 +156,24 @@ const CSS_IMPRESO = `
 /* El rayado alternado se apaga en esas filas: con banda propia se ve sucio. */
 .impreso table.detalle tbody tr.grupo-t td,
 .impreso table.detalle tbody tr.cierre-t td{background-image:none}
+/* ── Las tres columnas de totales, separadas del detalle ──────────────────
+   El detalle de la izquierda se lee de a poco; el bloque de la derecha es lo
+   que se firma. Una línea vertical marca dónde termina uno y empieza el otro,
+   y las tres columnas van sobre un fondo propio que se oscurece hacia el
+   total con IVA — el número que importa queda al final del recorrido y no
+   hay que buscarlo entre once columnas iguales. */
+.impreso table.detalle td.tot{background:#f4f5fb !important;font-weight:600;color:#1f2360}
+.impreso table.detalle td.tot.final{background:#e7e9f5 !important;font-weight:700}
+.impreso table.detalle td.corte{border-left:1.6px solid #292D78}
+.impreso table.detalle th.corte{border-left:1.6px solid #fff}
+.impreso table.detalle th.tot{background:#1f2360}
+/* En el pie manda el pie: sobre la banda de totales, el bloque de la derecha
+   se marca entero para que la sumatoria se lea de un vistazo. */
+.impreso table.detalle tr.cierre-t td.tot{background:#dfe2f2 !important;color:#292D78}
+.impreso table.detalle tr.cierre-t td.tot.final{background:#292D78 !important;color:#fff}
+/* El rayado alternado no debe pisar el fondo propio de estas celdas. */
+.impreso table.detalle tbody tr:nth-child(even) td.tot{background:#eef0f8 !important}
+.impreso table.detalle tbody tr:nth-child(even) td.tot.final{background:#e1e4f2 !important}
 .impreso table.detalle tfoot td.destaca{background:#292D78 !important;color:#fff;font-size:11px}
 
 .impreso .cierre{display:grid;grid-template-columns:1fr 62mm;gap:6mm;margin-top:8px;align-items:start}
@@ -501,9 +519,9 @@ function impresoPresupuesto(o, p) {
       '<td class="n">' + cant + '</td>' +
       MONEDA.map((c) => '<td class="n' + (v[c.id] ? ' puesto' : '') + '">' +
         (v[c.id] ? fMonto(v[c.id]) : '') + '</td>').join('') +
-      '<td class="n destaca">' + fMonto(neto) + '</td>' +
-      '<td class="n">' + fMonto(iva) + '</td>' +
-      '<td class="n destaca">' + fMonto(neto + iva) + '</td></tr>';
+      '<td class="n tot corte">' + fMonto(neto) + '</td>' +
+      '<td class="n tot">' + fMonto(iva) + '</td>' +
+      '<td class="n tot final">' + fMonto(neto + iva) + '</td></tr>';
   }).join('');
 
   const netoTabla = MONEDA.reduce((a, c) => a + suma[c.id], 0);
@@ -511,9 +529,9 @@ function impresoPresupuesto(o, p) {
 
   const pieTabla = '<tr class="cierre-t"><td colspan="3" class="rot">Totales</td>' +
     MONEDA.map((c) => '<td class="n">' + fMonto(suma[c.id]) + '</td>').join('') +
-    '<td class="n destaca">' + fMonto(netoTabla) + '</td>' +
-    '<td class="n">' + fMonto(ivaTabla) + '</td>' +
-    '<td class="n destaca">' + fMonto(netoTabla + ivaTabla) + '</td></tr>';
+    '<td class="n tot corte">' + fMonto(netoTabla) + '</td>' +
+    '<td class="n tot">' + fMonto(ivaTabla) + '</td>' +
+    '<td class="n tot final">' + fMonto(netoTabla + ivaTabla) + '</td></tr>';
 
   /* El deducible va DEBAJO de la tabla, no adentro: no es un trabajo, es lo
      que la póliza descuenta. Sin esta línea el documento mostraría el total
@@ -532,14 +550,14 @@ function impresoPresupuesto(o, p) {
       <tr class="grupos">
         <th colspan="3" class="izq">Detalle del trabajo</th>
         <th colspan="${MONEDA.length}">Todos estos valores en $</th>
-        <th colspan="3">Totales</th>
+        <th colspan="3" class="tot corte">Totales</th>
       </tr>
       <tr>
         <th style="width:8mm">N°</th><th>Descripción</th><th style="width:14mm">Cantidad</th>
         ${MONEDA.map((c) => '<th style="width:21mm">' + esc(c.rot) + '</th>').join('')}
-        <th style="width:22mm">Total neto</th>
-        <th style="width:19mm">IVA ${ivaPct}%</th>
-        <th style="width:23mm">Total con IVA</th>
+        <th class="tot corte" style="width:22mm">Total neto</th>
+        <th class="tot" style="width:19mm">IVA ${ivaPct}%</th>
+        <th class="tot final" style="width:23mm">Total con IVA</th>
       </tr>
     </thead>
     <tbody>${filas}</tbody>

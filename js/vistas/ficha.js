@@ -584,8 +584,34 @@ function pFichaOT(o) {
       (nota ? ': ' + nota : '') + '. El botón lo dice en vez de no hacer nada.' });
   }));
 
-  document.querySelectorAll('#contenido [data-imprimir]').forEach((b) => b.addEventListener('click', () =>
-    abrirImpreso(b.dataset.imprimir, o.id)));
+  /* 🔴 CON VARIAS OR HAY QUE PREGUNTAR CUÁL (16-08-2026, Marco): «¿cómo
+     identificará qué PDF quiero abrir si la OT tiene más de un presupuesto?».
+     Abría el ÚLTIMO sin decirlo, que es la peor de las respuestas: el que
+     imprime cree que tiene el documento que pidió. Con una sola OR se abre
+     directo, que es el caso de todos los días. */
+  document.querySelectorAll('#contenido [data-imprimir]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.imprimir !== 'presupuesto' || o.presupuestos.length <= 1)
+      return abrirImpreso(b.dataset.imprimir, o.id);
+
+    dialogo('¿Qué presupuesto quieres abrir?',
+      '<p class="pie-nota" style="margin:0 0 10px">Esta orden tiene ' +
+      o.presupuestos.length + ' documentos. Se abren en otra pestaña.</p>' +
+      '<div class="grid-envoltorio"><table class="grid"><tbody>' +
+      o.presupuestos.map((pr) => {
+        const e = ESTADO_PRESUPUESTO[pr.estado] || { txt: pr.estado, clase: 'gris' };
+        return '<tr><td><span class="cod">OR ' + esc(pr.numeroOR) + '</span></td>' +
+          '<td><span class="et ' + esc(e.clase) + '">' + esc(e.txt) + '</span></td>' +
+          '<td class="num">' + fMonto(pr.total) + '</td>' +
+          '<td><button class="btn secundario chico" data-elegir-pr="' + esc(pr.id) + '">' +
+          'Abrir</button></td></tr>';
+      }).join('') + '</tbody></table></div>');
+
+    (dialogo.ultimo || document).querySelectorAll('[data-elegir-pr]').forEach((x) =>
+      x.addEventListener('click', () => {
+        if (dialogo.cerrar) dialogo.cerrar();
+        abrirImpreso('presupuesto', o.id, x.dataset.elegirPr);
+      }));
+  }));
 
   // Salir de la ficha hacia otro módulo: la ficha vive en su propia pestaña,
   // así que se abre el sistema completo en esa vista.

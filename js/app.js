@@ -835,6 +835,11 @@ function dialogo(titulo, cuerpoHTML) {
     '</div>';
   document.body.appendChild(velo);
   const cerrar = () => velo.remove();
+  /* Se guardan el cuadro y su cierre para poder enganchar sus botones desde
+     afuera: sin esto, un dialogo con opciones era uno que solo sabia
+     mostrar texto. */
+  dialogo.ultimo = velo;
+  dialogo.cerrar = cerrar;
   velo.querySelector('.cerrar').addEventListener('click', cerrar);
   velo.addEventListener('click', (ev) => { if (ev.target === velo) cerrar(); });
   document.addEventListener('keydown', function esc_(ev) {

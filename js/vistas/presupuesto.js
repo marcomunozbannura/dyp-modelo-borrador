@@ -266,8 +266,10 @@ function vPresupuestoOT(o) {
           : ''}${esc(o.cliente)}${o.compania && o.compania !== '—' ? ' · ' + esc(o.compania) : ''}</div></div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn secundario" id="presu-volver">Volver al listado</button>
-        ${actual && actual.estado === 'borrador'
-          ? '<button class="btn secundario" id="presu-eliminar">Eliminar esta OR</button>' : ''}
+        ${/* «Eliminar esta OR» se fue de acá a la × de cada pestaña
+             (16-08-2026, Marco). Un botón suelto arriba obliga a mirar cuál
+             pestaña está activa para saber sobre cuál actúa; la × va DENTRO
+             de la que se va a borrar y no hay que adivinar nada. */''}
         ${/* La pérdida total la declara el EVALUADOR, no el recepcionista, y
               se decide acá: es mirando el presupuesto donde se ve que reparar
               cuesta más que el auto. Sólo aparece si el rol puede declararla y
@@ -282,8 +284,19 @@ function vPresupuestoOT(o) {
     <div class="cuerpo">
       ${o.presupuestos.length ? `
       <div class="chips" style="margin-bottom:11px">
-        ${o.presupuestos.map((x) => '<button class="chip' + (actual && x.id === actual.id ? ' activo' : '') +
-          '" data-presu-ver="' + esc(x.id) + '">OR ' + esc(x.numeroOR) + ' · v' + x.version + '</button>').join('')}
+        ${/* Cada OR con su × arriba a la derecha. Sólo la muestra el que puede
+             presupuestar, y sólo sobre borradores: un presupuesto ya enviado
+             no se borra —se anula o se versiona—, porque la discusión con la
+             compañía tiene que quedar completa. Ahí la × no se dibuja en vez
+             de dibujarse y rebotar: el estado de la pestaña ya lo explica. */''}
+        ${o.presupuestos.map((x) => '<span class="chip-or' +
+          (actual && x.id === actual.id ? ' activo' : '') + '">' +
+          '<button class="chip" data-presu-ver="' + esc(x.id) + '">OR ' + esc(x.numeroOR) +
+            ' · v' + x.version + '</button>' +
+          (Modelo.puede('presupuesto.crear') && x.estado === 'borrador'
+            ? '<button class="quitar-or" data-presu-borrar="' + esc(x.id) +
+              '" title="Eliminar la OR ' + esc(x.numeroOR) + '">&times;</button>' : '') +
+          '</span>').join('')}
       </div>` : ''}
       ${actual ? vPresupuestoDetalle(o, actual) : `
       <div class="vacio"><div class="titulo">Esta orden no tiene presupuestos</div>
@@ -793,16 +806,18 @@ function pPresupuesto() {
   }));
   /* Eliminar una OR creada por equivocación. Solo en borrador, y preguntando:
      es la única acción del presupuesto que borra en vez de versionar. */
-  const eliminar = document.getElementById('presu-eliminar');
-  if (eliminar) eliminar.addEventListener('click', () => {
+  document.querySelectorAll('[data-presu-borrar]').forEach((b) => b.addEventListener('click', (ev) => {
+    // La × vive DENTRO de la pestaña, así que su clic también seleccionaría
+    // esa OR. Se corta acá: no tiene sentido abrir lo que se va a borrar.
+    ev.stopPropagation();
     const o = Modelo.otPorId(p.otId);
-    const actual = p.presupuestoId ? o.presupuestos.find((x) => x.id === p.presupuestoId)
-                                   : o.presupuestos[o.presupuestos.length - 1];
-    if (!actual) return;
-    if (!confirm('¿Eliminar la OR ' + actual.numeroOR + ' con sus líneas?\n\nNo se puede recuperar, ' +
+    const pr = o && o.presupuestos.find((x) => x.id === b.dataset.presuBorrar);
+    if (!pr) return;
+    if (!confirm('¿Eliminar la OR ' + pr.numeroOR + ' con sus líneas? No se puede recuperar, ' +
                  'pero sí se puede deshacer con Ctrl+Z.')) return;
-    ejecutar(() => Modelo.eliminar_presupuesto(actual.id), 'OR eliminada.', () => { p.presupuestoId = null; });
-  });
+    ejecutar(() => Modelo.eliminar_presupuesto(pr.id), 'OR ' + pr.numeroOR + ' eliminada.',
+      () => { p.presupuestoId = null; });
+  }));
 
   const volver = document.getElementById('presu-volver');
   if (volver) volver.addEventListener('click', () => { p.otId = null; p.presupuestoId = null; render(); });

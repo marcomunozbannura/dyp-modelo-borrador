@@ -1086,6 +1086,12 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
 .bloque-presu > .rejilla-campos,
 .bloque-presu > .ayuda { padding: 0 12px 11px; }
 .bloque-presu > .rejilla-campos { padding-top: 11px; }
+/* El pie con «Añadir fila», pegado a la derecha bajo la tabla, como en el
+   sistema actual. */
+.bloque-presu > .pie-anadir {
+  display: flex; justify-content: flex-end;
+  padding: 8px 12px; border-top: 1px solid var(--borde); background: var(--superficie-2);
+}
 
 @media (max-width: 900px) {
   .tira-tempario { grid-template-columns: 1fr; }

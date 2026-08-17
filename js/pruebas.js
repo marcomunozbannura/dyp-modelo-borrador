@@ -990,8 +990,10 @@ const Pruebas = (function () {
         const cre = Modelo.crear_presupuesto(o.id, { lineas: [] });
         const pid = cre.presupuesto_id;
         const lin = Modelo.agregar_linea_presupuesto(pid, {
-          proceso: 'cambio', descripcion: 'Paragolpes delantero', cantidad: 1,
-          horas_dm: 1.2, proveedor: 'DYP', precio_unitario: 180000 });
+          proceso: 'cambio', descripcion: 'Paragolpes delantero', horas_dm: 1.2 });
+        // La pieza va en su tabla, que es de donde sale el pedido a bodega.
+        Modelo.agregar_fila_presupuesto(pid, 'repuesto',
+          { descripcion: 'Paragolpes delantero', cantidad: 1, proveedor: 'DYP', precio_unitario: 180000 });
         const env = Modelo.cambiar_estado_presupuesto(pid, 'enviado');
         const apr = Modelo.cambiar_estado_presupuesto(pid, 'aprobado');
 
@@ -1072,18 +1074,24 @@ const Pruebas = (function () {
          ve igual de bien que uno correcto. */
       (function () {
         const L = [
-          { proceso: 'cambio',  horas_dm: 1.78, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
-          { proceso: 'cambio',  horas_dm: 0.42, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
-          { proceso: 'cambio',  horas_dm: 0.22, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
-          { proceso: 'cambio',  horas_dm: 0.65, horas_rep: 0,    horas_pint: 0,    cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
-          { proceso: 'reparar', horas_dm: 0,    horas_rep: 4.16, horas_pint: 6.24 },
-          { proceso: 'reparar', horas_dm: 0,    horas_rep: 6.5,  horas_pint: 5.46 },
-          { proceso: 'reparar', horas_dm: 0,    horas_rep: 6.79, horas_pint: 9.36 },
-          { proceso: 'reparar', horas_dm: 0,    horas_rep: 1.5,  horas_pint: 0 },
-          // Se cobra porque el proveedor es el taller. Las cuatro de arriba
-          // las pone la compañía y por eso no suman, aunque se registren.
-          { proceso: 'cambio',  horas_dm: 0, horas_rep: 0, horas_pint: 0, cantidad: 1, proveedor: 'dyp', precio_unitario: 14000 },
-          { proceso: 'externo', horas_dm: 0, horas_rep: 0, horas_pint: 0, precio_unitario: 17800 }
+          // Mano de obra: la OP clasifica el trabajo y las horas lo cobran.
+          { bloque: 'mano_obra', proceso: 'cambio',  horas_dm: 1.78, horas_rep: 0,    horas_pint: 0 },
+          { bloque: 'mano_obra', proceso: 'cambio',  horas_dm: 0.42, horas_rep: 0,    horas_pint: 0 },
+          { bloque: 'mano_obra', proceso: 'cambio',  horas_dm: 0.22, horas_rep: 0,    horas_pint: 0 },
+          { bloque: 'mano_obra', proceso: 'cambio',  horas_dm: 0.65, horas_rep: 0,    horas_pint: 0 },
+          { bloque: 'mano_obra', proceso: 'reparar', horas_dm: 0,    horas_rep: 4.16, horas_pint: 6.24 },
+          { bloque: 'mano_obra', proceso: 'reparar', horas_dm: 0,    horas_rep: 6.5,  horas_pint: 5.46 },
+          { bloque: 'mano_obra', proceso: 'reparar', horas_dm: 0,    horas_rep: 6.79, horas_pint: 9.36 },
+          { bloque: 'mano_obra', proceso: 'reparar', horas_dm: 0,    horas_rep: 1.5,  horas_pint: 0 },
+          // Repuestos: tabla aparte, escrita a mano. Sólo se cobra la que pone
+          // el taller; las cuatro de la compañía se registran y no suman.
+          { bloque: 'repuesto', cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { bloque: 'repuesto', cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { bloque: 'repuesto', cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { bloque: 'repuesto', cantidad: 1, proveedor: 'sura', precio_unitario: 0 },
+          { bloque: 'repuesto', cantidad: 1, proveedor: 'dyp',  precio_unitario: 14000 },
+          // Externos: tabla aparte tambien.
+          { bloque: 'externo', precio_unitario: 17800 }
         ];
         const t = Reglas.totalesPresupuesto(L, 10000, 0, 19);
         const papel = { dm: 30700, reparar: 189500, pintar: 210600, manoObra: 430800,
@@ -1150,8 +1158,9 @@ const Pruebas = (function () {
         Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
           { proceso: 'reparar', descripcion: 'Puerta trasera izquierda' });
         const trasReparar = enBodega();
-        Modelo.agregar_linea_presupuesto(cr.presupuesto_id,
-          { proceso: 'cambio', descripcion: 'Foco delantero derecho' });
+        // La pieza NO sale de la OP: se agrega una fila en la tabla Repuestos.
+        Modelo.agregar_fila_presupuesto(cr.presupuesto_id, 'repuesto',
+          { descripcion: 'Foco delantero derecho' });
         const trasCambio = enBodega();
 
         /* El estado se copia AHORA, no se lee al final: `Modelo.base()`
@@ -1161,7 +1170,7 @@ const Pruebas = (function () {
         const estadoAlPedir = Modelo.base().presupuesto
           .find((x) => x.id === cr.presupuesto_id).estado;
         const lc = Modelo.base().presupuesto_linea
-          .filter((l) => l.presupuesto_id === cr.presupuesto_id && l.proceso === 'cambio')[0];
+          .filter((l) => l.presupuesto_id === cr.presupuesto_id && Reglas.esRepuesto(l))[0];
 
         Modelo.actualizar_linea_presupuesto(lc.id, { proveedor: 'dyp', precio_unitario: '145.000' });
         const rep = Modelo.base().repuesto.find((r) => r.presupuesto_linea_id === lc.id) || {};
@@ -1177,9 +1186,10 @@ const Pruebas = (function () {
 
         push({
           nombre: 'Poner un repuesto en el presupuesto lo pide a bodega, sin esperar la aprobación',
-          intento: 'Crear una OR, agregarle una línea Reparar y una Cambio, editarla y aprobar',
-          esperado: 'Reparar no pide nada · Cambio pide en el acto y en borrador · ' +
-                    'editar arrastra la pieza · aprobar no duplica',
+          intento: 'Crear una OR, agregarle una línea de mano de obra y una fila en Repuestos, ' +
+                   'editarla y aprobar',
+          esperado: 'La mano de obra no pide nada · la fila de Repuestos pide en el acto y en ' +
+                    'borrador · editar arrastra la pieza · aprobar no duplica',
           paso: bien,
           detalle: 'bodega ' + partida + ' → tras Reparar ' + trasReparar + ' → tras Cambio ' +
             trasCambio + ' (con la OR en «' + estadoAlPedir + '») → tras aprobar ' + trasAprobar +

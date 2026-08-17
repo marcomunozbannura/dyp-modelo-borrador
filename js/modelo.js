@@ -1957,6 +1957,12 @@ const Modelo = (function () {
     const n = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).length;
     db.presupuesto_linea.push(Object.assign({
       id: nuevoId('pl'), presupuesto_id: pid, orden: n + 1,
+      /* MANO DE OBRA. La OP clasifica este trabajo —cambiar la pieza,
+         repararla o mandarla afuera— y no crea nada en otro bloque:
+         Repuestos y Externos se escriben a mano, con su propio botón. Antes
+         una OP=Cambio inventaba sola su fila de repuesto, que es mezclar la
+         clasificación del trabajo con la lista de compras. */
+      bloque: 'mano_obra',
       horas_dm: 0, horas_rep: 0, horas_pint: 0,
       codigo: '', cantidad: 1, proveedor: '', precio_unitario: 0
     }, linea, {
@@ -1966,27 +1972,53 @@ const Modelo = (function () {
     }));
     recalcularPresupuesto(pid);
 
-    /* 🔴 PONER EL REPUESTO EN EL PRESUPUESTO **ES** PEDIRLO.
-       Textual de Marco, 16-08-2026: «se pide cuando uno pone repuestos en el
-       presupuesto». Antes la pieza nacia al APROBAR la OR, y habia un boton
-       «Pedir repuestos a bodega» para el caso de encargarlas antes. Los dos
-       sobran: la lista de repuestos del presupuesto ES el pedido, y bodega
-       tiene que verla desde que se escribe — que es cuando el evaluador ya
-       sabe que esa pieza hay que comprarla.
-
-       El presupuesto puede seguir en borrador: eso no cambia el hecho de que
-       la pieza esta pedida. Lo que dice si la compania la va a pagar es el
-       estado de la OR, y eso bodega lo ve en la orden. */
-    if (linea.proceso === 'cambio') {
-      const puesta = db.presupuesto_linea[db.presupuesto_linea.length - 1];
-      bajarRepuestoABodega(p, puesta);
-    }
-
     tocado();
     return { ok: true, motivo: '' };
   }
 
-  /* Crea en bodega la pieza de UNA linea de Cambio. Es el unico lugar que
+  /* ── Repuestos y Externos · las dos tablas que se escriben a mano ──────
+     Fila por fila, con su botón «Añadir fila», igual que en el sistema
+     actual. No dependen de la OP de ninguna línea de mano de obra: un
+     repuesto se pide porque hay que comprarlo, no porque alguien clasificó
+     un trabajo. Marco, 16-08-2026: «ellos acá en Repuestos y Externos ya
+     tienen para ingresar manual sin clasificación».
+
+     Y lo que se escribe en REPUESTOS es lo que viaja: a la solicitud de
+     repuesto, al check-list de bodega, al consolidado y al detalle de lo que
+     está pendiente. Por eso la fila baja a bodega en el acto. */
+  function agregar_fila_presupuesto(pid, bloque, fila = {}) {
+    const p = db.presupuesto.find((x) => x.id === pid);
+    if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
+    if (p.estado !== 'borrador')
+      return { ok: false, motivo: 'El presupuesto ' + p.numero_or + ' está ' + p.estado +
+        ' y no se edita. Para cambiarlo hay que crear una versión nueva — así queda auditable ' +
+        'la discusión con la compañía.' };
+    if (bloque !== 'repuesto' && bloque !== 'externo')
+      return { ok: false, motivo: 'Ese bloque no existe: es repuesto o externo.' };
+
+    const n = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid).length;
+    const nueva = {
+      id: nuevoId('pl'), presupuesto_id: pid, orden: n + 1, bloque,
+      proceso: bloque === 'repuesto' ? 'cambio' : 'externo',
+      /* La fila entra EN BLANCO, como en el original: se aprieta «Añadir
+         fila» y se llena la fila que aparece. Pedir los datos en un
+         formulario aparte obliga a saber todo antes de escribir nada. */
+      descripcion: '', codigo: '', cantidad: 1, proveedor: '', precio_unitario: 0,
+      horas_dm: 0, horas_rep: 0, horas_pint: 0
+    };
+    Object.assign(nueva, fila);
+    nueva.proveedor = Reglas.normalizarProveedor(nueva.proveedor);
+    db.presupuesto_linea.push(nueva);
+
+    // La pieza baja a bodega apenas existe la fila.
+    if (bloque === 'repuesto') bajarRepuestoABodega(p, nueva);
+
+    recalcularPresupuesto(pid);
+    tocado();
+    return { ok: true, motivo: '', linea_id: nueva.id };
+  }
+
+  /* Crea en bodega la pieza de UNA fila de Repuestos. Es el unico lugar que
      escribe un repuesto nacido de un presupuesto: lo usan el alta de la linea
      y `generar_repuestos_desde_presupuesto`, que quedo como red para los
      presupuestos anteriores a este cambio y para las versiones nuevas. */
@@ -2179,9 +2211,9 @@ const Modelo = (function () {
     if (!p) return { ok: false, motivo: 'El presupuesto no existe.' };
     const permiso = Reglas.puedeCargarRepuesto(db, { ot_id: p.ot_id });
     if (!permiso.ok) return permiso;
-    const lineas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid && l.proceso === 'cambio');
+    const lineas = db.presupuesto_linea.filter((l) => l.presupuesto_id === pid && Reglas.esRepuesto(l));
     if (!lineas.length)
-      return { ok: false, motivo: 'Este presupuesto no tiene líneas de proceso Cambio: no hay repuestos que pedir.' };
+      return { ok: false, motivo: 'Este presupuesto no tiene filas en Repuestos: no hay nada que pedir.' };
     /* La idempotencia mira TODO EL LINAJE, no la línea suelta: si la pieza ya
        se pidió en una versión anterior de este mismo presupuesto, no se vuelve
        a pedir. Ver el comentario del linaje en `nueva_version_presupuesto`. */
@@ -2961,6 +2993,7 @@ const Modelo = (function () {
     fijar_responsable_pago: 'el responsable de pago',
     crear_presupuesto: 'crear el presupuesto',
     agregar_linea_presupuesto: 'agregar una línea',
+    agregar_fila_presupuesto: 'agregar una fila',
     actualizar_linea_presupuesto: 'el cambio en la línea',
     fijar_observacion_presupuesto: 'la observación del presupuesto',
     quitar_linea_presupuesto: 'quitar una línea',
@@ -3044,6 +3077,7 @@ const Modelo = (function () {
     // cuánto cuesta reparar. Son dos permisos porque son dos trabajos.
     crear_presupuesto: 'presupuesto.abrir',
     agregar_linea_presupuesto: 'presupuesto.crear',
+    agregar_fila_presupuesto: 'presupuesto.crear',
     actualizar_linea_presupuesto: 'presupuesto.crear',
     fijar_observacion_presupuesto: 'presupuesto.crear',
     quitar_linea_presupuesto: 'presupuesto.crear',
@@ -3147,6 +3181,7 @@ const Modelo = (function () {
     eliminar_presupuesto: 'presupuesto', cambiar_estado_presupuesto: 'presupuesto',
     nueva_version_presupuesto: 'presupuesto', generar_repuestos_desde_presupuesto: 'presupuesto',
     agregar_linea_presupuesto: 'presupuesto',
+    agregar_fila_presupuesto: 'presupuesto',
     fijar_observacion_presupuesto: 'presupuesto',
     apagar_alerta: 'bitacora', eliminar_media: 'media', renombrar_media: 'media'
   };
@@ -3223,7 +3258,8 @@ const Modelo = (function () {
     adjuntar_vale_repuesto, devolver_repuesto, declarar_perdida_total,
     fijar_codigo_repuesto,
     avisos, avisosDe,
-    crear_presupuesto, agregar_linea_presupuesto, quitar_linea_presupuesto,
+    crear_presupuesto, agregar_linea_presupuesto, agregar_fila_presupuesto,
+    quitar_linea_presupuesto,
     actualizar_linea_presupuesto, fijar_observacion_presupuesto,
     eliminar_presupuesto,
     cambiar_estado_presupuesto, nueva_version_presupuesto, generar_repuestos_desde_presupuesto,

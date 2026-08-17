@@ -435,41 +435,64 @@ function impresoPresupuesto(o, p) {
   const lineas = p.lineas || [];
   const hs = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
 
-  /* Una sección por columna de tiempo. Sólo entran las líneas con horas en
-     esa columna: un renglón en $0 no dice nada y alarga el documento. */
-  const SECCIONES = [
+  /* LA PLANILLA POR COLUMNAS. Una fila por trabajo, y las horas y su precio
+     cayendo en la columna que corresponde: Desmontar y montar, Reparar,
+     Pintar. Se lee a lo largo —qué se le hace a esta pieza— y a lo alto
+     —cuánto pesa cada tipo de trabajo—, y el pie suma cada columna.
+
+     Reemplaza a las tres tablas apiladas: ahí, para saber cuánto era pintura,
+     había que ir a buscar el subtotal de un bloque en medio del documento. */
+  const COLS = [
     { campo: 'horas_dm',   rot: 'Desmontar y montar' },
     { campo: 'horas_rep',  rot: 'Reparar' },
     { campo: 'horas_pint', rot: 'Pintar' }
   ];
+  const manoObra = lineas.filter(Reglas.esManoObra);
+  const acum = { horas_dm: 0, horas_rep: 0, horas_pint: 0 };
+  const OP_LARGO = { cambio: 'Cambio', reparar: 'Reparar', externo: 'Externo' };
 
-  const seccionHoras = (s) => {
-    const suyas = lineas.filter((l) => Number(l[s.campo]) > 0);
-    if (!suyas.length) return '';
-    const horas = suyas.reduce((a, l) => a + Number(l[s.campo]), 0);
-    return `
-    <h2>${esc(s.rot)}</h2>
-    <table><thead><tr>
-      <th style="width:10mm">N°</th><th>Descripción</th>
-      <th class="n" style="width:20mm">Horas</th>
-      <th class="n" style="width:24mm">Valor hora</th>
-      <th class="n" style="width:26mm">Precio</th>
-    </tr></thead><tbody>
-      ${suyas.map((l, i) => '<tr><td class="n">' + (i + 1) + '</td>' +
-        '<td>' + esc(l.descripcion) + '</td>' +
-        '<td class="n">' + hs(l[s.campo]) + '</td>' +
-        '<td class="n">' + fMonto(p.tempario) + '</td>' +
-        '<td class="n">' + fMonto(Math.round(Number(l[s.campo]) * p.tempario)) + '</td></tr>').join('')}
-    </tbody><tfoot><tr>
-      <td colspan="2" style="text-align:right"><strong>Subtotal</strong></td>
-      <td class="n"><strong>${hs(horas)}</strong></td><td></td>
-      <td class="n"><strong>${fMonto(Math.round(horas * p.tempario))}</strong></td>
-    </tr></tfoot></table>`;
-  };
+  const filasMO = manoObra.map((l, i) => {
+    let total = 0;
+    const celdas = COLS.map((c) => {
+      const h = Number(l[c.campo]) || 0;
+      acum[c.campo] += h;
+      const monto = Math.round(h * p.tempario);
+      total += monto;
+      return '<td class="n' + (h ? ' puesto' : '') + '">' +
+        (h ? hs(h) + '<div style="font-size:7.5px;color:#555">' + fMonto(monto) + '</div>' : '') + '</td>';
+    }).join('');
+    return '<tr><td class="n">' + (i + 1) + '</td>' +
+      '<td>' + esc(l.descripcion) + '</td>' +
+      '<td class="n">' + esc(OP_LARGO[l.proceso] || '—') + '</td>' +
+      celdas + '<td class="n destaca">' + fMonto(total) + '</td></tr>';
+  }).join('');
+
+  const pieMO = '<tr class="cierre-t"><td colspan="3" class="rot">Totales por tipo de trabajo</td>' +
+    COLS.map((c) => '<td class="n"><strong>' + hs(acum[c.campo]) + '</strong>' +
+      '<div style="font-size:7.5px">' + fMonto(Math.round(acum[c.campo] * p.tempario)) + '</div></td>').join('') +
+    '<td class="n destaca">' + fMonto(t.manoObra) + '</td></tr>';
+
+  const seccionManoObra = !manoObra.length ? '' : `
+    <h2>Mano de obra</h2>
+    <table class="detalle"><thead>
+      <tr class="grupos">
+        <th colspan="3" class="izq">Detalle del trabajo</th>
+        <th colspan="3">Horas y valor por tipo de trabajo</th>
+        <th rowspan="2" style="width:26mm">Total línea</th>
+      </tr>
+      <tr>
+        <th style="width:9mm">N°</th><th>Descripción</th><th style="width:20mm">OP</th>
+        ${COLS.map((c) => '<th style="width:26mm">' + esc(c.rot) + '</th>').join('')}
+      </tr>
+    </thead>
+    <tbody>${filasMO}</tbody>
+    <tfoot>${pieMO}</tfoot></table>
+    <div style="font-size:8px;color:#666;margin-top:1mm">Las horas se valorizan a
+      ${fMonto(p.tempario)} la hora.</div>`;
 
   /* Repuestos. El que pone la compañía se imprime igual —con su precio de
      referencia— pero rotulado, y no suma. */
-  const reps = lineas.filter((l) => l.proceso === 'cambio');
+  const reps = lineas.filter(Reglas.esRepuesto);
   const seccionRepuestos = !reps.length ? '' : `
     <h2>Repuestos</h2>
     <table><thead><tr>
@@ -494,7 +517,7 @@ function impresoPresupuesto(o, p) {
       <td class="n"><strong>${fMonto(t.repuestos)}</strong></td>
     </tr></tfoot></table>`;
 
-  const exts = lineas.filter((l) => l.proceso === 'externo');
+  const exts = lineas.filter(Reglas.esExterno);
   const seccionExternos = !exts.length ? '' : `
     <h2>Trabajos externos · T.O.T.</h2>
     <table><thead><tr>
@@ -558,7 +581,7 @@ function impresoPresupuesto(o, p) {
     </div>
   </div>
 
-  ${SECCIONES.map(seccionHoras).join('')}
+  ${seccionManoObra}
   ${seccionRepuestos}
   ${seccionExternos}
 

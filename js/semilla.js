@@ -972,36 +972,68 @@ const Semilla = (function () {
       const id_reparacion = 18000 + (numero_ot % 900);
       const pid = 'pr-' + (++seqPre);
       const nL = sinPresupuesto ? 0 : entre(2, 6);
-      const lineasCambio = [];
+      const PIEZAS = ['Paragolpes delantero', 'Tapabarro izquierdo', 'Foco delantero derecho',
+        'Puerta trasera izquierda', 'Capó', 'Espejo lateral derecho', 'Parabrisas',
+        'Maletero', 'Rejilla frontal', 'Moldura lateral'];
+      const cent = (a, b) => entre(a, b) / 100;
+      let orden = 0;
+
+      /* ── Bloque 1 · Mano de Obra ─────────────────────────────────────
+         La OP clasifica el trabajo y nada más: cambiar la pieza, repararla o
+         mandarla afuera. Las horas van en centésimas, como en el documento
+         real (1,78 · 4,16 · 6,24). Cambiar es desmontar y montar; reparar
+         lleva su tiempo y casi siempre también de pintura —una puerta que se
+         repara hay que pintarla—; externo no lleva horas porque el trabajo lo
+         hace un tercero y se cobra su factura. */
       for (let l = 0; l < nL; l++) {
         const proceso = elegir(['cambio', 'reparar', 'externo']);
-        /* Las horas, en centésimas, como vienen en el documento real
-           (1,78 · 4,16 · 6,24). Cambiar es desmontar y montar; reparar lleva
-           su tiempo de reparación y casi siempre también de pintura —una
-           puerta que se repara hay que pintarla—; externo no lleva horas
-           porque el trabajo lo hace un tercero y se cobra su factura. */
-        const cent = (a, b) => entre(a, b) / 100;
-        const linea = {
-          id: pid + '-l' + (l + 1), presupuesto_id: pid, orden: l + 1, proceso,
-          descripcion: elegir(['Paragolpes delantero', 'Tapabarro izquierdo', 'Foco delantero derecho',
-            'Puerta trasera izquierda', 'Capó', 'Espejo lateral derecho', 'Parabrisas',
-            'Maletero', 'Rejilla frontal', 'Moldura lateral']),
+        presupuesto_linea.push({
+          id: pid + '-l' + (++orden), presupuesto_id: pid, orden,
+          bloque: 'mano_obra', proceso,
+          descripcion: elegir(PIEZAS),
           horas_dm:   proceso === 'cambio'  ? cent(20, 200) : 0,
           horas_rep:  proceso === 'reparar' ? cent(100, 700) : 0,
           horas_pint: proceso === 'reparar' && rnd() > 0.25 ? cent(100, 950) : 0,
+          codigo: '', cantidad: 1, proveedor: '', precio_unitario: 0
+        });
+      }
+
+      /* ── Bloque 2 · Repuestos ────────────────────────────────────────
+         Tabla APARTE, escrita a mano. No sale de las líneas de mano de obra:
+         se pide una pieza porque hay que comprarla, no porque alguien
+         clasificó un trabajo. El proveedor decide si se cobra — dos de cada
+         tres las pone la compañía—, y va escrito ya normalizado: en el
+         original la misma DYP aparece de cuatro formas. */
+      const lineasCambio = [];
+      const nRep = sinPresupuesto ? 0 : entre(0, 3);
+      for (let r = 0; r < nRep; r++) {
+        const fila = {
+          id: pid + '-l' + (++orden), presupuesto_id: pid, orden,
+          bloque: 'repuesto', proceso: 'cambio',
+          descripcion: elegir(PIEZAS),
+          horas_dm: 0, horas_rep: 0, horas_pint: 0,
           codigo: '', cantidad: 1,
-          /* El proveedor decide si se cobra. Dos de cada tres piezas las pone
-             la compañía —y entonces el taller no las cobra—; el resto las
-             compra el taller. Escrito ya normalizado: en el original la misma
-             DYP aparece de cuatro formas distintas. */
-          proveedor: proceso === 'cambio'
-            ? (rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular'))
-            : (proceso === 'externo' ? elegir(['Vidriería Central', 'Tapicería Norte', 'Alineación Sur']) : ''),
-          precio_unitario: proceso === 'cambio' ? entre(12, 380) * 1000
-            : (proceso === 'externo' ? entre(8, 60) * 1000 : 0)
+          proveedor: rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular'),
+          precio_unitario: entre(12, 380) * 1000
         };
-        presupuesto_linea.push(linea);
-        if (proceso === 'cambio') lineasCambio.push(linea);
+        presupuesto_linea.push(fila);
+        lineasCambio.push(fila);
+      }
+
+      /* ── Bloque 3 · Externos ─────────────────────────────────────────
+         Igual: tabla propia y a mano. Lleva precio y no horas. */
+      const nExt = sinPresupuesto ? 0 : (rnd() > 0.72 ? entre(1, 2) : 0);
+      for (let e = 0; e < nExt; e++) {
+        presupuesto_linea.push({
+          id: pid + '-l' + (++orden), presupuesto_id: pid, orden,
+          bloque: 'externo', proceso: 'externo',
+          descripcion: elegir(['Montaje y balanceo', 'Alineación', 'Tapizado de asiento',
+            'Pulido de óptico', 'Grabado de patente']),
+          horas_dm: 0, horas_rep: 0, horas_pint: 0,
+          codigo: '', cantidad: 1,
+          proveedor: elegir(['Vidriería Central', 'Tapicería Norte', 'Alineación Sur']),
+          precio_unitario: entre(8, 60) * 1000
+        });
       }
 
       /* Estado del presupuesto, con sus fechas. Se sortea siempre —aunque
@@ -1011,17 +1043,21 @@ const Semilla = (function () {
          aprobadas, porque es la aprobación la que autoriza el pedido. */
       let estadoPre = viva ? elegir(['borrador', 'enviado', 'aprobado']) : 'aprobado';
       if (conRepPend) estadoPre = 'aprobado';
-      /* Si la orden tiene que mostrar un repuesto pendiente pero el sorteo no
-         le dio ninguna línea de cambio, se convierte la primera: una línea de
-         `reparar` no compra nada, y sin pieza que comprar no hay repuesto. */
-      if (conRepPend && !lineasCambio.length && nL) {
-        const primera = presupuesto_linea[presupuesto_linea.length - nL];
-        primera.proceso = 'cambio';
-        primera.horas_rep = 0; primera.horas_pint = 0;
-        primera.horas_dm = entre(20, 200) / 100;
-        primera.proveedor = rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular');
-        primera.precio_unitario = entre(12, 380) * 1000;
-        lineasCambio.push(primera);
+      /* Si la orden tiene que mostrar un repuesto pendiente y el sorteo no le
+         dio ninguna fila en Repuestos, se le agrega una: sin pieza que
+         comprar no hay repuesto que pueda estar pendiente. */
+      if (conRepPend && !lineasCambio.length && !sinPresupuesto) {
+        const fila = {
+          id: pid + '-l' + (++orden), presupuesto_id: pid, orden,
+          bloque: 'repuesto', proceso: 'cambio',
+          descripcion: elegir(PIEZAS),
+          horas_dm: 0, horas_rep: 0, horas_pint: 0,
+          codigo: '', cantidad: 1,
+          proveedor: rnd() > 0.66 ? 'DYP' : (comp ? 'SURA' : 'Particular'),
+          precio_unitario: entre(12, 380) * 1000
+        };
+        presupuesto_linea.push(fila);
+        lineasCambio.push(fila);
       }
 
       // Enviado unos días después de entrar; respondido después de enviado.

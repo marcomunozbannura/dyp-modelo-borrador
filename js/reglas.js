@@ -588,11 +588,20 @@ const Reglas = (function () {
      del documento que firma la compañía. `deducible` viene de la ORDEN, no
      del presupuesto: es lo que la póliza descuenta, y se resta del neto
      antes del IVA. */
+  /* Los tres bloques se separan por `bloque`, no por la OP. La OP clasifica
+     el TRABAJO de una linea de mano de obra —cambiar, reparar o mandar
+     afuera— y no dice nada sobre la lista de compras: Repuestos y Externos se
+     escriben a mano, fila por fila. Corregido el 16-08-2026 con el sistema
+     real a la vista. */
+  const esManoObra = (l) => (l.bloque || 'mano_obra') === 'mano_obra';
+  const esRepuesto = (l) => l.bloque === 'repuesto';
+  const esExterno  = (l) => l.bloque === 'externo';
+
   function totalesPresupuesto(lineas, tempario, deducible, ivaPct) {
     const ls = lineas || [];
     const tarifa = Number(tempario) || 0;
     const h = { dm: 0, rep: 0, pint: 0 };
-    ls.forEach((l) => {
+    ls.filter(esManoObra).forEach((l) => {
       const x = horasDe(l);
       h.dm += x.dm; h.rep += x.rep; h.pint += x.pint;
     });
@@ -601,9 +610,8 @@ const Reglas = (function () {
     const pintar = Math.round(h.pint * tarifa);
     const manoObra = dm + reparar + pintar;
 
-    const repuestos = ls.filter((l) => l.proceso === 'cambio')
-      .reduce((s, l) => s + cobroRepuesto(l), 0);
-    const tot = ls.filter((l) => l.proceso === 'externo')
+    const repuestos = ls.filter(esRepuesto).reduce((s, l) => s + cobroRepuesto(l), 0);
+    const tot = ls.filter(esExterno)
       .reduce((s, l) => s + (Number(l.precio_unitario) || 0), 0);
 
     const subtotalNeto = manoObra + repuestos + tot;
@@ -640,6 +648,7 @@ const Reglas = (function () {
     formatoOR, siguienteCorrelativoOR, numeroORDisponible,
     // presupuesto
     PROVEEDOR_TALLER, normalizarProveedor, esProveedorTaller, cobroRepuesto,
+    esManoObra, esRepuesto, esExterno,
     horasDe, totalesPresupuesto,
     // catálogos
     USOS, usosDeFila,

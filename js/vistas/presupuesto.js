@@ -312,10 +312,15 @@ function grillaPresupuesto(o, pr, editable, $) {
   const p = presuEstado();
   const t = pr.totales ||
     Reglas.totalesPresupuesto(pr.lineas, pr.tempario, o.deducible, 19);
+  /* Los tres bloques son INDEPENDIENTES y se separan por `bloque`. La OP de
+     una línea de mano de obra clasifica ESE trabajo —cambiar, reparar,
+     mandar afuera— y no pone nada en las otras dos tablas: Repuestos y
+     Externos se escriben a mano, fila por fila. Corregido el 16-08-2026 con
+     el sistema real a la vista. */
   const lineas = pr.lineas || [];
-  const manoObra = lineas.filter((l) => l.proceso !== 'externo');
-  const repuestos = lineas.filter((l) => l.proceso === 'cambio');
-  const externos = lineas.filter((l) => l.proceso === 'externo');
+  const manoObra = lineas.filter(Reglas.esManoObra);
+  const repuestos = lineas.filter(Reglas.esRepuesto);
+  const externos = lineas.filter(Reglas.esExterno);
 
   /* ── Tempario ──────────────────────────────────────────────────────────
      FIJO. Se muestra, no se elige. Lo mueve SÓLO administración, en
@@ -386,11 +391,10 @@ function grillaPresupuesto(o, pr, editable, $) {
       </select>
       <button class="btn" id="l-agregar">Enviar</button>
     </div>
-    <div class="pie">La operación manda la línea a su bloque:
-      <strong>Cambio</strong> a Mano de Obra y a Repuestos ·
-      <strong>Reparar</strong> a Mano de Obra ·
-      <strong>Externo</strong> a Trabajos externos.
-      Las horas y los precios se escriben después, en la propia fila.</div>
+    <div class="pie">Agrega una línea de <strong>Mano de Obra</strong>. La OP dice qué se le
+      hace a esa pieza —<strong>Cambio</strong>, <strong>Reparar</strong> o
+      <strong>Externo</strong>— y las horas se escriben después, en la propia fila.
+      Los repuestos y los trabajos externos se agregan en sus tablas, más abajo.</div>
   </div>`;
 
   /* ── Bloque 1 · Mano de Obra ───────────────────────────────────────── */
@@ -454,46 +458,47 @@ function grillaPresupuesto(o, pr, editable, $) {
     const cobra = Reglas.esProveedorTaller(l.proveedor);
     return '<tr><td>' + campoLinea(l, 'codigo', 'text', '110px', ' placeholder="El de bodega"') + '</td>' +
       '<td class="num">' + campoLinea(l, 'cantidad', 'number', '70px', ' min="1"') + '</td>' +
-      /* La descripción NO se edita acá: es la de la línea de mano de obra. Si
-         se pudiera cambiar quedarían dos nombres para la misma pieza, que es
-         justo lo que hace impresentable el listado de bodega del original. */
-      '<td>' + esc(l.descripcion) +
-        '<div class="ayuda" style="margin:2px 0 0">de la línea con operación Cambio</div></td>' +
+      // Se escribe: esta tabla se llena a mano, no hereda de nadie.
+      '<td>' + campoLinea(l, 'descripcion', 'text', '100%', ' placeholder="La pieza, como se pide"') + '</td>' +
       '<td>' + campoLinea(l, 'proveedor', 'text', '152px',
         ' placeholder="DYP, SURA, …" list="lista-proveedores"') + '</td>' +
       '<td class="num">' + campoLinea(l, 'precio_unitario', 'number', '120px', ' min="0" placeholder="0"') + '</td>' +
       '<td class="num">' + (cobra
         ? '<strong>' + $(Reglas.cobroRepuesto(l)) + '</strong>'
         : '<span class="et gris" title="La pieza la pone ' + esc(l.proveedor || 'un tercero') +
-          ': el taller no la desembolsó, así que no la cobra">no se cobra</span>') + '</td></tr>';
+          ': el taller no la desembolsó, así que no la cobra">no se cobra</span>') + '</td>' +
+      '<td>' + (editable ? '<button class="quitar" data-quitarlinea="' + esc(l.id) +
+        '" title="Quitar la fila">&times;</button>' : '') + '</td></tr>';
   };
 
   const bloqueRep = `
   <section class="bloque-presu repuestos">
-    ${cabBloquePresu(2, 'Repuestos', 'Las piezas del trabajo. Escribirlas acá es pedirlas a Bodega',
+    ${cabBloquePresu(2, 'Repuestos', 'Se escriben a mano. Son la solicitud que ve Bodega',
       t.repuestos, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:130px">Código</th><th style="width:84px">Cantidad</th>
         <th>Descripción</th><th style="width:172px">Proveedor</th>
         <th class="num" style="width:130px">Precio unitario</th>
-        <th class="num" style="width:126px">Se cobra</th></tr></thead>
+        <th class="num" style="width:126px">Se cobra</th><th style="width:44px"></th></tr></thead>
       <tbody>${repuestos.length ? repuestos.map(filaRep).join('')
-        : '<tr><td colspan="6" style="color:var(--gris-2);padding:9px">Sin repuestos. ' +
-          'Aparecen solos al agregar una línea con operación <strong>Cambio</strong>.</td></tr>'}</tbody>
+        : '<tr><td colspan="7" style="color:var(--gris-2);padding:9px">Sin repuestos. ' +
+          'Se agregan con <strong>Añadir fila</strong>.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="5" style="text-align:right"><strong>Subtotal</strong></td>
-        <td class="num"><strong>${$(t.repuestos)}</strong></td></tr></tfoot>
+        <td class="num"><strong>${$(t.repuestos)}</strong></td><td></td></tr></tfoot>
     </table></div>
-    <span class="ayuda"><strong>Escribir la pieza acá es pedirla.</strong> Baja a Bodega en el
-      momento —con su código, cantidad, proveedor y precio, sin que bodega la vuelva a
-      escribir— y no espera la aprobación de la compañía: cuando el evaluador la anota,
-      ya sabe que hay que comprarla. Sólo se le cobran al cliente las que pone el taller:
-      escribir <strong>DYP</strong> en cualquier forma es el mismo proveedor.</span>
+    ${editable ? '<div class="pie-anadir"><button class="btn secundario" data-anadir="repuesto">' +
+      'Añadir fila</button></div>' : ''}
+    <span class="ayuda"><strong>Esta tabla es la solicitud de repuestos.</strong> Lo que se
+      escribe acá viaja a Bodega, al check-list, al consolidado y al detalle de lo que está
+      pendiente — sin que bodega lo vuelva a escribir y sin esperar la aprobación de la
+      compañía. Sólo se le cobran al cliente las piezas que pone el taller: escribir
+      <strong>DYP</strong> en cualquier forma es el mismo proveedor.</span>
   </section>`;
 
   /* ── Bloque 3 · Externos (T.O.T.) ──────────────────────────────────── */
   const filaExt = (l) =>
     '<tr><td>' + campoLinea(l, 'codigo', 'text', '110px', '') + '</td>' +
-    '<td>' + esc(l.descripcion) + '</td>' +
+    '<td>' + campoLinea(l, 'descripcion', 'text', '100%', ' placeholder="El trabajo que hace el tercero"') + '</td>' +
     '<td>' + campoLinea(l, 'proveedor', 'text', '172px',
       ' placeholder="Quién lo hace" list="lista-proveedores"') + '</td>' +
     '<td class="num">' + campoLinea(l, 'precio_unitario', 'number', '120px', ' min="0" placeholder="0"') + '</td>' +
@@ -503,17 +508,19 @@ function grillaPresupuesto(o, pr, editable, $) {
   const bloqueExt = `
   <section class="bloque-presu externos">
     ${cabBloquePresu(3, 'Trabajos externos \u00b7 T.O.T.',
-      'Lo que hace un tercero y el taller factura', t.tot, $)}
+      'Se escriben a mano. Lo que hace un tercero y el taller factura', t.tot, $)}
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th style="width:130px">Código</th><th>Descripción</th>
         <th style="width:190px">Proveedor</th><th class="num" style="width:130px">Precio</th>
         <th style="width:44px"></th></tr></thead>
       <tbody>${externos.length ? externos.map(filaExt).join('')
         : '<tr><td colspan="5" style="color:var(--gris-2);padding:9px">Sin trabajos externos. ' +
-          'Se agregan con la operación <strong>Externo</strong>.</td></tr>'}</tbody>
+          'Se agregan con <strong>Añadir fila</strong>.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="3" style="text-align:right"><strong>Subtotal</strong></td>
         <td class="num"><strong>${$(t.tot)}</strong></td><td></td></tr></tfoot>
     </table></div>
+    ${editable ? '<div class="pie-anadir"><button class="btn secundario" data-anadir="externo">' +
+      'Añadir fila</button></div>' : ''}
   </section>`;
 
   /* ── El cierre del documento ───────────────────────────────────────── */
@@ -818,6 +825,19 @@ function pPresupuesto() {
     if (!pr || !ta) return;
     ejecutar(() => Modelo.fijar_observacion_presupuesto(pr.id, ta.value), 'Observación guardada.');
   });
+
+  /* «Añadir fila» en Repuestos y en Externos. La fila entra EN BLANCO y se
+     llena en la propia tabla, igual que en el sistema actual: pedir los datos
+     en un formulario aparte obliga a saberlo todo antes de escribir nada. */
+  document.querySelectorAll('[data-anadir]').forEach((b) => b.addEventListener('click', () => {
+    const pr = presuActual();
+    if (!pr) return;
+    const bloque = b.dataset.anadir;
+    ejecutar(() => Modelo.agregar_fila_presupuesto(pr.id, bloque),
+      bloque === 'repuesto'
+        ? 'Fila agregada. Al escribir la pieza queda pedida a bodega.'
+        : 'Fila agregada. Escribe el trabajo, quién lo hace y cuánto cobra.');
+  }));
 
   const agregar = document.getElementById('l-agregar');
   if (agregar) agregar.addEventListener('click', () => {

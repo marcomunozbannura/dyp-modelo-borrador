@@ -134,7 +134,15 @@ function listaPresupuestos(o) {
 
          El `data-or` es el mismo enganche que ya usa la torre y el listado:
          al pasar el mouse sale monto, estado y fechas de ESE presupuesto. */
-      const cuantas = (pr.lineas || []).length;
+      /* Los repuestos de ESTA OR, con la misma cuenta que la etiqueta de
+         datos: las filas de su bloque Repuestos, cruzadas por el id de la
+         línea. La lista y el globo tienen que decir lo mismo — si no, el que
+         mira aprende a no creerle a ninguno de los dos. */
+      const suyas = {};
+      (pr.lineas || []).forEach((l) => { if (l.bloque === 'repuesto') suyas[l.id] = true; });
+      const pedidos = o.repuestos.filter((r) => r.presupuestoLineaId && suyas[r.presupuestoLineaId]);
+      const porLlegar = pedidos.filter((r) => !r.fechaBodega).length;
+
       return '<div class="linea-presu">' +
         /* Se rotula con el ID del presupuesto, no con el número de OR: las
            versiones comparten la OR y si no, el globo de la v2 mostraría los
@@ -146,11 +154,18 @@ function listaPresupuestos(o) {
            es la OR». Y es cierto — la versión era ruido en una lista donde lo
            que se elige es el documento, y el estado ya distingue la vigente
            de las anuladas. */
-        /* Lo mínimo para elegir sin abrir: cuántas líneas trae y cuándo se
-           mandó. Dos OR del mismo monto y distinto tamaño se distinguen acá. */
-        '<span class="et gris">' + cuantas + (cuantas === 1 ? ' línea' : ' líneas') + '</span>' +
-        (pr.enviadoAt ? '<span class="et gris" title="Enviado a la compañía">enviada ' +
-          esc(fFechaHora(pr.enviadoAt)) + '</span>' : '') +
+        /* Lo que decide si este documento se puede cerrar: si depende de una
+           pieza y si esa pieza llegó. Las líneas y la fecha de envío salieron
+           de acá el 16-08-2026 junto con las de la etiqueta — no cambiaban
+           ninguna decisión al mirar la lista. */
+        (pedidos.length
+          ? '<span class="et ' + (porLlegar ? 'roja' : 'verde') + '" title="' +
+            (porLlegar ? porLlegar + ' sin llegar de ' + pedidos.length
+                       : 'las ' + pedidos.length + ' llegaron a bodega') + '">' +
+            pedidos.length + (pedidos.length === 1 ? ' repuesto' : ' repuestos') +
+            (porLlegar ? ' · ' + porLlegar + ' por llegar' : '') + '</span>'
+          : '<span class="et gris" title="Este trabajo no depende de ninguna pieza">' +
+            'sin repuestos</span>') +
         '<span class="monto">' + (veMontos ? fMonto(pr.total) : '•••••') + '</span>' +
         '<span class="acc">' + acciones(pr) + '</span></div>';
   }).join('');

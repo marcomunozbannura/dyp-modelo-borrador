@@ -120,7 +120,7 @@ function vPresupuestoListado() {
       <div><h2>${ico('presupuesto', 'g')}Presupuesto</h2>
         <div class="desc">Las 9 columnas del original, con el total neto por orden</div></div>
       <div class="filtros"><input type="search" id="q-presu" placeholder="OT, OR, patente o cliente" value="${esc(p.busqueda)}">
-        <button class="btn secundario" id="presu-solo-sin" title="Ver solo las órdenes sin presupuesto">Sin presupuesto</button></div>
+        <button class="btn secundario" id="presu-solo-sin" title="Ver solo las órdenes que todavía no tienen OR abierta">Sin OR</button></div>
     </div>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Cliente</th><th>Patente</th><th>Marca</th><th>Modelo</th>
@@ -140,7 +140,12 @@ function vPresupuestoListado() {
             ? '<span data-or="' + esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '">' +
                 esc(o.presupuestos[o.presupuestos.length - 1].numeroOR) + '</span>' +
               (o.presupuestos.length > 1 ? ' <span class="et gris">v' + o.presupuestos.length + '</span>' : '')
-            : '<span class="et ambar">sin presupuesto</span>') + '</td>' +
+            /* «sin OR», no «sin presupuesto» (16-08-2026, Marco). Es la
+               palabra del taller: la OR es el trabajo abierto sobre la orden, y
+               lo que falta acá es justamente eso — todavía nadie abrió el
+               trabajo. «Sin presupuesto» suena a que la OR existe y está en
+               blanco, que es otra cosa. */
+            : '<span class="et ambar">sin OR</span>') + '</td>' +
           '<td class="num">' + (neto ? fMonto(neto) : '—') + '</td>' +
           '<td><span style="display:flex;gap:6px;flex-wrap:wrap">' +
             '<button class="btn secundario chico" data-presu-ot="' + esc(o.id) + '">' +

@@ -197,7 +197,7 @@ const Pruebas = (function () {
           esperado: 'Un total mayor que cero y el conteo de las que no tienen presupuesto',
           paso: total > 0 && vivas.length > 0,
           detalle: 'Venta parada: $' + Math.round(total).toLocaleString('es-CL') +
-                   ' en ' + vivas.length + ' órdenes · ' + sinPresu + ' todavía sin presupuesto.'
+                   ' en ' + vivas.length + ' órdenes · ' + sinPresu + ' todavía sin OR.'
         });
       })();
 
@@ -1290,7 +1290,7 @@ const Pruebas = (function () {
          sembrar repuestos a mano se caiga acá y no en la reunión. */
       ['Repuestos sin la línea de presupuesto que los originó',
         db.repuesto.filter((r) => !r.presupuesto_linea_id).length, 0],
-      ['Órdenes con repuestos y sin presupuesto',
+      ['Órdenes con repuestos y sin OR',
         (function () {
           const conOR = new Set(db.presupuesto.map((p) => p.ot_id));
           return new Set(db.repuesto.map((r) => r.ot_id).filter((id) => !conOR.has(id))).size;

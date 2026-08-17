@@ -1722,7 +1722,7 @@ function detalleDeOT(clave) {
         '<td class="num">' + fMonto(p.neto) + '</td>' +
         '<td class="num"><strong>' + fMonto(p.total) + '</strong></td></tr>').join('') +
       '</tbody></table>'
-    : '<div class="texto" style="color:var(--gris-2)">Sin presupuesto todavía.</div>';
+    : '<div class="texto" style="color:var(--gris-2)">Sin OR abierta todavía.</div>';
 
   const repuestos = o.repuestos.length
     ? '<table class="grid anidada"><thead><tr>' +
@@ -1792,7 +1792,7 @@ function tarjetaDeOT(clave) {
       ['Presupuestado', o.presupuestos.length
         ? fMonto(neto) + ' <span style="color:var(--gris-2)">neto · ' +
           o.presupuestos.length + (o.presupuestos.length === 1 ? ' OR' : ' OR') + '</span>'
-        : '<span style="color:var(--gris-2)">Sin presupuesto</span>'],
+        : '<span style="color:var(--gris-2)">Sin OR</span>'],
       ['Estado', '<span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span>'],
       ['Cliente', esc(o.cliente)],
       ['Compañía', o.compania === '—' ? '<span style="color:var(--gris-2)">Particular</span>'

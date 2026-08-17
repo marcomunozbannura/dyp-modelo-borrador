@@ -242,10 +242,63 @@ div.desplegable button:hover .ico { color: var(--acento); }
 .marco { flex: 1; display: flex; min-height: 0; }
 
 /* Navegador de módulos */
+/* El ancho es una variable para que el tirador la mueva sin tocar reglas.
+   208px es el máximo Y el valor de partida: el tirador SOLO angosta, que es
+   como lo pidió Marco —"solo de achicarlo desde lo que ya esta"—. Ensanchar
+   no arreglaría nada; lo que sobra es ancho para la tabla, no para el menú. */
+:root { --ancho-lateral: 208px; }
+
 .sidebar {
-  width: 208px; flex: 0 0 208px; background: var(--superficie-3);
+  position: relative;
+  width: var(--ancho-lateral); flex: 0 0 var(--ancho-lateral); background: var(--superficie-3);
   border-right: 1px solid var(--borde); display: flex; flex-direction: column; overflow: hidden;
 }
+/* Sin transición mientras se arrastra: con ella el borde va siempre atrasado
+   respecto del mouse y se siente elástico. */
+.sidebar { transition: flex-basis .14s ease, width .14s ease; }
+body.arrastrando-lateral .sidebar { transition: none; }
+body.arrastrando-lateral { cursor: col-resize; user-select: none; }
+
+/* El tirador: 6px de agarre pegados al borde derecho. */
+.sidebar .tirador {
+  position: absolute; top: 0; right: 0; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 3;
+}
+.sidebar .tirador:hover, body.arrastrando-lateral .sidebar .tirador {
+  background: var(--acento); opacity: .35;
+}
+
+/* El botón de plegar, al pie de la barra. */
+.sidebar .plegar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; margin: 0; border: none; border-top: 1px solid var(--borde);
+  background: transparent; color: var(--gris); font-size: 11.5px; font-family: inherit;
+  cursor: pointer; text-align: left; width: 100%;
+}
+.sidebar .plegar:hover { background: var(--superficie-2); color: var(--tinta); }
+/* El chevron del catálogo apunta a la derecha. Desplegada, la flecha tiene
+   que apuntar hacia donde se va la barra —a la izquierda—, así que va girada;
+   plegada vuelve a su posición y significa "sácala para afuera". */
+.sidebar .plegar .ico { flex: 0 0 auto; transform: rotate(180deg); transition: transform .14s ease; }
+
+/* ── Plegada: sólo iconos ──────────────────────────────────────────────
+   No desaparece. Los diez módulos siguen ahí y siguen alcanzables con un
+   clic; lo que se va es el texto. Esconder el menú entero obligaría a
+   desplegarlo para cambiar de pantalla, que es peor que una tabla angosta. */
+/* El ancho lo escribe `aplicarLateral()` en el `body`. Acá SOLO lo visual:
+   qué se esconde cuando la barra queda en iconos. */
+body.lateral-plegado .sidebar .tit,
+body.lateral-plegado .nav .grupo,
+body.lateral-plegado .nav a .rot,
+body.lateral-plegado .nav a .cuenta,
+body.lateral-plegado .sidebar .plegar .rot { display: none; }
+body.lateral-plegado .nav a { justify-content: center; padding: 7px 0; border-left-width: 0; }
+body.lateral-plegado .nav a.activo { border-left-width: 0; box-shadow: inset 2px 0 0 var(--acento); }
+body.lateral-plegado .nav .grupo { padding: 0; height: 7px; margin-top: 5px; }
+body.lateral-plegado .sidebar .plegar { justify-content: center; padding: 7px 0; }
+body.lateral-plegado .sidebar .plegar .ico { transform: none; }
+/* Plegada no se arrastra: no hay de dónde sacarle ancho. */
+body.lateral-plegado .sidebar .tirador { display: none; }
 .sidebar .tit {
   font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
   color: var(--gris-2); padding: 9px 12px 5px;
@@ -438,12 +491,24 @@ input:focus, select:focus, textarea:focus {
 .grid-envoltorio { overflow-x: auto; }
 table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 table.grid th {
-  text-align: left; padding: 5px 8px; background: var(--superficie-2);
+  text-align: left; padding: 4px 5px; background: var(--superficie-2);
   border-bottom: 1px solid var(--borde-fuerte); border-right: 1px solid var(--borde);
   color: var(--gris); font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
-  font-weight: 700; white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  /* El encabezado SE PARTE en dos líneas. Con `nowrap`, «Fecha de Ingreso»
+     imponía 121px a una columna cuyo dato mide 78, y entre las diecinueve
+     columnas de la torre eso sumaba 340px de más: la tabla pedía 1538 y en
+     pantalla había 1027. Medido el 16-08-2026 a 1280 de ancho y zoom 100%,
+     que es como la mira Marco. El sistema actual parte los encabezados y por
+     eso su tabla entra completa. */
+  font-weight: 700; white-space: normal; position: sticky; top: 0; z-index: 2;
 }
 table.grid th:last-child { border-right: none; }
+/* Mismo motivo: la etiqueta de estado —«Fuera de taller / Espera repuesto»—
+   se lleva 185px de una tirada. Partida ocupa 69. En el sistema actual esa
+   celda también va en tres líneas. Sólo dentro de la grilla: en la ficha y en
+   los chips una etiqueta partida se ve mal y ahí sobra el ancho. */
+table.grid .et { white-space: normal; }
+table.grid td.num { white-space: normal; }
 
 /* ── Ordenar y ensanchar cualquier columna ──────────────────────────────
    Sin un solo rótulo que lo explique, que es como se pidió: la flecha marca
@@ -478,7 +543,10 @@ table.grid th.orden:hover { color: var(--tinta); }
 table.grid th.orden.activa { color: var(--tinta); }
 table.grid th .flechita { color: var(--acento); margin-left: 3px; }
 table.grid td {
-  padding: 3px 8px; border-bottom: 1px solid var(--borde);
+  /* 5px a los lados, no 8: son dos por celda y diecinueve columnas — 114px de
+     tabla por tres píxeles que nadie extraña. Medido: con esto la torre pide
+     1157 y con la barra plegada hay 1189. Entra, y sobra. */
+  padding: 4px 5px; border-bottom: 1px solid var(--borde);
   border-right: 1px solid var(--borde); height: 26px; vertical-align: middle;
 }
 table.grid td:last-child { border-right: none; }

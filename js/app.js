@@ -235,8 +235,12 @@ function pintarMenu() {
     if (m.grupo) return '<div class="grupo">' + esc(m.grupo) + '</div>';
     const n = m.cuenta ? m.cuenta() : null;
     const c = (n === null || n === undefined) ? '' : '<span class="cuenta">' + n + '</span>';
-    return '<a data-vista="' + m.id + '" class="' + (m.pendiente ? 'pendiente' : '') + '" tabindex="0">' +
-           ico(m.icono) + '<span>' + esc(m.nombre) + '</span>' + c + '</a>';
+    /* El nombre va en `.rot` y el `title` lleva el mismo texto: con la barra
+       plegada a iconos el rótulo se esconde y el globo es lo único que queda
+       para saber a qué módulo se entra. */
+    return '<a data-vista="' + m.id + '" class="' + (m.pendiente ? 'pendiente' : '') +
+           '" tabindex="0" title="' + esc(m.nombre) + (n ? ' · ' + n : '') + '">' +
+           ico(m.icono) + '<span class="rot">' + esc(m.nombre) + '</span>' + c + '</a>';
   }).join('');
   nav.querySelectorAll('a').forEach((a) => {
     a.addEventListener('click', () => ir(a.dataset.vista));
@@ -2376,3 +2380,113 @@ window.addEventListener('hashchange', function () {
    sepa sin que nadie se lo diga por teléfono. */
 revisarVersionPublicada();
 setInterval(revisarVersionPublicada, 5 * 60 * 1000);
+
+/* ── La barra lateral: plegar y angostar ────────────────────────────────
+   Pedido de Marco el 16-08-2026 mirando la Torre de control: en el sistema
+   actual la tabla de 17 columnas entra completa a zoom 100% porque ese
+   sistema NO tiene barra lateral —el menú va arriba, en una franja—. Acá la
+   barra se come 208px que a la tabla le hacen falta.
+
+   Dos salidas, y las dos las conserva el navegador:
+
+   · PLEGAR a iconos (46px). Recupera 162px y no muere nada: los diez módulos
+     siguen visibles y a un clic, con el nombre en el globo. Esconder el menú
+     entero habría sido peor — para cambiar de pantalla habría que abrirlo.
+
+   · ANGOSTAR con el tirador del borde, y SÓLO angostar: entre 132 y los 208
+     de partida. Textual: "uno pueda medir el ancho, pero solo de achicarlo
+     desde lo que ya esta". Ensanchar no resuelve nada acá.
+
+   Va en `localStorage` y no en la base: es una preferencia de ESTE
+   computador, no un dato del taller. El de recepción puede quererla plegada
+   y el de gerencia no, y ninguno de los dos está equivocado. */
+const LATERAL_MAX = 208;
+const LATERAL_MIN = 132;
+const LATERAL_CLAVE = 'dyp.lateral';
+
+function guardarLateral(estado) {
+  try { localStorage.setItem(LATERAL_CLAVE, JSON.stringify(estado)); } catch (e) { /* modo privado */ }
+}
+function leerLateral() {
+  try { return JSON.parse(localStorage.getItem(LATERAL_CLAVE) || '{}') || {}; } catch (e) { return {}; }
+}
+
+/* UNA sola fuente para el ancho: esta variable, escrita en el `body`.
+   Primero lo resolvía a medias el CSS —una regla `body.lateral-plegado` con
+   su propio ancho— y a medias el JS con una variable en `<html>`. La clase se
+   aplicaba, el rótulo se escondía… y la barra seguía midiendo 208. Dos
+   dueños del mismo número siempre terminan así. */
+const LATERAL_PLEGADA = 46;
+
+function aplicarLateral(estado) {
+  const ancho = Math.min(LATERAL_MAX, Math.max(LATERAL_MIN, Number(estado.ancho) || LATERAL_MAX));
+  document.body.style.setProperty('--ancho-lateral',
+    (estado.plegado ? LATERAL_PLEGADA : ancho) + 'px');
+  document.body.classList.toggle('lateral-plegado', !!estado.plegado);
+  const b = document.getElementById('btn-plegar');
+  if (b) {
+    b.innerHTML = ico('chevron') + '<span class="rot">Contraer la barra</span>';
+    b.title = estado.plegado ? 'Mostrar los nombres de los módulos'
+                             : 'Contraer la barra a iconos y darle el ancho a la tabla';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-expanded', estado.plegado ? 'false' : 'true');
+  }
+}
+
+function montarLateral() {
+  const estado = leerLateral();
+  aplicarLateral(estado);
+
+  const boton = document.getElementById('btn-plegar');
+  if (boton) boton.addEventListener('click', () => {
+    const e = leerLateral();
+    e.plegado = !e.plegado;
+    guardarLateral(e);
+    aplicarLateral(e);
+  });
+
+  const tirador = document.getElementById('tirador-lateral');
+  const sidebar = document.getElementById('sidebar');
+  if (!tirador || !sidebar) return;
+
+  let arrastrando = false;
+  const mover = (ev) => {
+    if (!arrastrando) return;
+    // El ancho es la distancia entre el borde izquierdo de la barra y el
+    // puntero: así el borde va pegado al mouse y no se va quedando atrás.
+    const x = ev.clientX - sidebar.getBoundingClientRect().left;
+    const ancho = Math.min(LATERAL_MAX, Math.max(LATERAL_MIN, Math.round(x)));
+    document.body.style.setProperty('--ancho-lateral', ancho + 'px');
+    ev.preventDefault();
+  };
+  const soltar = () => {
+    if (!arrastrando) return;
+    arrastrando = false;
+    document.body.classList.remove('arrastrando-lateral');
+    const e = leerLateral();
+    e.ancho = parseInt(document.body.style.getPropertyValue('--ancho-lateral'), 10) || LATERAL_MAX;
+    guardarLateral(e);
+    // Las tablas miden su ancho al pintarse: al cambiar el del área hay que
+    // dejarlas recalcular, o las columnas quedan con el ancho de antes.
+    if (typeof mejorarTablas === 'function') mejorarTablas();
+  };
+
+  tirador.addEventListener('mousedown', (ev) => {
+    arrastrando = true;
+    document.body.classList.add('arrastrando-lateral');
+    ev.preventDefault();
+  });
+  document.addEventListener('mousemove', mover);
+  document.addEventListener('mouseup', soltar);
+
+  /* Doble clic en el tirador: vuelve al ancho de fábrica. Es la salida para
+     quien la angostó de más y no sabe cuánto medía. */
+  tirador.addEventListener('dblclick', () => {
+    const e = leerLateral();
+    e.ancho = LATERAL_MAX;
+    guardarLateral(e);
+    aplicarLateral(e);
+  });
+}
+
+montarLateral();

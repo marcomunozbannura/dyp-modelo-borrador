@@ -117,7 +117,7 @@ function vRecepcionEditarFicha() {
   <div class="panel">
     <div class="cab"><div><h2>${ico('documento', 'g')}Editar Recepción</h2>
       <div class="desc">OT ${o.numeroOT} · <span class="patente">${esc(o.patente)}</span> ·
-        recibido el ${fFecha(o.fechaIngreso)}</div></div>
+        recibido el ${fFechaHora(o.fechaIngreso)}</div></div>
       <span class="et ${version > 1 ? 'azul' : 'gris'}">versión ${version}</span>
     </div>
     <div class="cuerpo">

@@ -347,6 +347,12 @@ const Modelo = (function () {
 
       repuestos: (ix.repuestosDeOT.get(o.id) || []).map((r) => ({
         id: r.id, descripcion: r.descripcion, cantidad: r.cantidad,
+        /* De qué línea del presupuesto nació. Es lo que deja a la hoja de
+           bodega mostrar los repuestos DE ESA OR y no los de las otras
+           versiones de la misma orden. Va nulo sólo cuando bodega lo cargó a
+           mano —una pieza que no venía en el presupuesto—, que es el único
+           caso legítimo de un repuesto sin línea. */
+        presupuestoLineaId: r.presupuesto_linea_id || null,
         codigoInterno: r.codigo_interno || '', codigoExterno: r.codigo_externo || '',
         responsablePago: (ix.respPago.get(r.responsable_pago_id) || {}).nombre,
         pagaTaller: !!(ix.respPago.get(r.responsable_pago_id) || {}).es_taller,

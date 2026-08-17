@@ -133,18 +133,26 @@ function bodegaChecklist() {
   // Una fila POR PRESUPUESTO, no por vehículo: una OT puede tener varias OR y
   // cada una pide sus propios repuestos.
   const filas = [];
-  encontradas.forEach((o) => o.presupuestos.forEach((p) => filas.push({ o, p })));
+  encontradas.forEach((o) => o.presupuestos.forEach((p) => {
+    // La cuenta es la de ESE presupuesto: antes iba `o.repuestos.length` y las
+    // dos versiones de una misma OT mostraban el mismo número.
+    const ids = {};
+    (p.lineas || []).forEach((l) => { ids[l.id] = true; });
+    const suyos = o.repuestos.filter((r) => r.presupuestoLineaId && ids[r.presupuestoLineaId]);
+    filas.push({ o, p, nRep: suyos.length, nPend: suyos.filter((r) => !r.fechaBodega).length });
+  }));
 
   const tabla = `
     <h3 style="font-size:13px;margin:14px 0 6px">Resultados de la patente &ldquo;${esc(q)}&rdquo;</h3>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Patente</th><th>Presupuesto</th><th>Reparación</th>
         <th class="num">Repuestos</th><th>Acción</th></tr></thead>
-      <tbody>${filas.map(({ o, p }) => '<tr><td class="num">' + o.numeroOT + '</td>' +
+      <tbody>${filas.map(({ o, p, nRep, nPend }) => '<tr><td class="num">' + o.numeroOT + '</td>' +
         '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
         '<td class="cod">' + esc(p.numeroOR) + '</td>' +
         '<td class="num">' + esc(p.idReparacion || '—') + '</td>' +
-        '<td class="num">' + o.repuestos.length + '</td>' +
+        '<td class="num">' + nRep +
+          (nPend ? ' <span class="et roja" title="' + nPend + ' sin llegar">' + nPend + '</span>' : '') + '</td>' +
         '<td><button class="btn secundario" data-bod-presu="' + esc(p.id) + '">' +
           'Ver Repuestos de Presupuesto</button></td></tr>').join('')}
       </tbody></table></div>`;
@@ -181,7 +189,15 @@ function bodegaChecklist() {
    llegado. La casilla viene deshabilitada y dice por qué. */
 function bodegaRepuestosPresupuesto(o, p) {
   const pagos = Modelo.catalogo('responsable_pago');
-  const llegados = o.repuestos.filter((r) => r.fechaBodega).length;
+  /* Los de ESTA OR. Una orden puede tener varias versiones del presupuesto y
+     antes la hoja mostraba los repuestos de todas juntas bajo el título de
+     una sola. Los que bodega cargó a mano no tienen línea: se muestran igual,
+     porque están en el taller y alguien los tiene que marcar. */
+  const idsLinea = {};
+  (p.lineas || []).forEach((l) => { idsLinea[l.id] = true; });
+  const repuestos = o.repuestos.filter((r) =>
+    !r.presupuestoLineaId || idsLinea[r.presupuestoLineaId]);
+  const llegados = repuestos.filter((r) => r.fechaBodega).length;
 
   const fila = (r) => '<tr>' +
     '<td><input data-cod="' + esc(r.id) + '" value="' + esc(r.codigoInterno || '') +
@@ -231,14 +247,14 @@ function bodegaRepuestosPresupuesto(o, p) {
   <div class="panel">
     <div class="cab"><div><h2>Repuestos</h2>
       <div class="desc">OT ${o.numeroOT} · ${esc(o.patente)} · ${esc(o.cliente)}</div></div>
-      <span class="et ${llegados === o.repuestos.length ? 'verde' : 'ambar'}">${llegados} de
-        ${o.repuestos.length} en bodega</span></div>
+      <span class="et ${llegados === repuestos.length ? 'verde' : 'ambar'}">${llegados} de
+        ${repuestos.length} en bodega</span></div>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>Código interno</th><th>Código externo</th><th class="num" style="width:70px">Cantidad</th>
         <th>Descripción</th><th style="width:160px">Proveedor</th>
         <th style="width:90px">OK Bodega</th><th style="width:90px">Entregado</th>
         <th>Vale y devolución</th></tr></thead>
-      <tbody>${o.repuestos.length ? o.repuestos.map(fila).join('')
+      <tbody>${repuestos.length ? repuestos.map(fila).join('')
         : '<tr><td colspan="8"><div class="vacio"><div class="titulo">Este presupuesto no generó ' +
           'repuestos</div><div class="texto">Los repuestos salen de las líneas de proceso ' +
           '<strong>Cambio</strong>. Si el presupuesto es sólo mano de obra, no hay nada que pedir.' +

@@ -1087,7 +1087,33 @@ const Pruebas = (function () {
          contradictorio. Se cuenta acá para que si la fórmula se vuelve a tocar,
          la cifra se caiga antes que la reunión. */
       ['Patentes distintas entre los vehículos',
-        new Set(db.vehiculo.map((v) => v.patente)).size, db.vehiculo.length]
+        new Set(db.vehiculo.map((v) => v.patente)).size, db.vehiculo.length],
+
+      /* 🔴 Los repuestos NACEN del presupuesto. La semilla los inventaba
+         sueltos: 239 sin línea que los originara y ocho órdenes con repuestos
+         pendientes sin ninguna OR. En pantalla eso es un auto que nadie
+         presupuestó esperando una pieza que nadie pidió —imposible en el
+         taller— y además contradecía la regla que el propio motor aplica al
+         aprobar una OR. Marco lo vio en la demostración el 16-08-2026.
+         Van como cifra, no como comentario, para que si alguien vuelve a
+         sembrar repuestos a mano se caiga acá y no en la reunión. */
+      ['Repuestos sin la línea de presupuesto que los originó',
+        db.repuesto.filter((r) => !r.presupuesto_linea_id).length, 0],
+      ['Órdenes con repuestos y sin presupuesto',
+        (function () {
+          const conOR = new Set(db.presupuesto.map((p) => p.ot_id));
+          return new Set(db.repuesto.map((r) => r.ot_id).filter((id) => !conOR.has(id))).size;
+        })(), 0],
+      /* Sólo las líneas de proceso `cambio` compran algo: reparar y externo no
+         generan pieza. Si esto deja de ser cero, alguien pidió un repuesto
+         para una línea que no lo necesita. */
+      ['Repuestos nacidos de una línea que no es «cambio»',
+        (function () {
+          const proc = {};
+          db.presupuesto_linea.forEach((l) => { proc[l.id] = l.proceso; });
+          return db.repuesto.filter((r) => r.presupuesto_linea_id &&
+            proc[r.presupuesto_linea_id] !== 'cambio').length;
+        })(), 0]
     ];
     return esperado.map(([nombre, real, ref]) => ({
       nombre, real, referencia: ref, paso: real === ref

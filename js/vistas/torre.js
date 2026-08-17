@@ -234,7 +234,7 @@ function filaTorre(o) {
     '<td>' + (e ? '<i class="punto" style="background:' + e.color + '"></i>' + esc(e.nombre)
       : '<span class="et gris">Pendiente</span>') + '</td>' +
     '<td>' + (o.asignado ? esc(o.asignado) : '<span class="et gris">Sin Asignar</span>') + '</td>' +
-    '<td class="num">' + (o.fechaCompromiso ? fCorta(o.fechaCompromiso) : '—') + '</td>' +
+    '<td class="num">' + (o.fechaCompromiso ? fFechaHora(o.fechaCompromiso) : '—') + '</td>' +
     '<td>' + chipsAlerta(o) + (pend ? ' <span class="et roja" title="' + pend +
       ' repuestos por llegar">' + pend + '</span>' : '') + '</td></tr>';
 
@@ -293,7 +293,10 @@ function detalleOT(o) {
         ? '<span style="color:var(--ambar)">' + o.diasKpi + ' de ' + META_DIAS_REPARACION + ' · sobre la meta</span>'
         : o.diasKpi + ' de ' + META_DIAS_REPARACION) +
       (fuera ? dato('Fuera de taller hace', '<span style="color:var(--ambar)">' + o.diasFuera + ' días</span>') : '') +
-      dato('Fecha de ingreso', fFechaHora(o.fechaIngreso)) +
+      dato('Fecha de Ingreso', fFechaHora(o.fechaIngreso)) +
+      dato('Fecha de Entrega', o.fechaCompromiso
+        ? fFechaHora(o.fechaCompromiso) + ' <span style="color:var(--gris-2)">· probable</span>'
+        : '<span style="color:var(--gris-2)">sin comprometer</span>') +
       '<div class="linea-tiempo">' + hitos + '</div></fieldset>' +
 
     '<fieldset class="bloque"><legend>Repuestos, presupuestos y fotos</legend>' +

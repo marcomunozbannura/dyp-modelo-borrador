@@ -201,8 +201,13 @@ function vFinalizarEtapas(o) {
 
   ${reparte ? `<div class="rejilla-campos" style="margin-top:12px">
     <div class="campo"><label>Fecha probable de entrega</label>
-      <input type="date" id="f-compromiso" value="${o.fechaCompromiso ? isoFecha(o.fechaCompromiso) : ''}">
-      <span class="ayuda">En el original el calendario está en inglés</span></div>
+      ${/* Con hora, igual que la columna Fecha de Entrega que la muestra y que
+           el panel de Entregar Unidad que la escribe. Era sólo fecha y el
+           compromiso aparecía a las 00:00 en la torre: una hora que nadie
+           comprometió. */''}
+      <input type="datetime-local" id="f-compromiso"
+        value="${o.fechaCompromiso ? isoConHora(o.fechaCompromiso) : ''}">
+      <span class="ayuda">Día y hora. En el original el calendario está en inglés y no lleva hora</span></div>
     <div class="campo"><label>&nbsp;</label>
       <button class="btn secundario" id="btn-compromiso">Guardar la fecha</button></div>
   </div>` : ''}
@@ -315,13 +320,21 @@ function pEtapas(o) {
   const guardarFecha = document.getElementById('btn-compromiso');
   if (guardarFecha) guardarFecha.addEventListener('click', () => {
     const v = document.getElementById('f-compromiso').value;
-    if (!v) return avisar({ ok: false, motivo: 'Hay que elegir una fecha.' });
-    // El input date entrega 'aaaa-mm-dd'; se arma la fecha local para que no
-    // se corra un día por la zona horaria.
-    const [a, m, d] = v.split('-').map(Number);
-    ejecutar(() => Modelo.fijar_fecha_compromiso(o.id, new Date(a, m - 1, d)), 'Fecha probable guardada.');
+    if (!v) return avisar({ ok: false, motivo: 'Hay que elegir una fecha y una hora.' });
+    /* El input entrega 'aaaa-mm-ddTHH:MM'; se arma la fecha local a mano. Con
+       `new Date(texto)` se interpreta como UTC y en Chile se corre un día. */
+    const [fecha, hora] = v.split('T');
+    const [a, m, d] = fecha.split('-').map(Number);
+    const [hh, mm] = String(hora || '00:00').split(':').map(Number);
+    if (!a || !m || !d) return avisar({ ok: false, motivo: 'La fecha no se entiende.' });
+    ejecutar(() => Modelo.fijar_fecha_compromiso(o.id, new Date(a, m - 1, d, hh || 0, mm || 0)),
+      'Fecha probable guardada.');
   });
 }
 
 const isoFecha = (d) => d.getFullYear() + '-' +
   String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+/* Para `datetime-local`, con la hora QUE TIENE la fecha —no la del reloj—,
+   porque acá se está editando un compromiso ya guardado. */
+const isoConHora = (d) => isoFecha(d) + 'T' +
+  String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');

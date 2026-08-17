@@ -853,7 +853,11 @@ const Semilla = (function () {
         deducible: comp ? entre(0, 8) * 25000 : 0,
         liquidador: comp ? NOM[idx % NOM.length] + ' ' + APE[idx % APE.length] : null,
         prioridad_id: rnd() > 0.88 ? 'pri-2' : 'pri-1',
-        fecha_ingreso, fecha_compromiso: dias(diasIngreso - entre(15, 25)),
+        /* El compromiso lleva hora igual que el ingreso: la columna Fecha de
+           Entrega la muestra, y `dias()` deja todo en 00:00 — una hora que
+           nadie comprometió y que además hace inútil ordenar por esa columna
+           cuando hay varios autos citados el mismo día. */
+        fecha_ingreso, fecha_compromiso: diasHora(diasIngreso - entre(15, 25)),
         fecha_entrega_real, estado: estadoCod,
         /* Quién responde por el vehículo completo: recepción o jefe de taller,
            que son los dos que pueden presupuestarlo y hacerlo avanzar. Antes
@@ -938,15 +942,20 @@ const Semilla = (function () {
          entró y nadie lo ha valorizado. Es un caso real y es lo que hace útil
          el indicador de "sin presupuesto" — esas son órdenes que el taller
          **no puede cobrar todavía**.
-         Ojo: solo se salta el presupuesto. Los repuestos y la bitácora siguen,
-         porque de ellos dependen las cifras de control. */
-      const sinPresupuesto = viva && idx % 8 === 3;
+
+         Se excluyen las que tienen que mostrar un repuesto pendiente: sin OR
+         no hay presupuesto, sin presupuesto no hay línea de cambio y sin línea
+         de cambio no hay repuesto que pedir. Antes no se excluían y quedaban
+         ocho autos sin OR con repuestos pendientes — Marco lo cachó el
+         16-08-2026 mirando la demostración, y tenía razón. */
+      const sinPresupuesto = viva && idx % 8 === 3 && !conRepPend;
 
       /* Presupuesto con OR compuesta: <OT>-<id_reparacion>-<NNN>. */
       const id_reparacion = 18000 + (numero_ot % 900);
       const pid = 'pr-' + (++seqPre);
       const nL = sinPresupuesto ? 0 : entre(2, 6);
       let neto = 0;
+      const lineasCambio = [];
       for (let l = 0; l < nL; l++) {
         const proceso = elegir(['cambio', 'reparar', 'externo']);
         const horas = proceso === 'reparar' ? entre(1, 12) * 0.5 : null;
@@ -955,43 +964,82 @@ const Semilla = (function () {
         // como estimación y no multiplican nada — ver la nota del tempario.
         const venta = proceso === 'reparar' ? entre(8, 60) * 5000
                                             : entre(12, 380) * 1000;
-        presupuesto_linea.push({
+        const linea = {
           id: pid + '-l' + (l + 1), presupuesto_id: pid, orden: l + 1, proceso,
           descripcion: elegir(['Paragolpes delantero', 'Tapabarro izquierdo', 'Foco delantero derecho',
             'Puerta trasera izquierda', 'Capó', 'Espejo lateral derecho', 'Parabrisas',
             'Maletero', 'Rejilla frontal', 'Moldura lateral']),
           horas, cantidad: cant, precio_unitario: venta
-        });
+        };
+        presupuesto_linea.push(linea);
+        if (proceso === 'cambio') lineasCambio.push(linea);
         neto += venta * cant;
       }
+
+      /* Estado del presupuesto, con sus fechas. Se sortea siempre —aunque
+         después se fuerce— para no correr la secuencia del generador: la
+         semilla es determinista y una tirada de más descuadra todo lo que
+         viene detrás. Las que deben mostrar un repuesto pendiente quedan
+         aprobadas, porque es la aprobación la que autoriza el pedido. */
+      let estadoPre = viva ? elegir(['borrador', 'enviado', 'aprobado']) : 'aprobado';
+      if (conRepPend) estadoPre = 'aprobado';
+      /* Si la orden tiene que mostrar un repuesto pendiente pero el sorteo no
+         le dio ninguna línea de cambio, se convierte la primera: una línea de
+         `reparar` no compra nada, y sin pieza que comprar no hay repuesto. */
+      if (conRepPend && !lineasCambio.length && nL) {
+        const primera = presupuesto_linea[presupuesto_linea.length - nL];
+        primera.proceso = 'cambio';
+        primera.horas = null;
+        lineasCambio.push(primera);
+      }
+
+      // Enviado unos días después de entrar; respondido después de enviado.
+      const diasEnvio = Math.max(0, diasIngreso - entre(1, 3));
+      const diasResp  = Math.max(0, diasEnvio - entre(1, 5));
+
       const ivaPct = 19;
       if (sinPresupuesto) { seqPre--; } else
       presupuesto.push({
         id: pid, ot_id, id_reparacion, correlativo: 1,
         numero_or: Reglas.formatoOR(numero_ot, id_reparacion),
-        version: 1, estado: viva ? elegir(['borrador', 'enviado', 'aprobado']) : 'aprobado',
+        version: 1, estado: estadoPre,
         neto, iva: Math.round(neto * ivaPct / 100), total: Math.round(neto * (1 + ivaPct / 100)),
-        enviado_at: null, resuelto_at: null
+        // Un borrador no se ha mandado y un enviado no tiene respuesta: las
+        // fechas siguen al estado en vez de quedar las tres en nulo.
+        enviado_at: estadoPre === 'borrador' ? null : dias(diasEnvio),
+        resuelto_at: estadoPre === 'aprobado' ? dias(diasResp) : null
       });
 
-      /* Repuestos. Los dos hitos van como FECHAS, no como booleanos: es la
-         corrección que permite medir cuánto demora un repuesto — con los
-         booleanos del original eso no se puede calcular. §C.14. */
-      if (conRepPend || rnd() > 0.55) {
-        const n = entre(1, 3);
-        for (let r = 0; r < n; r++) {
+      /* ── Repuestos ──────────────────────────────────────────────────────
+         NACEN del presupuesto. Cada línea de proceso `cambio` es una pieza
+         que hay que comprar, y es la aprobación de la OR la que autoriza el
+         pedido: exactamente lo que hace `generar_repuestos_desde_presupuesto`
+         cuando el evaluador aprueba. La semilla los inventaba sueltos —239 sin
+         línea que los originara— y el modelo terminaba contradiciendo su
+         propia regla en la pantalla donde se muestra.
+
+         Los dos hitos van como FECHAS, no como booleanos: es la corrección que
+         permite medir cuánto demora un repuesto — con los booleanos del
+         original eso no se puede calcular. §C.14. */
+      if (!sinPresupuesto && estadoPre === 'aprobado') {
+        lineasCambio.forEach((linea, r) => {
+          // La primera de una orden marcada queda pendiente a propósito: son
+          // las 41 de la tarjeta "con repuesto pendiente".
           const llego = conRepPend ? (r > 0 && rnd() > 0.5) : true;
+          const dPedido = Math.max(0, diasResp);
+          const dBodega = Math.max(0, dPedido - entre(2, 15));
+          const dArea   = Math.max(0, dBodega - entre(1, 6));
           repuesto.push({
-            id: 'rep-' + (++seqRep), ot_id, presupuesto_linea_id: null,
-            descripcion: elegir(['Paragolpes delantero', 'Óptico derecho', 'Tapabarro izquierdo',
-              'Moldura puerta', 'Rejilla inferior', 'Espejo eléctrico', 'Emblema trasero']),
-            cantidad: 1, responsable_pago_id: rnd() > 0.78 ? 'rp-2' : 'rp-1',
-            fecha_solicitud: dias(Math.max(1, diasIngreso - 2)),
-            fecha_bodega: llego ? dias(Math.max(0, diasIngreso - entre(3, 20))) : null,
-            fecha_entrega_area: llego && rnd() > 0.4 ? dias(Math.max(0, diasIngreso - entre(1, 10))) : null,
+            id: 'rep-' + (++seqRep), ot_id, presupuesto_linea_id: linea.id,
+            // La descripción es la de la línea: es la MISMA pieza, no otra.
+            descripcion: linea.descripcion,
+            cantidad: linea.cantidad, responsable_pago_id: rnd() > 0.78 ? 'rp-2' : 'rp-1',
+            fecha_solicitud: dias(dPedido),
+            fecha_bodega: llego ? dias(dBodega) : null,
+            fecha_entrega_area: llego && rnd() > 0.4 ? dias(dArea) : null,
             observacion: '', recibido_por: llego ? 'pe-u-bodega' : null
           });
-        }
+        });
       }
 
       /* Bitácora: es lo que enciende las banderas de la columna Alerta.

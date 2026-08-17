@@ -109,9 +109,9 @@ function vFichaOT(o) {
     <div class="cuerpo">
       <div class="ficha-rejilla">
         <fieldset class="bloque"><legend>${completa ? 'Recepción' : 'El vehículo'}</legend>
-          ${campoCab('Fecha de ingreso', fFecha(o.fechaIngreso))}
-          ${campoCab('Fecha de salida', o.fechaSalida
-            ? fFecha(o.fechaSalida) + ' <span class="et verde">registrada</span>'
+          ${campoCab('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
+          ${campoCab('Fecha de Salida', o.fechaSalida
+            ? fFechaHora(o.fechaSalida) + ' <span class="et verde">registrada</span>'
             : (o.enTaller ? '<span style="color:var(--gris-2)">el vehículo está adentro</span>'
                           : '<span class="et roja">sin registrar</span>'))}
           ${campoCab('Patente', '<span class="patente">' + esc(o.patente) + '</span>')}
@@ -312,9 +312,9 @@ function fichaResumen(o) {
         ? '<span style="color:var(--ambar)">' + o.diasKpi + ' de ' + META_DIAS_REPARACION + ' · sobre la meta</span>'
         : o.diasKpi + ' de ' + META_DIAS_REPARACION)}
       ${fuera ? dato('Fuera de taller hace', '<span style="color:var(--ambar)">' + o.diasFuera + ' días</span>') : ''}
-      ${dato('Ingreso', fFecha(o.fechaIngreso))}
-      ${dato('Entrega probable', fFecha(o.fechaCompromiso))}
-      ${o.fechaEntrega ? dato('Entrega real', fFecha(o.fechaEntrega)) : ''}
+      ${dato('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
+      ${dato('Fecha de Entrega probable', fFechaHora(o.fechaCompromiso))}
+      ${o.fechaEntrega ? dato('Fecha de Entrega real', fFechaHora(o.fechaEntrega)) : ''}
       <div class="linea-tiempo">${hitos}</div>
     </fieldset>
 

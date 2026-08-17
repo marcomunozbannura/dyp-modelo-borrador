@@ -118,7 +118,7 @@ function vEntrega() {
         más adelante cambia a <strong>Programar</strong>, que compromete el día y deja la orden abierta</div>
       <div class="grid-envoltorio"><table class="grid">
         <thead><tr>
-          <th>OT</th><th>Patente</th><th style="width:170px">Fecha de entrega</th>
+          <th>OT</th><th>Patente</th><th style="width:170px">Fecha de Entrega</th>
           <th style="width:200px">Tipo de entrega</th><th>Observaciones</th><th style="width:104px"></th>
         </tr></thead>
         <tbody>${coincidencias.map((x) => filaEntrega(x, e)).join('')}</tbody>
@@ -153,7 +153,7 @@ function filaEntrega(x, e) {
       // es de más adelante: una fecha probable ya vencida no es un compromiso
       // vigente, y con 53 filas sería una etiqueta en todas que no dice nada.
       (esFutura(x.fechaCompromiso) ? ' <span class="et azul">programada ' +
-        esc(fCorta(x.fechaCompromiso)) + '</span>' : '') +
+        esc(fFechaHora(x.fechaCompromiso)) + '</span>' : '') +
       '<div class="ayuda" style="margin:2px 0 0">' + esc(x.cliente) +
       (falta ? ' — ' + esc(falta) : '') + '</div></td>' +
     // La fecha lleva HORA, igual que el original: un taller entrega varios
@@ -229,12 +229,12 @@ function detalleEntrega(clave) {
   const pend = o.repuestos.filter((r) => !r.fechaBodega);
 
   const ingreso = '<div class="rejilla-datos">' +
-    dato('Fecha de ingreso', o.fechaIngreso
-      ? esc(fFecha(o.fechaIngreso)) + ' <span style="color:var(--gris-2);font-weight:400">· ' +
+    dato('Fecha de Ingreso', o.fechaIngreso
+      ? esc(fFechaHora(o.fechaIngreso)) + ' <span style="color:var(--gris-2);font-weight:400">· ' +
         o.diasTotales + ' días</span>'
       : '<span style="color:var(--gris-2)">sin dato</span>') +
-    dato('Entrega programada', o.fechaCompromiso
-      ? esc(fFecha(o.fechaCompromiso))
+    dato('Fecha de Entrega', o.fechaCompromiso
+      ? esc(fFechaHora(o.fechaCompromiso)) + ' <span style="color:var(--gris-2);font-weight:400">· programada</span>'
       : '<span style="color:var(--gris-2)">sin comprometer</span>') +
     '</div>';
 
@@ -289,8 +289,8 @@ function vEntregaFicha(o) {
         <fieldset class="bloque"><legend>1 · Salida y reingreso</legend>
           <div class="dato"><span class="k">Situación</span><span class="v">${o.enTaller
             ? '<span class="et verde">En el taller</span>' : '<span class="et ambar">Fuera del taller</span>'}</span></div>
-          <div class="dato"><span class="k">Fecha de salida</span><span class="v">${o.fechaSalida
-            ? fFecha(o.fechaSalida) : '<span style="color:var(--gris-2)">todavía no salió</span>'}</span></div>
+          <div class="dato"><span class="k">Fecha de Salida</span><span class="v">${o.fechaSalida
+            ? fFechaHora(o.fechaSalida) : '<span style="color:var(--gris-2)">todavía no salió</span>'}</span></div>
           <div class="dato"><span class="k">Días totales</span><span class="v"><strong>${o.diasTotales}</strong></span></div>
           <div class="dato"><span class="k">Reparación acumulada</span><span class="v">${o.diasReparacion}</span></div>
           <div class="dato"><span class="k">Estadía actual</span><span class="v">${o.diasEstadiaActual}</span></div>

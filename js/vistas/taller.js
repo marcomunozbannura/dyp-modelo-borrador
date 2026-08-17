@@ -130,7 +130,7 @@ function vTallerListado() {
         : '<span style="color:var(--gris-2)">Pendiente</span>') + '</td>' +
       '<td>' + (o.asignado
         ? esc(o.asignado) : '<span style="color:var(--gris-2)">Sin asignar</span>') + '</td>' +
-      '<td>' + (o.fechaCompromiso ? fCorta(o.fechaCompromiso)
+      '<td>' + (o.fechaCompromiso ? fFechaHora(o.fechaCompromiso)
         : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
       '<td><button class="btn secundario chico" data-etapasde="' + esc(o.numeroOT) + '">' +
         ico('check') + esc(TALLER_ACCION.rot) + '</button></td>' +

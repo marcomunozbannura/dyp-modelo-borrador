@@ -342,7 +342,7 @@ function impresoListadoHistorico(filas, rotulo) {
       <div>${esc(rotulo)}</div><div>Emitido ${fFecha(HOY)}</div></div>
   </div>
   <table><thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Marca</th><th>Modelo</th>
-    <th>Fecha de Ingreso</th><th>Entrega</th><th>Estado</th><th class="n">Días</th><th class="n">Venta</th>
+    <th>Fecha de Ingreso</th><th>Fecha de Entrega</th><th>Estado</th><th class="n">Días</th><th class="n">Venta</th>
   </tr></thead><tbody>
     ${filas.map((o) => '<tr><td>' + o.numeroOT + '</td><td>' + esc(o.patente) + '</td>' +
       '<td>' + esc(o.cliente) + '</td><td>' + esc(o.marca || '—') + '</td>' +

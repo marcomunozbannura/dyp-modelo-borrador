@@ -1539,11 +1539,17 @@ function valorDeCelda(td) {
   const t = (td ? td.textContent : '').trim();
   if (!t) return { n: null, t: '' };
 
-  // Fecha: 12-08-2026, 12/08/2026 o 12/08. Se compara como número AAAAMMDD.
-  const f = t.match(/^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$/);
+  /* Fecha: 12-08-2026, 12/08/2026, 12/08 y —desde que las columnas de ingreso
+     y de entrega llevan hora— 12-08-2026 09:30. Se compara como número
+     AAAAMMDDhhmm. Sin la hora en la llave, dos autos recibidos el mismo día
+     quedaban en cualquier orden, que es justo lo que la hora vino a resolver;
+     y sin este ramo la celda caía al ramo numérico y ordenaba por el DÍA del
+     mes, con lo que enero de 2027 quedaba antes que agosto de 2026. */
+  const f = t.match(/^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?$/);
   if (f) {
     const a = f[3] ? (f[3].length === 2 ? 2000 + Number(f[3]) : Number(f[3])) : 0;
-    return { n: a * 10000 + Number(f[2]) * 100 + Number(f[1]), t: t.toLowerCase() };
+    const dia = a * 10000 + Number(f[2]) * 100 + Number(f[1]);
+    return { n: dia * 10000 + Number(f[4] || 0) * 100 + Number(f[5] || 0), t: t.toLowerCase() };
   }
 
   // Número: $1.234.567, 1.234, 12,5, 45 d, -3

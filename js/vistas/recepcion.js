@@ -466,7 +466,7 @@ function vRecepcionBuscar(modo) {
         <tbody>${encontradas.map((o) => '<tr><td class="num">' + o.numeroOT + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
           '<td>' + esc(o.cliente) + '</td>' +
-          '<td>' + fFecha(o.fechaIngreso) + '</td>' +
+          '<td class="num">' + fFechaHora(o.fechaIngreso) + '</td>' +
           '<td><span class="et ' + o.estadoClase + '">' + esc(o.estadoNombre) + '</span></td>' +
           (modo === 'or'
             ? '<td>' + (o.presupuestos.length

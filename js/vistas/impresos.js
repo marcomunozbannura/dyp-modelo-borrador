@@ -338,7 +338,7 @@ function impresoRecepcion(o) {
     ${campoImpreso('Tipo de ingreso', esc(o.origenIngresoNombre || '—'))}
     ${campoImpreso('Compañía', esc(o.compania))}
     ${campoImpreso('N° siniestro', esc(o.siniestro || '—'))}
-    ${campoImpreso('Fecha de ingreso', fFecha(o.fechaIngreso))}
+    ${campoImpreso('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
   </div>
 
   ${/* El croquis rayado y, debajo, lo que se escribió. Ya no hay tabla de daños
@@ -573,8 +573,8 @@ function impresoFicha(o) {
     ${campoImpreso('Compañía', esc(o.compania))}
     ${campoImpreso('Estado', esc(o.estadoNombre))}
     ${campoImpreso('Etapa actual', esc(o.etapaNombre))}
-    ${campoImpreso('Ingreso', fFecha(o.fechaIngreso))}
-    ${campoImpreso('Salida', o.fechaSalida ? fFecha(o.fechaSalida) : 'sin registrar')}
+    ${campoImpreso('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
+    ${campoImpreso('Fecha de Salida', o.fechaSalida ? fFechaHora(o.fechaSalida) : 'sin registrar')}
   </div>
 
   <h2>Los tres relojes</h2>
@@ -654,7 +654,7 @@ function impresoExpediente(o) {
     ${campoImpreso('RUT', esc(o.rut || '—'))}
     ${campoImpreso('Compañía', esc(o.compania && o.compania !== '—' ? o.compania : 'Particular'))}
     ${campoImpreso('N° de siniestro', esc(o.siniestro || '—'))}
-    ${campoImpreso('Ingreso', fFecha(o.fechaIngreso))}
+    ${campoImpreso('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
     ${campoImpreso('Estado', esc(o.estadoNombre))}
   </div>
 
@@ -700,8 +700,8 @@ function impresoEntrega(o) {
     ${campoImpreso('Patente', esc(o.patente))}
     ${campoImpreso('Vehículo', esc([o.marca, o.modelo].filter(Boolean).join(' ') || '—'))}
     ${campoImpreso('Tipo de entrega', esc(o.estadoNombre))}
-    ${campoImpreso('Fecha de entrega', o.fechaEntrega ? fFecha(o.fechaEntrega) : '—')}
-    ${campoImpreso('Fecha de ingreso', fFecha(o.fechaIngreso))}
+    ${campoImpreso('Fecha de Entrega', o.fechaEntrega ? fFechaHora(o.fechaEntrega) : '—')}
+    ${campoImpreso('Fecha de Ingreso', fFechaHora(o.fechaIngreso))}
     ${campoImpreso('Días en el taller', o.diasReparacion)}
   </div>
 

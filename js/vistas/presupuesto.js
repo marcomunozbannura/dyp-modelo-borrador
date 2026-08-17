@@ -88,7 +88,43 @@ function filaDesplegada(o) {
   };
 
   return '<tr class="fila-presu-desplegada"><td colspan="' + cols + '">' +
-    o.presupuestos.map((pr) => {
+    listaPresupuestos(o) + '</td></tr>';
+}
+
+/* La lista sola, sin la fila que la envuelve. La usan los DOS caminos que
+   abren una orden en este panel —el botón «Ver» y el doble clic—, para que
+   los dos muestren lo mismo.
+
+   Antes el doble clic caía en `detalleDeOT`, la ficha larga con el vehículo,
+   la tabla de presupuestos y la de repuestos: se apilaba encima de esta lista
+   y la fila abierta quedaba con las dos cosas. Marco, 16-08-2026: «no es
+   necesario tanto detalle, debe ser algo simple como lo que él tiene a día de
+   hoy». Acá se elige QUÉ documento abrir, y para eso basta la línea con su
+   etiqueta de datos. El detalle largo sigue estando donde corresponde: en la
+   ficha de la orden. */
+function listaPresupuestos(o) {
+  if (!o) return '<div class="vacio"><div class="texto">No se pudo leer esta orden.</div></div>';
+  const veMontos = Modelo.puede('presupuesto.montos');
+
+  const acciones = (pr) => {
+    const b = [];
+    if (veMontos) b.push('<button class="btn secundario chico" data-pr-pdf="' + esc(pr.id) +
+      '" data-pr-ot="' + esc(o.id) + '">' + ico('imprimir') + 'Ver PDF</button>');
+    if (pr.estado === 'borrador') {
+      b.push('<button class="btn secundario chico" data-pr-editar="' + esc(pr.id) +
+        '" data-pr-ot="' + esc(o.id) + '">' + ico('editar') + 'Editar Presupuesto</button>');
+      b.push('<button class="btn secundario chico" data-pr-enviar="' + esc(pr.id) + '">Enviar</button>');
+    }
+    if (pr.estado !== 'anulado' && pr.estado !== 'aprobado' && pr.estado !== 'rechazado')
+      b.push('<button class="btn secundario chico" data-pr-anular="' + esc(pr.id) + '">Anular</button>');
+    return b.join(' ');
+  };
+
+  if (!o.presupuestos.length)
+    return '<div class="linea-presu"><span style="color:var(--gris-2)">Esta orden todavía no ' +
+      'tiene OR abierta.</span></div>';
+
+  return o.presupuestos.map((pr) => {
       const e = ESTADO_PRESUPUESTO[pr.estado] || { txt: pr.estado, clase: 'gris' };
       /* 🔶 LA ETIQUETA DE DATOS, ACÁ TAMBIÉN (16-08-2026, Marco): «que pueda
          ver una etiqueta de datos simple para saber qué documento abrir».
@@ -114,7 +150,7 @@ function filaDesplegada(o) {
           esc(fFechaHora(pr.enviadoAt)) + '</span>' : '') +
         '<span class="monto">' + (veMontos ? fMonto(pr.total) : '•••••') + '</span>' +
         '<span class="acc">' + acciones(pr) + '</span></div>';
-    }).join('') + '</td></tr>';
+  }).join('');
 }
 
 function vPresupuestoListado() {
@@ -666,7 +702,10 @@ function vPresupuestoDetalle(o, pr) {
 
 function pPresupuesto() {
   // Doble clic abre la orden en pestaña nueva, igual que en la torre.
-  dobleClicPorFilas();
+  /* El doble clic abre la MISMA lista simple que el botón «Ver», no la
+     ficha larga: en este panel se elige qué documento abrir, no se estudia
+     la orden. Apilaba las dos cosas en la fila abierta. */
+  dobleClicPorFilas(null, { detalle: (clave) => listaPresupuestos(ordenPorNumeroOId(clave)) });
   const p = presuEstado();
 
   const q = document.getElementById('q-presu');

@@ -1308,6 +1308,23 @@ const Pruebas = (function () {
       /* Sólo las líneas de proceso `cambio` compran algo: reparar y externo no
          generan pieza. Si esto deja de ser cero, alguien pidió un repuesto
          para una línea que no lo necesita. */
+      /* 🔴 El monto GUARDADO y el CALCULADO tienen que ser el mismo. La lista
+         muestra `presupuesto.total` —lo guardado— y el PDF recalcula. Se
+         separaron al sacar el deducible del documento: la lista decía $0
+         porque el deducible se comía el trabajo, y el PDF decía $64.022. Un
+         sistema que muestra dos totales para la misma OR no se puede defender
+         delante de una compañía, y no se ve hasta que alguien abre el PDF. */
+      ['Presupuestos con el monto guardado distinto al calculado',
+        (function () {
+          const ivaPct = Reglas.parametro(db, 'iva', 19);
+          return db.presupuesto.filter((p) => {
+            const o = db.orden_trabajo.find((x) => x.id === p.ot_id);
+            const t = Reglas.totalesPresupuesto(
+              db.presupuesto_linea.filter((l) => l.presupuesto_id === p.id),
+              p.tempario, o ? o.deducible : 0, ivaPct);
+            return p.neto !== t.neto || p.iva !== t.iva || p.total !== t.total;
+          }).length;
+        })(), 0],
       ['Repuestos nacidos de una línea que no es «cambio»',
         (function () {
           const proc = {};

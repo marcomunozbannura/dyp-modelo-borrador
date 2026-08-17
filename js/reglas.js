@@ -616,7 +616,22 @@ const Reglas = (function () {
 
     const subtotalNeto = manoObra + repuestos + tot;
     const ded = Math.min(Number(deducible) || 0, subtotalNeto);
-    const neto = subtotalNeto - ded;
+
+    /* 🔴 EL NETO ES LO QUE VALE EL TRABAJO, sin descontar el deducible.
+       Lo descontaba, y desde que el deducible salió del documento (16-08-2026)
+       eso dejó dos totales distintos para la misma OR: la lista mostraba $0
+       —el deducible de $100.000 se comía un trabajo de $53.800— y el PDF
+       mostraba $64.022. Marco lo vio de inmediato: «la información no está
+       fluyendo».
+
+       El que estaba mal era este. Un presupuesto cotiza lo que cuesta
+       reparar; quién paga cada parte —la compañía o el cliente con su
+       deducible— es una conversación posterior y no cambia el valor del
+       trabajo. Además, restándolo, la venta parada del taller salía menos
+       de lo que realmente hay presupuestado.
+
+       `deducible` se sigue devolviendo: la ficha del siniestro lo muestra. */
+    const neto = subtotalNeto;
     const iva = Math.round(neto * (Number(ivaPct) || 0) / 100);
     return {
       horas: h, tempario: tarifa,

@@ -402,12 +402,21 @@ function pTorre() {
   };
 
   document.querySelectorAll('tr.fila').forEach((tr) => {
+    /* 🔴 SÓLO DESDE LA COLUMNA OT (16-08-2026, Marco: «pongo doble clic en el
+       nombre de cliente y me abre otra pestaña»). El gesto estaba en la FILA,
+       así que cualquier doble clic —seleccionar un cliente, una patente, una
+       descripción— abría una pestaña.
+
+       Acá la OT es la SEGUNDA celda: la primera es la flecha del expandible.
+       Se toma por posición y no por contenido porque esta tabla escribe el ID
+       en `data-ot` y el número sólo está en la celda. */
+    const celdaOT = tr.children[1] || null;
     conDobleClic(tr, 'torre-' + tr.dataset.ot,
       () => abrirPorFila(tr),
       () => {
         ui.torre.abierta = ui.torre.abierta === tr.dataset.ot ? null : tr.dataset.ot;
         render();
-      });
+      }, celdaOT);
   });
   document.querySelectorAll('[data-ver]').forEach((b) => b.addEventListener('click', (ev) => {
     ev.stopPropagation(); ir(b.dataset.ver);

@@ -1511,9 +1511,20 @@ function dobleClicPorFilas(selector, opciones) {
          además les inserta la flecha adelante. Si no se encuentra —una tabla
          que no muestra la OT—, el clic simple sigue desplegando y no queda
          ningún doble clic suelto. */
+      /* Ojo: `data-ot` NO siempre es el número. La torre pone el ID de la
+         orden —«ot-23339»— y los demás paneles ponen el número. Buscar la
+         celda por `data-ot` a secas no encontraba nada en la torre, y sin
+         celda el gesto se quedaba en la fila entera: seguía abriendo pestañas
+         desde el nombre del cliente. Así que se busca por el NÚMERO, que es
+         lo que la columna muestra. */
+      const orden = Modelo.otPorId(n) || Modelo.otPorNumero(n);
+      const numero = orden ? String(orden.numeroOT) : String(n);
       const celdas = [...tr.children];
-      const celdaOT = celdas.find((td) => td.textContent.trim() === String(n)) ||
-        celdas.find((td) => td.textContent.trim().replace(/\s+/g, ' ') === String(n));
+      const igual = (td) => {
+        const t = td.textContent.trim().replace(/\s+/g, ' ');
+        return t === numero || t === String(n);
+      };
+      const celdaOT = celdas.find(igual);
       conDobleClic(tr, 'ot-' + n,
         () => { abrirFicha(n); return true; }, alternar, celdaOT || null);
     }

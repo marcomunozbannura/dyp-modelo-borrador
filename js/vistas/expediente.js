@@ -105,19 +105,6 @@ function vExpediente() {
     </div>
 
     <div class="cuerpo">
-      <div class="indicadores" style="margin:0 0 12px">
-        <div class="ind"><div class="rot">Hechos registrados</div><div class="val">${r.hechos}</div>
-          <div class="sub">del ${fCorta(r.desde)} al ${fCorta(r.hasta)}</div></div>
-        <div class="ind"><div class="rot">Etapas</div><div class="val">${r.etapasCerradas}/${r.etapas}</div>
-          <div class="sub">cerradas sobre asignadas</div></div>
-        <div class="ind"><div class="rot">Presupuestos</div><div class="val">${r.presupuestos}</div>
-          <div class="sub">con todas sus versiones</div></div>
-        <div class="ind"><div class="rot">Repuestos</div><div class="val">${r.repuestos}</div>
-          <div class="sub">con pedido, llegada y entrega</div></div>
-        <div class="ind"><div class="rot">Archivos</div><div class="val">${r.archivos}</div>
-          <div class="sub">fotos y documentos</div></div>
-      </div>
-
       <div class="aviso-registro">
         ${ico('candado')}
         <div><strong>Este registro no se edita.</strong> Se agregan hechos, no se cambian ni se

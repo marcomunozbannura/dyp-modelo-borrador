@@ -317,7 +317,6 @@ function bodegaSeguimiento() {
   const q = b.busqueda.trim().toLowerCase();
   const filas = Modelo.torre().filter((o) => !q ||
     [o.numeroOT, o.patente, o.cliente, o.siniestro].join(' ').toLowerCase().includes(q));
-  const conPend = filas.filter((o) => o.repuestos.some((r) => !r.fechaBodega));
 
   const lista = (o, pendientes) => o.repuestos.filter((r) => pendientes ? !r.fechaBodega : r.fechaBodega)
     .map((r) => (pendientes ? '<span style="color:var(--rojo)">' : '<span>') + esc(r.descripcion) +
@@ -325,17 +324,6 @@ function bodegaSeguimiento() {
     .join(', ') || '<span style="color:var(--gris-2)">—</span>';
 
   return `
-  <div class="indicadores" style="margin-bottom:11px">
-    <div class="ind aviso"><div class="rot">Unidades con repuestos pendientes</div>
-      <div class="val">${conPend.length}<span style="font-size:14px;color:var(--gris)">/${filas.length}</span></div>
-      <div class="sub">Es la tarjeta que la portada del original enlaza acá</div></div>
-    <div class="ind"><div class="rot">Piezas sin llegar</div>
-      <div class="val">${Modelo.metricas().repuestosPendientes}</div><div class="sub">En total</div></div>
-    <div class="ind"><div class="rot">Las paga el taller</div>
-      <div class="val">${filas.reduce((s, o) => s + o.repuestos.filter((r) => r.pagaTaller && !r.fechaBodega).length, 0)}</div>
-      <div class="sub">Plata de DyP, no de la compañía</div></div>
-  </div>
-
   <div class="filtros" style="margin-bottom:8px">
     <input type="search" id="bod-q" placeholder="OT, patente, cliente o siniestro" value="${esc(b.busqueda)}">
     <button class="btn secundario" data-pendiente="DESCARGAR LISTADO TOTAL|6|la exportación es un permiso aparte y queda en la traza">Descargar listado total</button>

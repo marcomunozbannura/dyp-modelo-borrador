@@ -1122,20 +1122,8 @@ function vRepuestos() {
     [o.patente, o.numeroOT, r.descripcion].join(' ').toLowerCase().includes(q));
   filas.sort((a, b) => (a.r.fechaPedido && b.r.fechaPedido ? a.r.fechaPedido - b.r.fechaPedido : 0));
 
-  const bloqueantes = filas.filter((f) => f.o.enTaller);
 
   return `
-  <div class="indicadores">
-    <div class="ind aviso"><div class="rot">Repuestos sin llegar</div><div class="val">${filas.length}</div>
-      <div class="sub">En ${plural(new Set(filas.map((f) => f.o.id)).size, 'vehículo', 'vehículos')}</div></div>
-    <div class="ind alerta"><div class="rot">Ocupan box en el taller</div><div class="val">${bloqueantes.length}</div>
-      <div class="sub">El vehículo está adentro y no puede avanzar</div></div>
-    <div class="ind"><div class="rot">Sin pedir todavía</div><div class="val">${filas.filter((f) => f.r.estado === 'por_pedir').length}</div>
-      <div class="sub">Aprobados pero no cursados</div></div>
-    <div class="ind alerta"><div class="rot">No disponibles</div><div class="val">${filas.filter((f) => f.r.estado === 'no_disponible').length}</div>
-      <div class="sub">Requieren alternativa</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab"><div><h2>Repuestos pendientes</h2>
       <div class="desc">Los operarios marcan la recepción acá. Ordenado por antigüedad del pedido.</div></div>
@@ -1217,18 +1205,6 @@ function vDetenidos() {
   const fuera = Modelo.torre().filter((o) => o.fueraDeTaller).sort((a, b) => b.diasFuera - a.diasFuera);
 
   return `
-  <div class="indicadores" style="margin-top:20px">
-    <div class="ind aviso"><div class="rot">Fuera de taller</div><div class="val">${Modelo.metricas().fueraDeTaller}</div>
-      <div class="sub">Con el cliente, esperando repuestos</div></div>
-    <div class="ind"><div class="rot">Espera media afuera</div><div class="val">${Modelo.metricas().diasPromedioFuera}</div>
-      <div class="sub">días hasta que llega la pieza</div></div>
-    <div class="ind alerta"><div class="rot">En taller sobre la meta</div><div class="val">${Modelo.metricas().sobreMeta}</div>
-      <div class="sub">más de ${META_DIAS_REPARACION} días de reparación</div></div>
-    <div class="ind aviso"><div class="rot">Valor esperando repuesto</div>
-      <div class="val" style="font-size:22px">${fMonto(Modelo.metricas().valorEsperandoRepuesto)}</div>
-      <div class="sub">Presupuestado y sin poder cerrar</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab"><div><h2>¿Por qué no avanza?</h2>
       <div class="desc">Los tres motivos, con los días acumulados <strong>al ${fFecha(HOY)}</strong>.

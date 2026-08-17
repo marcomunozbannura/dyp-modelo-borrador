@@ -108,31 +108,13 @@ function vPresupuestoListado() {
       [o.numeroOT, o.patente, o.cliente, o.presupuestos.map((x) => x.numeroOR).join(' ')]
         .join(' ').toLowerCase().includes(q));
 
-  const vivas = Modelo.torre();
-  const parada = vivas.reduce((s, o) => s + totalOT(o), 0);
-  const sinPresupuesto = vivas.filter((o) => !o.presupuestos.length);
-  const enviados = vivas.reduce((s, o) => s + o.presupuestos.filter((x) => x.estado === 'enviado')
-    .reduce((t, x) => t + x.total, 0), 0);
-  const aprobados = vivas.reduce((s, o) => s + o.presupuestos.filter((x) => x.estado === 'aprobado')
-    .reduce((t, x) => t + x.total, 0), 0);
-  const $$ = (n) => (Modelo.puede('presupuesto.montos') ? fMonto(n) : '•••••');
+  /* Las cuatro tarjetas de arriba —venta parada, esperando aprobación,
+     aprobado y sin presupuesto— se sacaron el 16-08-2026 junto con las del
+     resto de los paneles. Con ellas se van los cálculos que las alimentaban:
+     dejarlos corriendo para nadie es trabajo que el navegador hace en cada
+     pintada y que no se ve en ninguna parte. */
 
   return `
-  <div class="indicadores">
-    <div class="ind"><div class="rot">Venta parada en el taller</div>
-      <div class="val" style="font-size:21px">${$$(parada)}</div>
-      <div class="sub">${vivas.length} órdenes sin entregar</div></div>
-    <div class="ind aviso"><div class="rot">Esperando aprobación</div>
-      <div class="val" style="font-size:21px">${$$(enviados)}</div>
-      <div class="sub">Enviado a la compañía y sin respuesta</div></div>
-    <div class="ind"><div class="rot">Aprobado y por ejecutar</div>
-      <div class="val" style="font-size:21px">${$$(aprobados)}</div>
-      <div class="sub">Se puede trabajar</div></div>
-    <div class="ind ${sinPresupuesto.length ? 'alerta' : ''}"><div class="rot">Sin presupuesto todavía</div>
-      <div class="val">${sinPresupuesto.length}</div>
-      <div class="sub">Órdenes que no se pueden cobrar</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab">
       <div><h2>${ico('presupuesto', 'g')}Presupuesto</h2>

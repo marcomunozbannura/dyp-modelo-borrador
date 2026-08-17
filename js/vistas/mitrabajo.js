@@ -41,8 +41,6 @@ function vMiTrabajo() {
   }
 
   const t = Modelo.miTrabajo(yo.id);
-  const atrasadas = t.mias.filter((x) => x.sobreMeta).length;
-  const trabadas = t.mias.filter((x) => x.repuestosPendientes).length;
 
   /* "Ver orden" solo en lo que YA es mío. En lo disponible no aparece, y no es
      un detalle: el alcance del rol operario recorta la ficha a los vehículos
@@ -67,7 +65,6 @@ function vMiTrabajo() {
         : '<button class="btn secundario" data-mt-tomar="' + esc(x.ot_id) + '|' + esc(x.etapaCodigo) + '">Tomar</button>') +
     '</td></tr>';
 
-  const sinPresupuestar = t.aCargo.filter((x) => !x.conPresupuesto).length;
   const verCliente = Modelo.puede('ficha.completa');
   const puedePresupuestar = Modelo.puede('presupuesto.crear');
 
@@ -78,19 +75,6 @@ function vMiTrabajo() {
   const conEtapas = Modelo.base().persona_etapa.some((h) => h.persona_id === yo.id);
 
   return `
-  <div class="indicadores">
-    <div class="ind"><div class="rot">Órdenes a mi cargo</div><div class="val">${t.aCargo.length}</div>
-      <div class="sub">${esc((yo.nombres + ' ' + (yo.apellidos || '')).trim())} · ${esc(yo.cargo || Modelo.rolActual().nombre)}</div></div>
-    ${t.aCargo.length ? `<div class="ind ${sinPresupuestar ? 'alerta' : ''}"><div class="rot">Sin presupuestar</div>
-      <div class="val">${sinPresupuestar}</div><div class="sub">${puedePresupuestar
-        ? 'no se pueden cobrar todavía'
-        : 'hay que pedirle la OR al jefe de taller'}</div></div>` : ''}
-    ${conEtapas ? `<div class="ind"><div class="rot">Etapas que tengo tomadas</div><div class="val">${t.mias.length}</div>
-      <div class="sub">${plural(atrasadas, 'pasada', 'pasadas')} de ${META_DIAS_REPARACION} días · ${plural(trabadas, 'trabada', 'trabadas')} por repuestos</div></div>
-    <div class="ind"><div class="rot">Puedo tomar</div><div class="val">${t.disponibles.length}</div>
-      <div class="sub">Abiertas y sin dueño</div></div>` : ''}
-  </div>
-
   ${t.aCargo.length ? `
   <div class="panel">
     <div class="cab"><div><h2>${ico('auto', 'g')}Vehículos a mi cargo</h2>

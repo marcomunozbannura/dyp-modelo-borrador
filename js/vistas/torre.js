@@ -77,18 +77,51 @@ function thOrden(clave, rotulo, titulo) {
     (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(rotulo) + flecha + '</th>';
 }
 
+/* Cada situacion, con SU regla, en un solo lugar. Antes la regla vivia dentro
+   del filtro y la cuenta la daba `Modelo.metricas()` por otro camino: dos
+   caminos para el mismo numero terminan diciendo cosas distintas. Con los
+   chips mostrando la cuenta, un chip que dice 53 y al apretarlo lista 46 es
+   peor que no mostrar nada. */
+const SITUACION_TORRE = {
+  piso:      () => true,
+  taller:    (o) => o.enTaller,
+  fuera:     (o) => o.fueraDeTaller,
+  repuesto:  (o) => tieneRepuestoPendiente(o),
+  sinetapa:  (o) => !o.etapasAsignadas.length,
+  sobremeta: (o) => o.enTaller && o.sobreMeta
+};
+
+/* Cuantas ordenes vera el usuario si aprieta cada chip, respetando los demas
+   filtros que tenga puestos. Con una busqueda activa, la cuenta del chip es
+   la de ESA busqueda: prometer 41 y mostrar 3 es mentir dos veces. */
+function cuentasSituacion() {
+  const f = ui.torre;
+  const q = f.busqueda.trim().toLowerCase();
+  const base = Modelo.torre().filter((o) => {
+    if (f.compania !== 'todas' && o.compania !== f.compania) return false;
+    if (f.etapa !== 'todas' && o.etapa !== f.etapa) return false;
+    if (q) {
+      const ors = o.presupuestos.map((p) => p.numeroOR).join(' ');
+      const heno = [o.numeroOT, ors, o.patente, o.siniestro, o.cliente, o.marca, o.modelo]
+        .join(' ').toLowerCase();
+      if (!heno.includes(q)) return false;
+    }
+    return true;
+  });
+  const c = {};
+  Object.keys(SITUACION_TORRE).forEach((k) => { c[k] = base.filter(SITUACION_TORRE[k]).length; });
+  return c;
+}
+
 function filtrarTorre() {
   const f = ui.torre;
   const q = f.busqueda.trim().toLowerCase();
   const sacar = ORDEN_TORRE[f.orden] || ORDEN_TORRE.ot;
+  const situacion = SITUACION_TORRE[f.situacion] || SITUACION_TORRE.piso;
   return Modelo.torre().filter((o) => {
     if (f.compania !== 'todas' && o.compania !== f.compania) return false;
     if (f.etapa !== 'todas' && o.etapa !== f.etapa) return false;
-    if (f.situacion === 'fuera' && !o.fueraDeTaller) return false;
-    if (f.situacion === 'taller' && !o.enTaller) return false;
-    if (f.situacion === 'repuesto' && !tieneRepuestoPendiente(o)) return false;
-    if (f.situacion === 'sinetapa' && o.etapasAsignadas.length) return false;
-    if (f.situacion === 'sobremeta' && !(o.enTaller && o.sobreMeta)) return false;
+    if (!situacion(o)) return false;
     if (q) {
       const ors = o.presupuestos.map((p) => p.numeroOR).join(' ');
       const heno = [o.numeroOT, ors, o.patente, o.siniestro, o.cliente, o.marca, o.modelo].join(' ').toLowerCase();
@@ -115,21 +148,9 @@ function vTorre() {
   const pagina = todas.slice(desde, desde + f.porPagina);
 
   const kpiNombre = m.kpi === 'estadia_actual' ? 'estadía actual' : 'reparación acumulada';
+  const cuentas = cuentasSituacion();
 
   return `
-  <div class="indicadores">
-    <div class="ind"><div class="rot">En la torre de control</div><div class="val">${m.enTorre}</div>
-      <div class="sub">${m.enTaller} en taller · ${m.fueraDeTaller} fuera de taller</div></div>
-    <div class="ind aviso"><div class="rot">Con repuesto pendiente</div><div class="val">${m.conRepuestoPendiente}</div>
-      <div class="sub">${m.repuestosPendientes} piezas sin llegar · <strong>no es lo mismo que estar fuera</strong></div></div>
-    <div class="ind"><div class="rot">Sin etapa asignada</div><div class="val">${m.sinEtapa}</div>
-      <div class="sub">Van a la pantalla de asignar, no a la de finalizar</div></div>
-    <div class="ind alerta"><div class="rot">Sobre la meta</div><div class="val">${m.sobreMeta}</div>
-      <div class="sub">Más de ${m.metaDias} días de ${esc(kpiNombre)}</div></div>
-    <div class="ind aviso"><div class="rot">Esperando repuesto</div><div class="val" style="font-size:22px">${fMonto(m.valorEsperandoRepuesto)}</div>
-      <div class="sub">Presupuestado y sin poder cerrar</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab">
       <div><h2>${ico('torre', 'g')}Torre de control</h2>
@@ -143,11 +164,19 @@ function vTorre() {
       </div>
     </div>
     <div class="cuerpo" style="padding-bottom:0">
+      ${/* Las cinco tarjetas que había arriba se sacaron el 16-08-2026: ocupaban
+           el alto que la tabla necesita. Sus NÚMEROS no se perdieron — pasaron
+           acá, a los chips, que ya eran exactamente las mismas categorías y
+           además filtran. Antes había que leer la tarjeta y después apretar el
+           chip; ahora es lo mismo en un solo lugar. */''}
       <div class="chips" id="chips-sit">
         ${[['piso', 'Todos'], ['taller', 'En taller'], ['fuera', 'Fuera de taller'],
            ['repuesto', 'Con repuesto pendiente'], ['sinetapa', 'Sin etapa asignada'],
            ['sobremeta', 'Sobre los ' + m.metaDias + ' días']]
-          .map(([k, n]) => '<button class="chip' + (f.situacion === k ? ' activo' : '') + '" data-sit="' + k + '">' + esc(n) + '</button>').join('')}
+          .map(([k, n]) => [k, n, cuentas[k]])
+          .map(([k, n, c]) => '<button class="chip' + (f.situacion === k ? ' activo' : '') +
+            '" data-sit="' + k + '">' + esc(n) +
+            '<span class="cuenta">' + c + '</span></button>').join('')}
       </div>
     </div>
     <div class="grid-envoltorio">

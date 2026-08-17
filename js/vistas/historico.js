@@ -110,19 +110,6 @@ function vHistorico() {
   const suma = todas.reduce((s, o) => ({ venta: s.venta + plataDe(o).ventaTotal }), { venta: 0 });
 
   return `
-  <div class="indicadores">
-    <div class="ind"><div class="rot">Entregados en la demostración</div><div class="val">${universo.length}</div>
-      <div class="sub">El buscador no los lista: hay que filtrar</div></div>
-    <div class="ind"><div class="rot">Ciclo promedio</div>
-      <div class="val">${universo.length ? Math.round(universo.reduce((s, o) => s + o.diasTotales, 0) / universo.length) : 0}</div>
-      <div class="sub">días totales, ingreso a entrega</div></div>
-    <div class="ind"><div class="rot">Reparación promedio</div>
-      <div class="val">${universo.length ? Math.round(universo.reduce((s, o) => s + o.diasReparacion, 0) / universo.length) : 0}</div>
-      <div class="sub">🔴 el original pierde este dato al entregar</div></div>
-    <div class="ind"><div class="rot">Venta del filtro</div><div class="val" style="font-size:20px">${fMonto(suma.venta)}</div>
-      <div class="sub">De las ${todas.length} órdenes que salieron</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab"><div><h2>${ico('historico', 'g')}Registro Histórico DyP</h2>
       <div class="desc">${h.todos
@@ -473,26 +460,8 @@ function pHistorico() {
 function vConsolidado() {
   const filas = Modelo.torre();
   const suma = filas.reduce((s, o) => ({ venta: s.venta + plataDe(o).ventaTotal }), { venta: 0 });
-  const m = Modelo.metricas();
-  const entregadas = Modelo.historico({ todo: true });
-  const enPlazo = entregadas.filter((o) => o.diasReparacion <= m.metaDias).length;
 
   return `
-  <div class="indicadores">
-    <div class="ind"><div class="rot">Órdenes en la torre</div><div class="val">${filas.length}</div>
-      <div class="sub">${m.enTaller} adentro · ${m.fueraDeTaller} afuera</div></div>
-    <div class="ind"><div class="rot">Venta parada en el taller</div><div class="val" style="font-size:20px">${fMonto(suma.venta)}</div>
-      <div class="sub">Presupuestado y sin entregar</div></div>
-    <div class="ind ${filas.filter((o) => !o.presupuestos.length).length ? 'alerta' : ''}">
-      <div class="rot">Sin presupuesto</div>
-      <div class="val">${filas.filter((o) => !o.presupuestos.length).length}</div>
-      <div class="sub">Órdenes que todavía no se pueden cobrar</div></div>
-    <div class="ind ${enPlazo / Math.max(1, entregadas.length) > 0.6 ? '' : 'alerta'}">
-      <div class="rot">Cumplimiento de la meta</div>
-      <div class="val">${entregadas.length ? Math.round(enPlazo / entregadas.length * 100) : 0}%</div>
-      <div class="sub">${enPlazo} de ${entregadas.length} entregadas bajo ${m.metaDias} días</div></div>
-  </div>
-
   <div class="panel">
     <div class="cab"><div><h2>${ico('consolidado', 'g')}Consolidado</h2>
       <div class="desc">Las 17 columnas de la Torre más el dinero</div></div>

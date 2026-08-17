@@ -451,6 +451,16 @@ input:focus, select:focus, textarea:focus {
 .chip:last-child { border-right: none; }
 .chip:hover { background: var(--superficie-2); }
 .chip.activo { background: var(--acento-solido); color: #fff; font-weight: 600; }
+/* La cuenta de cada situación, dentro del propio chip. Reemplaza la fila de
+   tarjetas que había arriba de la torre: el mismo número, sin gastarle
+   noventa píxeles de alto a la tabla. */
+.chip .cuenta {
+  margin-left: 6px; font-variant-numeric: tabular-nums; font-weight: 700;
+  color: var(--gris); font-size: 11px;
+}
+.chip.activo .cuenta { color: #fff; }
+.chip:hover .cuenta { color: var(--tinta); }
+.chip.activo:hover .cuenta { color: #fff; }
 /* El paso al que todavía no se puede llegar. Se ve apagado, pero NO está
    deshabilitado: se aprieta igual y la regla explica qué falta antes. Un botón
    gris que no responde enseña a no confiar en la pantalla. */

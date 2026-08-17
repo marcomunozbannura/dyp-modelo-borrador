@@ -1123,6 +1123,40 @@ const Pruebas = (function () {
         });
       })();
 
+      /* 🔴 CADA CHIP DE LA TORRE DICE LO QUE VA A LISTAR.
+         Las cinco tarjetas de arriba se sacaron el 16-08-2026 y sus números
+         pasaron a los chips. Las tarjetas leían `Modelo.metricas()` y el
+         filtro tenía su propia regla: dos caminos para el mismo número. Un
+         chip que promete 53 y al apretarlo lista 46 destruye la confianza en
+         toda la pantalla, y es el tipo de cosa que se descubre en la reunión.
+         Se comprueba también con una búsqueda puesta. */
+      (function () {
+        const guardado = JSON.parse(JSON.stringify({
+          situacion: ui.torre.situacion, busqueda: ui.torre.busqueda,
+          compania: ui.torre.compania, etapa: ui.torre.etapa, pagina: ui.torre.pagina }));
+        const malos = [];
+        [['', 'sin filtro'], ['HYUNDAI', 'buscando HYUNDAI']].forEach(([q, rot]) => {
+          ui.torre.busqueda = q; ui.torre.compania = 'todas'; ui.torre.etapa = 'todas';
+          ui.torre.situacion = 'piso';
+          const cuentas = cuentasSituacion();
+          Object.keys(SITUACION_TORRE).forEach((k) => {
+            ui.torre.situacion = k;
+            const filas = filtrarTorre().length;
+            if (cuentas[k] !== filas) malos.push(rot + ' · ' + k + ': dice ' + cuentas[k] + ' y lista ' + filas);
+          });
+        });
+        Object.assign(ui.torre, guardado);
+
+        push({
+          nombre: 'Cada chip de la torre lista exactamente lo que su número promete',
+          intento: 'Comparar la cuenta de las seis situaciones contra las filas que devuelve el filtro',
+          esperado: 'Los seis calzan, con y sin búsqueda',
+          paso: !malos.length,
+          detalle: malos.length ? malos.join(' · ')
+            : 'Todos · En taller · Fuera · Con repuesto pendiente · Sin etapa · Sobre la meta'
+        });
+      })();
+
       /* Las cuatro formas de escribir el mismo taller. En el original son
          cuatro proveedores distintos para cualquier suma. */
       (function () {

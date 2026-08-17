@@ -266,15 +266,10 @@ function fichaResumen(o) {
       ${dato('Marca y modelo', esc([o.marca, o.modelo].filter(Boolean).join(' ') || '—'))}
       ${dato('Año', o.anio || '—')}
       ${dato('Color', esc(o.color || '—'))}
-      ${/* El VIN declarado como no visible no es un campo vacío: es un pendiente
-           con motivo, y se lee como tal. Un guión ahí escondería que alguien lo
-           declaró y por qué. */''}
-      ${dato('VIN', o.vin
-        ? esc(o.vin)
-        : (o.vinPendiente
-            ? '<span class="et ambar" title="' + esc(o.vinMotivo || '') + '">pendiente</span>'
-            : '—'))}
-      ${o.vinPendiente && o.vinMotivo ? dato('Motivo del VIN', esc(o.vinMotivo)) : ''}
+      ${/* El VIN es obligatorio en la recepción desde el 16-08-2026: se sacó la
+           casilla «No viene a la vista» y con ella el estado «pendiente» que
+           esta ficha mostraba. Un vehículo sin VIN sólo puede venir de antes. */''}
+      ${dato('VIN', esc(o.vin || '—'))}
       ${dato('Kilometraje', fKm(o.recepcion && o.recepcion.km))}
       ${dato('Combustible', fComb(o.recepcion && o.recepcion.combustible))}
       ${dato('Daños marcados', o.danos.length + (o.danos.length ? ' <span class="et gris">del vehículo, no de la orden</span>' : ''))}

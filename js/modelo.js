@@ -281,9 +281,6 @@ const Modelo = (function () {
       anio: veh.anio,
       color: (ix.color.get(veh.color_id) || {}).nombre,
       vin: veh.vin,
-      // El chasis que se declaró no visible, con su motivo. Es un pendiente de
-      // la orden, no un dato que falta por descuido.
-      vinPendiente: !!veh.vin_pendiente, vinMotivo: veh.vin_motivo || null,
       cliente: nombreDe(cli),
       rut: cli.rut, telefono: cli.telefono, direccion: cli.direccion, correo: cli.correo,
       // Los ids de los tres catálogos del vehículo, además de sus nombres:
@@ -869,21 +866,16 @@ const Modelo = (function () {
       if (!veh) {
         veh = { id: nuevoId('veh'), patente: pat, marca_id: ficha.marca_id || null,
           modelo_id: ficha.modelo_id || null, anio: ficha.anio || null,
-          color_id: ficha.color_id || null, vin: ficha.vin || null,
-          /* 🔴 EL VIN DECLARADO COMO NO VISIBLE SE GUARDA, no solo se pide en
-             pantalla. La recepción exige el motivo para dejar pasar la orden;
-             si ese motivo no queda escrito en ninguna parte, la exigencia es
-             decorativa y nadie puede saber después qué órdenes tienen el chasis
-             pendiente ni por qué. Con esto la orden queda marcada de verdad. */
-          vin_pendiente: !!ficha.vin_no_visible,
-          vin_motivo: ficha.vin_no_visible ? (ficha.vin_motivo || null) : null };
+          color_id: ficha.color_id || null, vin: ficha.vin || null };
         db.vehiculo.push(veh);
       } else if (ficha.vin && !veh.vin) {
-        // Reingreso de un vehículo que entró sin VIN: si ahora viene, se carga
-        // y deja de estar pendiente. Es la única forma de cerrar el pendiente.
+        /* Reingreso de un vehículo que quedó sin VIN: si ahora viene, se carga.
+           Antes esto también cerraba el «pendiente» que dejaba la casilla «No
+           viene a la vista»; esa casilla se sacó el 16-08-2026 —el VIN es
+           obligatorio y no hay forma de saltárselo— pero la carga se queda:
+           todavía hay vehículos viejos, traídos de antes, que pueden no
+           tenerlo. */
         veh.vin = ficha.vin;
-        veh.vin_pendiente = false;
-        veh.vin_motivo = null;
       }
 
       const permiso = Reglas.puedeCrearOT(db, { vehiculo_id: veh.id });

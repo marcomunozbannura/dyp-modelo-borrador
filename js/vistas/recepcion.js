@@ -131,7 +131,6 @@ function rec() {
       // Guardar dos veces, la segunda devuelve lo mismo que la primera.
       llave: 'rec-' + Date.now().toString(36),
       campos: { patente: '', marca_id: '', modelo_id: '', color_id: '', anio: '', vin: '', km: '',
-                vin_no_visible: false, vin_motivo: '',
                 combustible: '4', rut: '', nombre: '', telefono: '',
                 correo: '', direccion: '', observaciones: '' },
       // Lo que se escribió en cada combo. Se guarda aparte del id porque
@@ -282,26 +281,20 @@ function recFaltantesBloque(b, i) {
 
 function recFaltantes() {
   const r = rec();
-  const sinVer = !!r.campos.vin_no_visible;
 
+  /* 🔷 SIN SALIDA DECLARADA PARA EL VIN (16-08-2026, Marco: "sacar el no viene
+     a la vista"). Había una casilla que permitía cerrar la recepción sin el
+     VIN escribiendo un motivo, y la orden quedaba marcada como incompleta.
+     Ya no: el VIN es obligatorio y son los 17 caracteres, como cualquier otro
+     campo con asterisco. */
   const faltan = REC_OBLIGATORIOS
-    .filter(([c]) => {
-      // El VIN se da por cumplido si se declaró POR QUÉ no está. Declararlo es
-      // un acto, no un descuido: queda escrito quién lo dijo y con qué motivo.
-      if (c === 'vin' && sinVer) return !String(r.campos.vin_motivo || '').trim();
-      return !String(r.campos[c] || '').trim();
-    })
-    .map(([c, rot, paso]) => ({
-      campo: (c === 'vin' && sinVer) ? 'vin_motivo' : c,
-      rot: (c === 'vin' && sinVer)
-        ? 'El motivo por el que el VIN no viene a la vista' : rot,
-      paso
-    }));
+    .filter(([c]) => !String(r.campos[c] || '').trim())
+    .map(([c, rot, paso]) => ({ campo: c, rot, paso }));
 
   // Y si se escribió un VIN, tiene que estar completo. Se mide lo saneado: es
   // lo que el campo muestra y lo que se va a guardar.
   const vin = normalizarVin(r.campos.vin);
-  if (!sinVer && vin && vin.length !== VIN_LARGO) {
+  if (vin && vin.length !== VIN_LARGO) {
     faltan.push({
       paso: 'vehiculo', campo: 'vin',
       rot: 'El VIN, que tiene ' + vin.length + ' caracteres y son ' + VIN_LARGO
@@ -747,48 +740,31 @@ function recAyudaLargo(clave) {
   if (!v) {
     return clave === 'patente'
       ? 'Son ' + PATENTE_LARGO + ' caracteres, en mayúsculas y sin guión'
-      : 'Obligatorio. Son ' + VIN_LARGO + ' caracteres; si de verdad no está a la vista, se declara';
+      : 'Obligatorio. Son ' + VIN_LARGO + ' caracteres, como vienen en el chasis';
   }
   if (v.length === meta) return '✓ ' + meta + ' de ' + meta + ' caracteres';
   return v.length + ' de ' + meta + ' caracteres: ' + recSobranFaltan(v.length, meta);
 }
 
-/* El VIN, con su salida declarada. Obligatorio desde el 15-08-2026, pero con
-   una casilla para cuando de verdad no está a la vista: ahí se exige el motivo
-   y la orden queda marcada como incompleta. Es la diferencia entre "no lo
-   tengo" y "puse cualquier cosa para poder seguir".
+/* El VIN. Obligatorio, y son los 17 caracteres: obligatorio no alcanza si el
+   dato queda mal copiado.
 
-   Y cuando sí se escribe, se cuentan los 17 caracteres: obligatorio no alcanza
-   si el dato queda mal copiado. */
+   🔷 SE SACÓ LA CASILLA «No viene a la vista» (16-08-2026, Marco). Dejaba
+   cerrar la recepción sin el VIN escribiendo un motivo, y la orden quedaba
+   marcada como incompleta arrastrando ese pendiente por todo el sistema —la
+   ficha, el comprobante impreso—. Un campo con asterisco que se puede saltar
+   es un campo que en la práctica no es obligatorio.
+
+   🔶 `maxlength` de 17 (15-08-2026). El campo dejaba escribir de largo y recién
+   en Verificar avisaba que sobraban caracteres: el aviso llegaba tarde y no
+   decía dónde estaba el error. El tope lo hace imposible, y el contador de
+   abajo va diciendo cuánto falta mientras se copia del chasis. */
 function recVin() {
   const r = rec();
-  const sinVer = !!r.campos.vin_no_visible;
-
-  const casilla = '<label class="casilla" style="margin-top:5px">' +
-    '<input type="checkbox" data-vin-nover' + (sinVer ? ' checked' : '') + '>' +
-    '<span>No viene a la vista</span></label>';
-
-  if (sinVer) {
-    return '<div class="campo' + (recMarcado('vin_motivo') ? ' falta' : '') + '">' +
-      '<label>VIN (número de chasis) <span style="color:var(--rojo)">*</span></label>' +
-      '<input type="text" data-rec="vin" value="' + esc(r.campos.vin || '') + '" disabled ' +
-      'placeholder="Declarado como no visible">' +
-      casilla +
-      '<input type="text" autocomplete="off" data-rec="vin_motivo" style="margin-top:5px" ' +
-        'value="' + esc(r.campos.vin_motivo || '') + '" placeholder="¿Por qué no está a la vista?">' +
-      '<span class="ayuda" style="color:var(--ambar)">La orden queda marcada como incompleta ' +
-      'hasta que alguien cargue el VIN.</span></div>';
-  }
-
-  /* 🔶 `maxlength` de 17 (15-08-2026). El campo dejaba escribir de largo y
-     recién en Verificar avisaba que sobraban caracteres: el aviso llegaba
-     tarde y no decía dónde estaba el error. El tope lo hace imposible, y el
-     contador de abajo va diciendo cuánto falta mientras se copia del chasis. */
   return '<div class="campo' + (recMarcado('vin') ? ' falta' : '') + '">' +
     '<label>VIN (número de chasis) <span style="color:var(--rojo)">*</span></label>' +
     '<input type="text" autocomplete="off" data-rec="vin" value="' + esc(normalizarVin(r.campos.vin)) + '" ' +
     'maxlength="' + VIN_LARGO + '" placeholder="' + VIN_LARGO + ' caracteres">' +
-    casilla +
     '<span class="ayuda" data-ayuda="vin">' + esc(recAyudaLargo('vin')) + '</span></div>';
 }
 
@@ -1219,10 +1195,7 @@ function recVerificar() {
       ${d('Modelo', nom('modelo', r.campos.modelo_id))}
       ${d('Color', nom('color_vehiculo', r.campos.color_id))}
       ${d('Año', v(r.campos.anio))}
-      ${d('VIN', r.campos.vin_no_visible
-        ? '<span class="et ambar">no viene a la vista</span>'
-        : v(r.campos.vin))}
-      ${r.campos.vin_no_visible ? d('Motivo del VIN', v(r.campos.vin_motivo)) : ''}
+      ${d('VIN', v(r.campos.vin))}
     </fieldset>
 
     <fieldset class="bloque"><legend>4 · Estado descriptivo</legend>
@@ -1615,15 +1588,6 @@ function pRecepcion() {
   });
   const ninguno = document.getElementById('inv-ninguno');
   if (ninguno) ninguno.addEventListener('click', () => { r.inventario = {}; guardarBorrador(); render(); });
-
-  // La casilla del VIN: al marcarla se pide el motivo; al desmarcarla se borra,
-  // para que no quede un motivo colgando de un VIN que sí se cargó.
-  const noVer = document.querySelector('[data-vin-nover]');
-  if (noVer) noVer.addEventListener('change', () => {
-    r.campos.vin_no_visible = noVer.checked;
-    if (!noVer.checked) r.campos.vin_motivo = '';
-    guardarBorrador(); render();
-  });
 
   montarFotos();
   montarFirma();

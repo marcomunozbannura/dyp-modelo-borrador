@@ -361,9 +361,7 @@ function impresoRecepcion(o) {
     ${campoImpreso('Modelo', esc(o.modelo || '—'))}
     ${campoImpreso('Año', o.anio || '—')}
     ${campoImpreso('Color', esc(o.color || '—'))}
-    ${campoImpreso('VIN', o.vin
-      ? esc(o.vin)
-      : (o.vinPendiente ? 'Pendiente — ' + esc(o.vinMotivo || 'no viene a la vista') : '—'))}
+    ${campoImpreso('VIN', esc(o.vin || '—'))}
     ${campoImpreso('Kilometraje', fKm(o.recepcion && o.recepcion.km))}
     ${campoImpreso('Combustible', fComb(o.recepcion && o.recepcion.combustible))}
     ${campoImpreso('Tipo de ingreso', esc(o.origenIngresoNombre || '—'))}

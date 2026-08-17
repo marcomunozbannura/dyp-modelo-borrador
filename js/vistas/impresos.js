@@ -254,7 +254,7 @@ function cabeceraImpreso(o, titulo, extra) {
       <div><strong>OT N° ${esc(String(o.numeroOT))}</strong></div>
       <div>Patente <strong>${esc(o.patente || 'sin patente')}</strong></div>
       ${extra || ''}
-      <div>Emitido ${fFecha(HOY)}</div>
+      <div>Emitido ${fFechaHora(HOY)}</div>
     </div>
   </div>`;
 }
@@ -314,7 +314,7 @@ function impresoRecepcion(o) {
   <div class="aviso-impreso">
     <strong>Este comprobante es la versión ${version}.</strong> El documento que firmó el cliente es
     la versión 1 y no se modificó. Lo corregido después:
-    <ul>${correcciones.slice().reverse().map((c) => '<li>v' + c.version + ' · ' + esc(fFecha(c.fecha)) +
+    <ul>${correcciones.slice().reverse().map((c) => '<li>v' + c.version + ' · ' + esc(fFechaHora(c.fecha)) +
       ' · ' + esc(c.quien) + ' — ' + c.cambios.map((x) => esc(x.campo) + ': «' +
       esc(x.antes || '—') + '» → «' + esc(x.despues || '—') + '»').join('; ') +
       ' (' + esc(c.motivo) + ')</li>').join('')}</ul>
@@ -390,7 +390,7 @@ function impresoRecepcion(o) {
     <div>
       ${campoImpreso('Nombre', esc(o.cliente))}
       ${campoImpreso('RUT', esc(o.rut || '—'))}
-      ${campoImpreso('Fecha', fFecha(o.fechaIngreso))}
+      ${campoImpreso('Fecha', fFechaHora(o.fechaIngreso))}
     </div>
   </div>
   <div style="font-size:8.5px;color:#666;margin-top:6px">
@@ -641,7 +641,7 @@ function impresoFicha(o) {
   <tbody>${o.etapasAsignadas.length ? o.etapasAsignadas.map((e) =>
     '<tr><td>' + esc(e.nombre) + '</td><td>' + (e.finalizada ? 'Completado' : 'Pendiente') + '</td>' +
     '<td>' + esc(e.responsable || '—') + '</td><td class="n">' +
-    (e.finalizadaAt ? fFecha(e.finalizadaAt) : '—') + '</td></tr>').join('')
+    (e.finalizadaAt ? fFechaHora(e.finalizadaAt) : '—') + '</td></tr>').join('')
     : '<tr><td colspan="4">Sin etapas asignadas</td></tr>'}</tbody></table>
 
   <h2>Repuestos</h2>
@@ -650,9 +650,9 @@ function impresoFicha(o) {
   <tbody>${o.repuestos.length ? o.repuestos.map((r) =>
     '<tr><td>' + esc(r.descripcion) + '</td><td class="n">' + r.cantidad + '</td>' +
     '<td>' + esc(r.responsablePago || '—') + '</td>' +
-    '<td class="n">' + (r.fechaSolicitud ? fCorta(r.fechaSolicitud) : '—') + '</td>' +
-    '<td class="n">' + (r.fechaBodega ? fCorta(r.fechaBodega) : 'pendiente') + '</td>' +
-    '<td class="n">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td></tr>').join('')
+    '<td class="n">' + (r.fechaSolicitud ? fFechaHora(r.fechaSolicitud) : '—') + '</td>' +
+    '<td class="n">' + (r.fechaBodega ? fFechaHora(r.fechaBodega) : 'pendiente') + '</td>' +
+    '<td class="n">' + (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—') + '</td></tr>').join('')
     : '<tr><td colspan="6">Sin repuestos</td></tr>'}</tbody></table>
 
   <h2>Historial</h2>
@@ -660,7 +660,7 @@ function impresoFicha(o) {
     <th style="width:34mm">Responsable</th></tr></thead>
   <tbody>${eventos.slice(0, 24).map((e) => {
     const t = TIPO_EVENTO[e.tipo] || { txt: e.tipo };
-    return '<tr><td>' + fFecha(e.fecha) + '</td><td>' +
+    return '<tr><td>' + fFechaHora(e.fecha) + '</td><td>' +
       esc(e.tipo === 'etapa' ? e.etapa : e.detalle) + '</td><td>' + esc(t.txt) + '</td>' +
       '<td>' + esc(e.usuario) + '</td></tr>';
   }).join('')}</tbody></table>
@@ -710,7 +710,7 @@ function impresoExpediente(o) {
   <h2>Resumen del expediente</h2>
   <div class="rej">
     ${campoImpreso('Hechos registrados', r.hechos)}
-    ${campoImpreso('Período', fCorta(r.desde) + ' al ' + fCorta(r.hasta))}
+    ${campoImpreso('Período', fFechaHora(r.desde) + ' al ' + fFechaHora(r.hasta))}
     ${campoImpreso('Etapas cerradas', r.etapasCerradas + ' de ' + r.etapas)}
     ${campoImpreso('Presupuestos', r.presupuestos)}
     ${campoImpreso('Repuestos', r.repuestos)}
@@ -758,7 +758,7 @@ function impresoEntrega(o) {
   <table><thead><tr><th>Etapa</th><th style="width:34mm">Responsable</th><th style="width:26mm">Cerrada</th></tr></thead>
   <tbody>${o.etapasAsignadas.filter((e) => e.finalizada).map((e) =>
     '<tr><td>' + esc(e.nombre) + '</td><td>' + esc(e.responsable || '—') + '</td>' +
-    '<td class="n">' + fFecha(e.finalizadaAt) + '</td></tr>').join('') ||
+    '<td class="n">' + fFechaHora(e.finalizadaAt) + '</td></tr>').join('') ||
     '<tr><td colspan="3">Sin etapas cerradas</td></tr>'}</tbody></table>
 
   ${fotos.length ? '<h2>Fotografías</h2><div class="fotos">' +
@@ -770,7 +770,7 @@ function impresoEntrega(o) {
     <div>
       ${campoImpreso('Recibe', esc(o.cliente))}
       ${campoImpreso('RUT', esc(o.rut || '—'))}
-      ${campoImpreso('Fecha', o.fechaEntrega ? fFecha(o.fechaEntrega) : fFecha(HOY))}
+      ${campoImpreso('Fecha', o.fechaEntrega ? fFechaHora(o.fechaEntrega) : fFechaHora(HOY))}
     </div>
   </div>
   <div style="font-size:8.5px;color:#666;margin-top:6px">

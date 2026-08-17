@@ -430,7 +430,7 @@ function impresoReporteria() {
       <div style="font-size:10px;color:#555">Desabolladura y pintura</div>
       <div style="margin-top:5px;font-size:13px;font-weight:700">Reportería</div></div>
     <div class="der"><div><strong>${lista.length} órdenes entregadas</strong></div>
-      <div>${esc(periodo)}</div><div>Emitido ${fFecha(HOY)}</div></div>
+      <div>${esc(periodo)}</div><div>Emitido ${fFechaHora(HOY)}</div></div>
   </div>
 
   <h2>Indicadores</h2>

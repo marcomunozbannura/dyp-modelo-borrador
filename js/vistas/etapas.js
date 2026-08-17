@@ -127,7 +127,7 @@ function vAsignarEtapas(o) {
           ? '<span class="et ambar" title="Un tapabarro o un espejo no pasa por mecánica">no siempre</span>'
           : '<span class="et gris">siempre</span>') + '</td>' +
         '<td>' + (!a ? '<span style="color:var(--gris-2)">sin asignar</span>'
-          : a.finalizada ? '<span class="et verde">cerrada ' + fCorta(a.finalizadaAt) + '</span>'
+          : a.finalizada ? '<span class="et verde">cerrada ' + fFechaHora(a.finalizadaAt) + '</span>'
           : '<span class="et azul">abierta</span>') + '</td>' +
         '<td>' + (a && !a.finalizada
           ? '<button class="btn secundario chico" data-quitaretapa="' + esc(e.codigo) + '">Quitar</button>' : '') +
@@ -190,7 +190,7 @@ function vFinalizarEtapas(o) {
               (gente.length
                 ? gente.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>').join('')
                 : '<option value="">Nadie habilitado para esta etapa</option>') + '</select>') + '</td>' +
-        '<td class="num">' + (a.finalizadaAt ? fCorta(a.finalizadaAt) : '—') + '</td></tr>';
+        '<td class="num">' + (a.finalizadaAt ? fFechaHora(a.finalizadaAt) : '—') + '</td></tr>';
     }).join('')}</tbody>
   </table></div>
 

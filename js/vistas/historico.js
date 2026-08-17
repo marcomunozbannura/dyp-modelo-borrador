@@ -334,7 +334,7 @@ function impresoListadoHistorico(filas, rotulo) {
       <div style="font-size:10px;color:#555">Desabolladura y pintura</div>
       <div style="margin-top:5px;font-size:13px;font-weight:700">Registro Histórico</div></div>
     <div class="der"><div><strong>${filas.length} órdenes</strong></div>
-      <div>${esc(rotulo)}</div><div>Emitido ${fFecha(HOY)}</div></div>
+      <div>${esc(rotulo)}</div><div>Emitido ${fFechaHora(HOY)}</div></div>
   </div>
   <table><thead><tr><th>OT</th><th>Patente</th><th>Cliente</th><th>Marca</th><th>Modelo</th>
     <th>Fecha de Ingreso</th><th>Fecha de Entrega</th><th>Estado</th><th class="n">Días</th><th class="n">Venta</th>
@@ -360,7 +360,7 @@ function impresoEstadisticas() {
     <div>${logoImpreso()}
       <div style="font-size:10px;color:#555">Desabolladura y pintura</div>
       <div style="margin-top:5px;font-size:13px;font-weight:700">Reportes y Estadísticas</div></div>
-    <div class="der"><div>Emitido ${fFecha(HOY)}</div></div>
+    <div class="der"><div>Emitido ${fFechaHora(HOY)}</div></div>
   </div>
   ${tabla('Indicadores', ['Indicador', 'Valor'],
     '<tr><td>Número de Vehículos Entregados</td><td>' + d.entregados + '</td></tr>' +
@@ -472,6 +472,8 @@ function vConsolidado() {
         <th>Venta</th><th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
       <tbody>${filas.slice(0, 60).map((o) => {
         const z = plataDe(o);
+        const pendientes = o.repuestos.filter((r) => !r.fechaBodega);
+        const llegados = o.repuestos.filter((r) => r.fechaBodega);
         return '<tr class="fila" data-ot="' + esc(o.numeroOT) + '"><td class="num"><strong>' + o.numeroOT + '</strong></td>' +
           '<td class="num">' + esc(o.presupuestos.length ? o.presupuestos[0].numeroOR : '—') + '</td>' +
           '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
@@ -484,8 +486,20 @@ function vConsolidado() {
           '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +
           '<td>' + esc(o.etapaNombre) + '</td>' +
           '<td class="num"><strong>' + fMonto(z.ventaTotal) + '</strong></td>' +
-          '<td class="num">' + o.repuestos.filter((r) => !r.fechaBodega).length + '</td>' +
-          '<td class="num">' + o.repuestos.filter((r) => r.fechaBodega).length + '</td></tr>';
+          /* 🔶 TEXTO, NO CANTIDAD (16-08-2026, Marco): «debiese quedar el
+             texto de repuesto pendiente, no la cantidad ya que así lo tiene en
+             el sistema actual». Y en esta columna es lo correcto: lo que se
+             decide mirando el consolidado es SI el auto está esperando algo,
+             no cuántas piezas. Un «2» hay que traducirlo cada vez;
+             «Repuesto pendiente» se lee de una.
+             La cantidad no se pierde: va en el globo, y el desplegable de la
+             fila muestra pieza por pieza. */
+          '<td>' + (pendientes.length
+            ? '<span class="et roja" title="' + pendientes.length +
+              (pendientes.length === 1 ? ' pieza sin llegar' : ' piezas sin llegar') +
+              '">Repuesto pendiente</span>'
+            : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
+          '<td class="num">' + llegados.length + '</td></tr>';
       }).join('')}</tbody>
       <tfoot><tr><td colspan="13" style="text-align:right">Venta parada en las ${filas.length} órdenes vivas</td>
         <td class="num"><strong>${fMonto(suma.venta)}</strong></td><td colspan="2"></td></tr></tfoot>

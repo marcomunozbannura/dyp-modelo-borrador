@@ -625,8 +625,8 @@ function vPresupuestoDetalle(o, pr) {
         '<th>Solicitado</th><th>Llegó</th></tr></thead><tbody>' +
         repuestosPedidos.map((r) => '<tr><td>' + esc(r.descripcion) + '</td>' +
           '<td><span class="et ' + (r.pagaTaller ? 'roja' : 'gris') + '">' + esc(r.responsablePago) + '</span></td>' +
-          '<td class="num">' + fCorta(r.fechaSolicitud) + '</td>' +
-          '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega) : '<span class="et ambar">pendiente</span>') +
+          '<td class="num">' + fFechaHora(r.fechaSolicitud) + '</td>' +
+          '<td class="num">' + (r.fechaBodega ? fFechaHora(r.fechaBodega) : '<span class="et ambar">pendiente</span>') +
           '</td></tr>').join('') + '</tbody></table></div>'
       : '<div style="color:var(--gris-2);font-size:12.5px;padding:6px 2px">Todavía no se pidió nada a bodega.</div>'}
   </fieldset>`;

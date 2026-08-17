@@ -733,7 +733,7 @@ function ejecutarAccion(accion) {
       : new Date(HOY_ORIGINAL.getTime());
     Modelo.fijar_rol_actual(Modelo.rolActual().id);   // invalida los memos
     if (ui.registroOT) modoRegistro(ui.registroOT); else render();
-    return avisar({ ok: true, motivo: '' }, 'La fecha del sistema es ahora ' + fFecha(HOY) +
+    return avisar({ ok: true, motivo: '' }, 'La fecha del sistema es ahora ' + fFechaHora(HOY) +
       '. Los tres relojes se recalcularon solos: ninguno está guardado.');
   }
 
@@ -1156,7 +1156,7 @@ function vRepuestos() {
           '<td>' + (r.responsablePago
             ? '<span class="et ' + (r.pagaTaller ? 'roja' : 'gris') + '">' + esc(r.responsablePago) + '</span>'
             : '<span class="et roja">sin declarar</span>') + '</td>' +
-          '<td class="num">' + (r.fechaPedido ? fCorta(r.fechaPedido) : '—') + '</td>' +
+          '<td class="num">' + (r.fechaPedido ? fFechaHora(r.fechaPedido) : '—') + '</td>' +
           '<td class="num">' + (dp === null ? '—' : (dp > 20 ? '<span style="color:var(--rojo);font-weight:700">' + dp + '</span>' : dp)) + '</td>' +
           '<td><span class="et ' + ESTADO_REPUESTO[r.estado].clase + '">' + esc(ESTADO_REPUESTO[r.estado].txt) + '</span></td>' +
           '<td>' + (dentro ? '<span class="et roja">En taller</span>' : '<span class="et ambar">Fuera</span>') + '</td>' +
@@ -1207,7 +1207,7 @@ function vDetenidos() {
   return `
   <div class="panel">
     <div class="cab"><div><h2>¿Por qué no avanza?</h2>
-      <div class="desc">Los tres motivos, con los días acumulados <strong>al ${fFecha(HOY)}</strong>.
+      <div class="desc">Los tres motivos, con los días acumulados <strong>al ${fFechaHora(HOY)}</strong>.
         Cada día que pasa sin resolverse, estos números suben solos</div></div></div>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>Situación</th><th>Qué significa</th><th>Vehículos</th>
@@ -1225,7 +1225,7 @@ function vDetenidos() {
         '<td>' + (d.filtro
           ? '<button class="btn secundario" data-espera-ver="' + esc(d.filtro) + '">Ver cuáles</button>'
           : '') + '</td></tr>').join('')}</tbody>
-      <tfoot><tr><td colspan="3" style="text-align:right">Total detenido al ${fFecha(HOY)}</td>
+      <tfoot><tr><td colspan="3" style="text-align:right">Total detenido al ${fFechaHora(HOY)}</td>
         <td class="num"><strong>${Modelo.corteEspera().reduce((s, d) => s + d.diasAcumulados, 0)}</strong></td>
         <td colspan="2"></td>
         <td class="num"><strong>${fMonto(Modelo.corteEspera().reduce((s, d) => s + d.valor, 0))}</strong></td>
@@ -1732,10 +1732,10 @@ function detalleDeOT(clave) {
         '<tr><td>' + esc(r.descripcion) + '</td>' +
         '<td class="num">' + (r.cantidad || 1) + '</td>' +
         '<td>' + esc(r.responsablePago || '—') + '</td>' +
-        '<td class="num">' + (r.fechaSolicitud ? fCorta(r.fechaSolicitud) : '—') + '</td>' +
-        '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega)
+        '<td class="num">' + (r.fechaSolicitud ? fFechaHora(r.fechaSolicitud) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? fFechaHora(r.fechaBodega)
           : '<span style="color:var(--rojo)">por llegar</span>') + '</td>' +
-        '<td class="num">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td></tr>').join('') +
+        '<td class="num">' + (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—') + '</td></tr>').join('') +
       '</tbody></table>'
     : '<div class="texto" style="color:var(--gris-2)">No requiere repuestos.</div>';
 
@@ -1826,9 +1826,9 @@ function tarjetaDeOR(numeroOR) {
       // "Sin enviar" contradecía al estado cuando la fecha no está grabada.
       // El rótulo dice de qué se está hablando: es la FECHA la que falta, no
       // el envío. Es la diferencia entre "no pasó" y "no lo registramos".
-      ['Fecha de envío', presu.enviadoAt ? fFecha(presu.enviadoAt)
+      ['Fecha de envío', presu.enviadoAt ? fFechaHora(presu.enviadoAt)
         : '<span style="color:var(--gris-2)">sin registrar</span>'],
-      ['Fecha de respuesta', presu.resueltoAt ? fFecha(presu.resueltoAt)
+      ['Fecha de respuesta', presu.resueltoAt ? fFechaHora(presu.resueltoAt)
         : '<span style="color:var(--gris-2)">sin registrar</span>']
     ],
     pie: 'Clic para abrir la OT ' + esc(orden.numeroOT),

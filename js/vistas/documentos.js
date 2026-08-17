@@ -109,7 +109,7 @@ function documentosDeOT(o) {
       '<div class="fotos-rejilla">' + fotos.map((f) =>
         '<figure class="foto-tarjeta"><img data-media="' + esc(f.id) + '" alt="' + esc(f.nombre) + '">' +
         '<figcaption class="pie-foto"><b>' + esc(f.nombre) + '</b>' +
-        '<span class="cod">' + fCorta(f.creado_at) + ' · ' + Media.fPeso(f.bytes) + '</span>' +
+        '<span class="cod">' + fFechaHora(f.creado_at) + ' · ' + Media.fPeso(f.bytes) + '</span>' +
         (f.etapa_nombre ? '<br>' + esc(f.etapa_nombre) : '') + '</figcaption></figure>').join('') +
       '</div><div class="pie-nota">' + esc(m.pie) + '</div></fieldset>';
   };
@@ -125,7 +125,7 @@ function documentosDeOT(o) {
         <tbody>${expediente.map((e) =>
           '<tr class="fila"><td><strong>' + esc(e.rot) + '</strong></td>' +
           '<td>' + esc(e.detalle) + '</td>' +
-          '<td class="num">' + (e.cuando ? fCorta(e.cuando) : '—') + '</td>' +
+          '<td class="num">' + (e.cuando ? fFechaHora(e.cuando) : '—') + '</td>' +
           '<td>' + (!e.hay ? '<span class="et gris">todavía no</span>'
             : e.imprimir
               ? '<button class="btn secundario" data-doc-imprimir="' + esc(e.imprimir) + '">Ver documento</button>'
@@ -154,7 +154,7 @@ function documentosDeOT(o) {
                tipo ni categoría, porque el taller no las usa. */
             (cargaDocs ? ' <button class="enlace-volver" data-doc-nombrar="' + esc(m.id) +
               '" title="Ponerle nombre">' + ico('editar') + '</button>' : '') + '</td>' +
-          '<td class="num">' + fCorta(m.creado_at) + '</td>' +
+          '<td class="num">' + fFechaHora(m.creado_at) + '</td>' +
           '<td class="num">' + Media.fPeso(m.bytes) + '</td>' +
           (cargaDocs ? '<td><button class="btn secundario" data-doc-quitar="' + esc(m.id) + '">Quitar</button></td>' : '') +
           '</tr>').join('')}

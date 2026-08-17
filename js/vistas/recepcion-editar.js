@@ -152,7 +152,7 @@ function vRecepcionEditarFicha() {
           <th style="width:150px">Quién</th><th>Qué cambió</th><th>Motivo</th></tr></thead>
         <tbody>${correcciones.map((c) => '<tr>' +
           '<td class="num">v' + c.version + '</td>' +
-          '<td class="num">' + esc(fCorta(c.fecha)) + '</td>' +
+          '<td class="num">' + esc(fFechaHora(c.fecha)) + '</td>' +
           '<td>' + esc(c.quien) + '</td>' +
           '<td>' + c.cambios.map((x) => '<div class="ayuda" style="margin:0">' + esc(x.campo) +
             ': <s>' + esc(x.antes || '—') + '</s> → <strong>' + esc(x.despues || '—') +

@@ -213,7 +213,7 @@ function bodegaRepuestosPresupuesto(o, p) {
       '>' + esc(x.nombre) + '</option>').join('') + '</select></td>' +
     '<td style="text-align:center"><input type="checkbox" data-ok="' + esc(r.id) + '"' +
       (r.fechaBodega ? ' checked' : '') + ' title="' +
-      (r.fechaBodega ? 'Llegó el ' + esc(fCorta(r.fechaBodega)) : 'Marcar cuando llegue') + '"></td>' +
+      (r.fechaBodega ? 'Llegó el ' + esc(fFechaHora(r.fechaBodega)) : 'Marcar cuando llegue') + '"></td>' +
     /* Entregado pide DOS cosas antes: que la pieza haya llegado y que esté
        cargado el vale de retiro. La segunda la pidió el cliente —es lo que
        comprueba quién se llevó el repuesto— y el motor la exige igual. La
@@ -223,7 +223,7 @@ function bodegaRepuestosPresupuesto(o, p) {
     '<td style="text-align:center"><input type="checkbox" data-ent="' + esc(r.id) + '"' +
       (r.fechaEntregaArea ? ' checked' : '') +
       (r.fechaBodega && (r.valeMediaId || r.fechaEntregaArea) ? '' : ' disabled') + ' title="' +
-      (r.fechaEntregaArea ? 'Entregado el ' + esc(fCorta(r.fechaEntregaArea))
+      (r.fechaEntregaArea ? 'Entregado el ' + esc(fFechaHora(r.fechaEntregaArea))
         : (!r.fechaBodega ? 'No se puede entregar lo que todavía no llegó'
           : (!r.valeMediaId ? 'Falta subir el vale de retiro, abajo en la ficha'
             : 'Marcar al entregarlo al área'))) + '"></td>' +
@@ -286,9 +286,9 @@ function bodegaFichaRepuestos(o) {
           pagos.map((x) => '<option value="' + esc(x.id) + '"' +
             (x.nombre === r.responsablePago ? ' selected' : '') + '>' + esc(x.nombre) + '</option>').join('') +
           '</select></td>' +
-        '<td class="num">' + (r.fechaSolicitud ? fCorta(r.fechaSolicitud) : '—') + '</td>' +
-        '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
-        '<td class="num">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaSolicitud ? fFechaHora(r.fechaSolicitud) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? fFechaHora(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
+        '<td class="num">' + (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—') + '</td>' +
         '<td class="num">' + (r.diasEnLlegar === null ? '—' : r.diasEnLlegar + ' d') + '</td>' +
         // El ciclo del repuesto, en el orden que lo describió el cliente:
         // llega → se sube el vale de quien lo retira → bodega marca entregado.

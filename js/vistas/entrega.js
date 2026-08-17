@@ -256,10 +256,10 @@ function detalleEntrega(clave) {
         '<tr><td>' + esc(r.descripcion) + '</td>' +
         '<td class="num">' + (r.cantidad || 1) + '</td>' +
         '<td>' + esc(r.responsablePago || '—') + '</td>' +
-        '<td class="num">' + (r.fechaSolicitud ? esc(fCorta(r.fechaSolicitud)) : '—') + '</td>' +
-        '<td class="num">' + (r.fechaBodega ? esc(fCorta(r.fechaBodega))
+        '<td class="num">' + (r.fechaSolicitud ? esc(fFechaHora(r.fechaSolicitud)) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? esc(fFechaHora(r.fechaBodega))
           : '<span style="color:var(--rojo)">por llegar</span>') + '</td>' +
-        '<td class="num">' + (r.fechaEntregaArea ? esc(fCorta(r.fechaEntregaArea)) : '—') + '</td></tr>').join('') +
+        '<td class="num">' + (r.fechaEntregaArea ? esc(fFechaHora(r.fechaEntregaArea)) : '—') + '</td></tr>').join('') +
       '</tbody></table>'
     : '<div class="texto" style="color:var(--gris-2)">Esta orden no lleva repuestos.</div>';
 
@@ -382,7 +382,7 @@ function pEntrega() {
        día que el auto se va, que es cuando se sabe cómo se fue. */
     if (esFutura(cuando)) {
       return ejecutar(() => Modelo.programar_entrega(id, cuando, dame('obs')),
-        'Entrega programada para el ' + fFecha(cuando) + '. La orden sigue abierta y el ' +
+        'Entrega programada para el ' + fFechaHora(cuando) + '. La orden sigue abierta y el ' +
         'vehículo sigue en la torre: comprometer una fecha no es haber entregado.',
         () => render());
     }

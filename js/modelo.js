@@ -786,7 +786,7 @@ const Modelo = (function () {
     const previo = db.operacion.find((o) => o.llave === llave);
     if (previo) return Object.assign({ ok: true, motivo: '', repetida: true }, previo.resultado);
     const r = fn();
-    if (r.ok) { db.operacion.push({ llave, resultado: r, at: HOY }); guardar(); }
+    if (r.ok) { db.operacion.push({ llave, resultado: r, at: ahora() }); guardar(); }
     return r;
   }
 
@@ -800,7 +800,7 @@ const Modelo = (function () {
 
      Dos cosas que estaban mal y se arreglaron para poder armarlo:
 
-     · `fecha: HOY` es la fecha de demostración, sin hora, e igual para todo lo
+     · `fecha: ahora()` es la fecha de demostración, sin hora, e igual para todo lo
        que pase el mismo día. Ordenar el expediente por fecha dejaba los hechos
        del día en cualquier orden. Por eso cada evento lleva además un
        correlativo que sólo sube: la fecha dice el día y el correlativo dice
@@ -809,12 +809,30 @@ const Modelo = (function () {
      · `persona_id || 'pe-u-admin'` le atribuía a administración lo que hacía
        cualquiera. En un registro que sirve para responderle a la compañía, eso
        no es un detalle: por defecto queda quien tiene la sesión abierta. */
+  /* AHORA, no HOY. `HOY` es el día de la demostración a medianoche; si el
+     sistema guarda eso, todo lo que se hace en la sesión queda fechado a las
+     00:00 mientras la semilla —que sí reparte horas de taller— queda con
+     hora real. Los hechos del mismo día se ordenaban entonces al revés: lo
+     que acababa de pasar aparecía ANTES de lo de la mañana.
+
+     Lo destapó la prueba del expediente: los dos hechos que la prueba
+     provocaba se le perdían entre los sembrados del mismo día.
+
+     Toma el día del calendario del sistema —que se puede adelantar desde
+     Procesos— y la hora del reloj de verdad. El correlativo `seq` sigue
+     desempatando: dos cosas en el mismo minuto igual necesitan orden. */
+  function ahora() {
+    const r = new Date();
+    return new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate(),
+      r.getHours(), r.getMinutes(), r.getSeconds());
+  }
+
   let seqEvento = 0;
 
   function registrarEvento(ot_id, tipo, detalle, etapa_id, persona_id) {
     if (!ot_id) return;
     db.evento.push({
-      id: nuevoId('ev'), ot_id, fecha: HOY, seq: ++seqEvento, tipo, detalle,
+      id: nuevoId('ev'), ot_id, fecha: ahora(), seq: ++seqEvento, tipo, detalle,
       etapa_id: etapa_id || null,
       persona_id: persona_id || persona_actual || 'pe-u-admin'
     });
@@ -874,7 +892,7 @@ const Modelo = (function () {
 
       const rec_id = nuevoId('rec');
       db.recepcion.push({
-        id: rec_id, vehiculo_id: veh.id, cliente_id: cli.id, fecha: HOY,
+        id: rec_id, vehiculo_id: veh.id, cliente_id: cli.id, fecha: ahora(),
         km: ficha.km || null, combustible: ficha.combustible != null ? ficha.combustible : null,
         observaciones: ficha.observaciones || '', firma_media_id: ficha.firma_media_id || null,
         recibido_por: 'pe-u-recepcion'
@@ -917,7 +935,7 @@ const Modelo = (function () {
           tipo_ingreso_id: b.tipo_ingreso_id || 'ti-1', compania_id: b.compania_id || null,
           siniestro: b.siniestro || null, deducible: b.deducible || 0,
           liquidador: b.liquidador || null, prioridad_id: b.prioridad_id || 'pri-1',
-          fecha_ingreso: HOY, fecha_compromiso: b.fecha_compromiso || null,
+          fecha_ingreso: ahora(), fecha_compromiso: b.fecha_compromiso || null,
           /* Sin estado elegido, la orden nace `Recibido`. No es un dato
              inventado: es el estado inicial del maestro y la pantalla de
              Verificar lo dice con todas las letras antes de guardar. */
@@ -943,7 +961,7 @@ const Modelo = (function () {
         });
         // La estadía se abre acá. A partir de este momento los relojes se
         // calculan de esta tabla y de ninguna otra.
-        db.ot_estadia.push({ id: nuevoId('est'), ot_id, entro_at: HOY, salio_at: null, motivo_salida: null });
+        db.ot_estadia.push({ id: nuevoId('est'), ot_id, entro_at: ahora(), salio_at: null, motivo_salida: null });
         registrarEvento(ot_id, 'estado', 'Ingreso del vehículo. Estado: ' + Reglas.nombreEstado(db, b.estado || 'recibido'), null, 'pe-u-recepcion');
         creadas.push({ ot_id, numero_ot });
       });
@@ -988,7 +1006,7 @@ const Modelo = (function () {
       }
 
       db.ot_etapa.push({ id: nuevoId('oe'), ot_id, etapa_id: eid,
-        asignada_at: HOY, salio_at: null, persona_id, observacion: '' });
+        asignada_at: ahora(), salio_at: null, persona_id, observacion: '' });
       registrarEvento(ot_id, 'etapa', persona_id
         ? 'Asignada a ' + nombreDe(db.persona.find((x) => x.id === persona_id)) : 'Asignada', eid);
       n++;
@@ -1144,7 +1162,7 @@ const Modelo = (function () {
     const permiso = Reglas.puedeFinalizarEtapa(db, { ot_id, etapa_id: etapa.id });
     if (!permiso.ok) return permiso;
     const fila = Reglas.etapaAsignada(db, ot_id, etapa.id);
-    fila.salio_at = HOY;
+    fila.salio_at = ahora();
     if (persona_id) fila.persona_id = persona_id;
     registrarEvento(ot_id, 'etapa', 'Completado', etapa.id, persona_id);
     tocado();
@@ -1216,7 +1234,7 @@ const Modelo = (function () {
   function registrar_salida(ot_id, motivo_salida) {
     const permiso = Reglas.puedeRegistrarSalida(db, { ot_id });
     if (!permiso.ok) return permiso;
-    Reglas.estadiaAbierta(db, ot_id).salio_at = HOY;
+    Reglas.estadiaAbierta(db, ot_id).salio_at = ahora();
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     o.estado = 'fuera_taller';
     registrarEvento(ot_id, 'salida', 'Salida del taller. Motivo: ' + (motivo_salida || 'espera de repuesto'));
@@ -1232,7 +1250,7 @@ const Modelo = (function () {
   function registrar_reingreso(ot_id) {
     const permiso = Reglas.puedeRegistrarReingreso(db, { ot_id });
     if (!permiso.ok) return permiso;
-    db.ot_estadia.push({ id: nuevoId('est'), ot_id, entro_at: HOY, salio_at: null, motivo_salida: null });
+    db.ot_estadia.push({ id: nuevoId('est'), ot_id, entro_at: ahora(), salio_at: null, motivo_salida: null });
     const o = db.orden_trabajo.find((x) => x.id === ot_id);
     o.estado = 'recibido';
     registrarEvento(ot_id, 'reingreso', 'Reingreso al taller. El reloj de reparación se reanuda.');
@@ -1249,9 +1267,9 @@ const Modelo = (function () {
     if (Reglas.esFinal(db, nuevo_estado)) {
       // La fecha de salida se llena SIEMPRE al cerrar. En el original ese
       // campo existe y está vacío incluso en órdenes ya entregadas.
-      o.fecha_entrega_real = HOY;
+      o.fecha_entrega_real = ahora();
       const est = Reglas.estadiaAbierta(db, ot_id);
-      if (est) est.salio_at = HOY;
+      if (est) est.salio_at = ahora();
     }
     registrarEvento(ot_id, 'estado', "Cambio de estado: '" + antes + "' a '" +
       Reglas.nombreEstado(db, nuevo_estado) + "'" + (observacion ? '. Obs: ' + observacion : ''));
@@ -1409,7 +1427,7 @@ const Modelo = (function () {
     const version = db.recepcion_correccion.filter((x) => x.recepcion_id === r.id).length + 2;
     r.version = version;
     db.recepcion_correccion.push({
-      id: nuevoId('rc'), recepcion_id: r.id, ot_id, version, fecha: HOY,
+      id: nuevoId('rc'), recepcion_id: r.id, ot_id, version, fecha: ahora(),
       persona_id: persona_actual || null, motivo: String(motivo).trim(), cambios: hechos,
       // La silueta anterior, entera. Sin esto, "se versiona" sería mentira en
       // el único campo que es un dibujo.
@@ -1516,7 +1534,7 @@ const Modelo = (function () {
          acá no se inventa: en el sistema actual esa casilla está deshabilitada
          y siempre vacía. */
       codigo_interno: null, codigo_externo: null,
-      fecha_solicitud: HOY, fecha_bodega: null, fecha_entrega_area: null,
+      fecha_solicitud: ahora(), fecha_bodega: null, fecha_entrega_area: null,
       observacion: '',
       // Las tres marcas del repuesto guardan QUIÉN, no sólo cuándo: el
       // expediente las muestra y un hecho sin autor no respalda nada.
@@ -1576,7 +1594,7 @@ const Modelo = (function () {
     if (!media_id)
       return { ok: false, motivo: 'Falta el vale. Es el documento que comprueba el retiro.' };
     r.vale_media_id = media_id;
-    r.vale_at = HOY;
+    r.vale_at = ahora();
     r.retirado_por = recibe_persona_id || persona_actual || null;
     registrarEvento(r.ot_id, 'repuesto', 'Vale de retiro cargado: ' + r.descripcion);
     tocado();
@@ -1622,7 +1640,7 @@ const Modelo = (function () {
 
     r.devoluciones = r.devoluciones || [];
     r.devoluciones.push({
-      fecha: HOY, motivo: String(motivo).trim(), por: persona_actual || null,
+      fecha: ahora(), motivo: String(motivo).trim(), por: persona_actual || null,
       /* El ciclo que se cierra queda guardado entero: no se pierde nada. Y con
          QUIÉN, no sólo cuándo — el expediente muestra estas vueltas y un hecho
          sin autor no respalda nada, que es la regla de todo el registro. */
@@ -1634,7 +1652,7 @@ const Modelo = (function () {
     r.fecha_bodega = null; r.fecha_entrega_area = null;
     r.vale_media_id = null; r.vale_at = null; r.retirado_por = null;
     r.recibido_por = null; r.entregado_por = null;
-    r.fecha_solicitud = HOY;
+    r.fecha_solicitud = ahora();
 
     registrarEvento(r.ot_id, 'repuesto',
       'Repuesto devuelto: ' + r.descripcion + ' — ' + String(motivo).trim() +
@@ -1674,7 +1692,7 @@ const Modelo = (function () {
 
     if (interno) {
       db.aviso.push({
-        id: nuevoId('av'), ot_id, fecha: HOY, seq: ++seqEvento,
+        id: nuevoId('av'), ot_id, fecha: ahora(), seq: ++seqEvento,
         asunto, detalle: detalle || '', para: 'Taller', canal: 'interno', estado: 'en cola'
       });
       return;
@@ -1691,7 +1709,7 @@ const Modelo = (function () {
       : !!(v.compania && v.compania !== '—');
 
     db.aviso.push({
-      id: nuevoId('av'), ot_id, fecha: HOY, seq: ++seqEvento,
+      id: nuevoId('av'), ot_id, fecha: ahora(), seq: ++seqEvento,
       asunto, detalle: detalle || '',
       para: porCompania ? v.compania : v.cliente,
       canal: porCompania ? 'compania' : 'cliente',
@@ -1985,8 +2003,13 @@ const Modelo = (function () {
       codigo_interno: l.codigo || '', codigo_externo: '',
       proveedor: l.proveedor || '', precio_unitario: l.precio_unitario || 0,
       responsable_pago_id: (resp || db.responsable_pago[0] || {}).id || 'rp-1',
-      fecha_solicitud: HOY, fecha_bodega: null,
-      fecha_entrega_area: null, observacion: '', recibido_por: null
+      fecha_solicitud: ahora(), fecha_bodega: null,
+      /* QUIÉN la pidió. Faltaba, y el expediente mostraba «Repuesto pedido»
+         sin autor: una pieza aparecida de la nada. Lo cachó la prueba de que
+         toda operación que escribe deja su hecho CON autor — que es
+         exactamente para lo que está. */
+      solicitado_por: persona_actual || null,
+      fecha_entrega_area: null, observacion: '', recibido_por: null, entregado_por: null
     });
   }
 
@@ -2054,8 +2077,8 @@ const Modelo = (function () {
     if (estado === 'enviado' && !db.presupuesto_linea.some((l) => l.presupuesto_id === pid))
       return { ok: false, motivo: 'No se envía un presupuesto sin líneas.' };
     p.estado = estado;
-    if (estado === 'enviado') p.enviado_at = HOY;
-    if (['aprobado', 'rechazado'].includes(estado)) p.resuelto_at = HOY;
+    if (estado === 'enviado') p.enviado_at = ahora();
+    if (['aprobado', 'rechazado'].includes(estado)) p.resuelto_at = ahora();
     registrarEvento(p.ot_id, 'modificacion', 'Presupuesto ' + p.numero_or + ': ' + estado);
 
     /* 🔴 APROBAR PIDE LOS REPUESTOS A BODEGA (F-1 de la auditoría).
@@ -2212,7 +2235,7 @@ const Modelo = (function () {
     if (!(Number(monto) > 0)) return { ok: false, motivo: 'El monto tiene que ser mayor que cero.' };
     db.costo_adicional.push({
       id: nuevoId('ca'), ot_id, descripcion: String(descripcion).trim(),
-      monto: Number(monto), responsable_pago_id: responsable_pago_id || 'rp-2', fecha: HOY
+      monto: Number(monto), responsable_pago_id: responsable_pago_id || 'rp-2', fecha: ahora()
     });
     tocado();
     return { ok: true, motivo: '' };
@@ -2437,7 +2460,7 @@ const Modelo = (function () {
     db.bitacora.push({
       id: nuevoId('bit'), ot_id, asunto_id, mensaje: String(mensaje).trim(),
       destinatario_id: destinatario_id || 'pe-u-admin', autor_id: 'pe-u-admin',
-      fecha: HOY, alerta_apagada: false
+      fecha: ahora(), alerta_apagada: false
     });
     tocado();
     return { ok: true, motivo: '' };
@@ -2462,7 +2485,7 @@ const Modelo = (function () {
     if (!m) return { ok: false, motivo: 'El motivo "' + motivo_codigo + '" no existe.' };
     const permiso = Reglas.puedeAbrirDetencion(db, { ot_id, motivo_id: m.id });
     if (!permiso.ok) return permiso;
-    db.ot_detencion.push({ id: nuevoId('od'), ot_id, motivo_id: m.id, inicio: HOY, fin: null, detalle: detalle || '' });
+    db.ot_detencion.push({ id: nuevoId('od'), ot_id, motivo_id: m.id, inicio: ahora(), fin: null, detalle: detalle || '' });
     tocado();
     return { ok: true, motivo: '' };
   }
@@ -2470,7 +2493,7 @@ const Modelo = (function () {
   function cerrar_detencion(ot_id) {
     const permiso = Reglas.puedeCerrarDetencion(db, { ot_id });
     if (!permiso.ok) return permiso;
-    Reglas.detencionAbierta(db, ot_id).fin = HOY;
+    Reglas.detencionAbierta(db, ot_id).fin = ahora();
     tocado();
     return { ok: true, motivo: '' };
   }

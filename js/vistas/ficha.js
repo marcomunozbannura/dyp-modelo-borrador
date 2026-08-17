@@ -354,7 +354,7 @@ function fichaHistorial(o) {
       <thead><tr><th>Fecha</th><th>Etapa</th><th>Estado</th><th>Encargado</th><th>Usuario</th></tr></thead>
       <tbody>${eventos.length ? eventos.map((e) => {
         const t = TIPO_EVENTO[e.tipo] || { txt: e.tipo, clase: 'gris' };
-        return '<tr><td class="num">' + fFecha(e.fecha) + '</td>' +
+        return '<tr><td class="num">' + fFechaHora(e.fecha) + '</td>' +
           '<td>' + esc(e.tipo === 'etapa' ? e.etapa : e.detalle) + '</td>' +
           '<td><span class="et ' + t.clase + '">' + esc(t.txt) + '</span></td>' +
           '<td>' + esc(e.usuario) + '</td><td>' + esc(e.usuario) + '</td></tr>';
@@ -430,7 +430,7 @@ function fichaBitacora(o) {
       <div class="grid-envoltorio" style="margin-top:12px"><table class="grid">
         <thead><tr><th>Fecha</th><th>Destinatario</th><th>Asunto</th><th>Mensaje</th><th>Alerta</th><th></th></tr></thead>
         <tbody>${msjs.length ? msjs.map((m) =>
-          '<tr><td class="num">' + fCorta(m.fecha) + '</td>' +
+          '<tr><td class="num">' + fFechaHora(m.fecha) + '</td>' +
           '<td>' + esc(m.destinatario) + '</td>' +
           '<td><span class="et gris">' + esc(m.asunto) + '</span></td>' +
           '<td>' + esc(m.mensaje) + '</td>' +
@@ -461,9 +461,9 @@ function fichaRepuestos(o) {
         '<td>' + (r.responsablePago
           ? '<span class="et ' + (r.pagaTaller ? 'roja' : 'gris') + '">' + esc(r.responsablePago) + '</span>'
           : '<span class="et roja">sin declarar</span>') + '</td>' +
-        '<td class="num">' + (r.fechaSolicitud ? fCorta(r.fechaSolicitud) : '—') + '</td>' +
-        '<td class="num">' + (r.fechaBodega ? fCorta(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
-        '<td class="num">' + (r.fechaEntregaArea ? fCorta(r.fechaEntregaArea) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaSolicitud ? fFechaHora(r.fechaSolicitud) : '—') + '</td>' +
+        '<td class="num">' + (r.fechaBodega ? fFechaHora(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
+        '<td class="num">' + (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—') + '</td>' +
         '<td class="num">' + (r.diasEnLlegar === null ? '—' : plural(r.diasEnLlegar, 'día', 'días')) + '</td></tr>').join('')
         : '<tr><td colspan="7"><div class="vacio"><div class="titulo">Sin repuestos cargados</div></div></td></tr>'}</tbody>
     </table></div>

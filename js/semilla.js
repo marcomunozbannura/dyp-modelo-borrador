@@ -121,9 +121,14 @@ const Semilla = (function () {
   const entre = (a, b) => a + Math.floor(rnd() * (b - a + 1));
   const elegir = (arr) => arr[Math.floor(rnd() * arr.length)];
   const dias = (n) => new Date(HOY.getTime() - n * 86400000);
-  /* Con HORA de taller. `dias()` devuelve medianoche, y las columnas de ingreso
-     y entrega muestran la hora: dejarlas todas en 00:00 sería mostrar un dato
-     que no dice nada. El taller recibe entre las 8:30 y las 18:00. */
+  /* TODA fecha guardada lleva hora de taller. `dias()` devuelve medianoche, y
+     desde el 16-08-2026 el sistema entero muestra `dd-mm-aaaa HH:MM` —pedido
+     de Marco: «todo lo relacionado en fecha debe quedar así»—. Sin hora, el
+     formato nuevo mostraría 00:00 en todas partes, que es peor que no
+     mostrarla: da a entender que el taller pide, recibe y entrega a
+     medianoche. Acá se reparte entre las 8:00 y las 17:59.
+
+     `dias()` queda para las CUENTAS de días, donde la hora estorba. */
   const diasHora = (n) => {
     const d = dias(n);
     d.setHours(8 + entre(0, 9), entre(0, 59), 0, 0);
@@ -867,9 +872,9 @@ const Semilla = (function () {
         liquidador: comp ? NOM[idx % NOM.length] + ' ' + APE[idx % APE.length] : null,
         prioridad_id: rnd() > 0.88 ? 'pri-2' : 'pri-1',
         /* El compromiso lleva hora igual que el ingreso: la columna Fecha de
-           Entrega la muestra, y `dias()` deja todo en 00:00 — una hora que
-           nadie comprometió y que además hace inútil ordenar por esa columna
-           cuando hay varios autos citados el mismo día. */
+           Entrega la muestra, y sin hora quedaba en 00:00 — una hora que nadie
+           comprometió y que además hace inútil ordenar por esa columna cuando
+           hay varios autos citados el mismo día. */
         fecha_ingreso, fecha_compromiso: diasHora(diasIngreso - entre(15, 25)),
         fecha_entrega_real, estado: estadoCod,
         /* Quién responde por el vehículo completo: recepción o jefe de taller,
@@ -895,13 +900,13 @@ const Semilla = (function () {
         const dentro1 = entre(4, 10);
         const actual = entre(2, 12);
         ot_estadia.push({ id: 'est-' + numero_ot + '-1', ot_id, entro_at: fecha_ingreso,
-          salio_at: dias(diasIngreso - dentro1), motivo_salida: 'espera_repuesto' });
+          salio_at: diasHora(diasIngreso - dentro1), motivo_salida: 'espera_repuesto' });
         ot_estadia.push({ id: 'est-' + numero_ot + '-2', ot_id,
-          entro_at: dias(actual), salio_at: null, motivo_salida: null });
+          entro_at: diasHora(actual), salio_at: null, motivo_salida: null });
       } else if (fuera) {
         const dentro1 = Math.min(entre(3, 10), Math.max(1, diasIngreso - 1));
         ot_estadia.push({ id: 'est-' + numero_ot + '-1', ot_id, entro_at: fecha_ingreso,
-          salio_at: dias(diasIngreso - dentro1), motivo_salida: 'espera_repuesto' });
+          salio_at: diasHora(diasIngreso - dentro1), motivo_salida: 'espera_repuesto' });
       } else {
         ot_estadia.push({ id: 'est-' + numero_ot + '-1', ot_id, entro_at: fecha_ingreso,
           salio_at: viva ? null : fecha_entrega_real, motivo_salida: null });
@@ -921,7 +926,7 @@ const Semilla = (function () {
           const cerrada = e.orden < hasta;
           const gente = habilitados[e.id] || [];
           const resp = gente.length ? gente[(idx + e.orden) % gente.length] : null;
-          const cuando = dias(Math.max(1, diasIngreso - e.orden * 2));
+          const cuando = diasHora(Math.max(1, diasIngreso - e.orden * 2));
           /* Una etapa CERRADA siempre tiene responsable: alguien la hizo. Una
              abierta, no necesariamente — el auto está en pintura y todavía
              nadie lo agarró. Ese es el estado que la pantalla "Mi trabajo"
@@ -930,7 +935,7 @@ const Semilla = (function () {
           const suelta = !cerrada && (idx + e.orden) % 3 !== 0;
           ot_etapa.push({
             id: 'oe-' + numero_ot + '-' + e.orden, ot_id, etapa_id: e.id,
-            asignada_at: dias(diasIngreso - 1),
+            asignada_at: diasHora(diasIngreso - 1),
             salio_at: cerrada ? cuando : null,
             persona_id: suelta ? null : resp, observacion: ''
           });
@@ -948,7 +953,7 @@ const Semilla = (function () {
         descripcion: elegir(['Flete de repuesto', 'Pulido adicional', 'Insumos de pintura',
           'Grúa', 'Traslado a tercero']),
         monto: entre(8, 90) * 1000,
-        responsable_pago_id: rnd() > 0.5 ? 'rp-2' : 'rp-1', fecha: dias(Math.max(1, diasIngreso - 3))
+        responsable_pago_id: rnd() > 0.5 ? 'rp-2' : 'rp-1', fecha: diasHora(Math.max(1, diasIngreso - 3))
       });
 
       /* Una de cada ocho órdenes vivas todavía no tiene presupuesto: el auto
@@ -1039,8 +1044,8 @@ const Semilla = (function () {
         neto: tot.neto, iva: tot.iva, total: tot.total,
         // Un borrador no se ha mandado y un enviado no tiene respuesta: las
         // fechas siguen al estado en vez de quedar las tres en nulo.
-        enviado_at: estadoPre === 'borrador' ? null : dias(diasEnvio),
-        resuelto_at: estadoPre === 'aprobado' ? dias(diasResp) : null
+        enviado_at: estadoPre === 'borrador' ? null : diasHora(diasEnvio),
+        resuelto_at: estadoPre === 'aprobado' ? diasHora(diasResp) : null
       });
 
       /* ── Repuestos ──────────────────────────────────────────────────────
@@ -1081,9 +1086,9 @@ const Semilla = (function () {
             codigo_interno: '', codigo_externo: '',
             proveedor: linea.proveedor, precio_unitario: linea.precio_unitario,
             responsable_pago_id: Reglas.esProveedorTaller(linea.proveedor) ? 'rp-2' : 'rp-1',
-            fecha_solicitud: dias(dPedido),
-            fecha_bodega: llego ? dias(dBodega) : null,
-            fecha_entrega_area: llego && rnd() > 0.4 ? dias(dArea) : null,
+            fecha_solicitud: diasHora(dPedido),
+            fecha_bodega: llego ? diasHora(dBodega) : null,
+            fecha_entrega_area: llego && rnd() > 0.4 ? diasHora(dArea) : null,
             observacion: '', recibido_por: llego ? 'pe-u-bodega' : null
           });
         });
@@ -1101,7 +1106,7 @@ const Semilla = (function () {
       asuntos.forEach((a) => bitacora.push({
         id: 'bit-' + (++seqBit), ot_id, asunto_id: a, mensaje: 'Mensaje de demostración.',
         destinatario_id: 'pe-u-admin', autor_id: 'pe-u-recepcion',
-        fecha: dias(Math.max(1, diasIngreso - entre(1, 5))), alerta_apagada: false
+        fecha: diasHora(Math.max(1, diasIngreso - entre(1, 5))), alerta_apagada: false
       }));
 
       return ot_id;

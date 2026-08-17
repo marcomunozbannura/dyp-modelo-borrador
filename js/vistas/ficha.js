@@ -448,13 +448,19 @@ function fichaBitacora(o) {
 /* ── Pestaña · Repuestos ───────────────────────────────────────────────── */
 
 function fichaRepuestos(o) {
+  /* Quien puede mover los hitos es quien puede cargar repuestos: bodega y
+     administración. El resto ve las fechas y no las casillas — que es lo que
+     esta pestaña mostraba para todos hasta hoy. */
+  const puedeBodega = Modelo.puede('repuesto.cargar');
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('repuesto', 'g')}Repuestos Presupuesto Orden N° ${esc(o.presupuestos.length ? o.presupuestos[0].numeroOR : o.numeroOT)}</h2>
-      <div class="desc">Los dos hitos de bodega, como fechas y no como casillas</div></div></div>
+      <div class="desc">El ciclo completo de la pieza: llegó a bodega, se retira con vale,
+        se entrega al área — y si no sirve, se devuelve y el pedido vuelve a correr</div></div></div>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>Cant.</th><th>Descripción</th><th>Paga</th><th>Solicitado</th>
-        <th>Llegó a bodega</th><th>Entregado al área</th><th>Demoró</th></tr></thead>
+        <th style="width:88px">Llegó a bodega</th><th style="width:88px">Entregado</th>
+        <th>Demoró</th><th>Vale y devolución</th></tr></thead>
       <tbody>${o.repuestos.length ? o.repuestos.map((r) =>
         '<tr><td class="num">' + r.cantidad + '</td>' +
         '<td>' + esc(r.descripcion) + '</td>' +
@@ -462,10 +468,32 @@ function fichaRepuestos(o) {
           ? '<span class="et ' + (r.pagaTaller ? 'roja' : 'gris') + '">' + esc(r.responsablePago) + '</span>'
           : '<span class="et roja">sin declarar</span>') + '</td>' +
         '<td class="num">' + (r.fechaSolicitud ? fFechaHora(r.fechaSolicitud) : '—') + '</td>' +
-        '<td class="num">' + (r.fechaBodega ? fFechaHora(r.fechaBodega) : '<span class="et ambar">pendiente</span>') + '</td>' +
-        '<td class="num">' + (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—') + '</td>' +
-        '<td class="num">' + (r.diasEnLlegar === null ? '—' : plural(r.diasEnLlegar, 'día', 'días')) + '</td></tr>').join('')
-        : '<tr><td colspan="7"><div class="vacio"><div class="titulo">Sin repuestos cargados</div></div></td></tr>'}</tbody>
+        /* 🔴 EL FLUJO SE OPERA DESDE ACÁ (16-08-2026, Marco, tercera vez que
+           lo pide). Esta es la pestaña que mira el desabollador cuando va a
+           buscar su pieza: leer la fecha no le sirve, necesita marcar que
+           llegó y que se la llevó. Los mismos controles de Bodega y el mismo
+           enganche, así que las dos pantallas no pueden divergir.
+
+           «Entregado» sigue bloqueado hasta que esté el vale de retiro: es lo
+           que comprueba quién se llevó la pieza, y lo dice en el globo antes
+           de que la casilla se aprete. */
+        '<td style="text-align:center">' + (puedeBodega
+          ? '<input type="checkbox" data-ok="' + esc(r.id) + '"' + (r.fechaBodega ? ' checked' : '') +
+            ' title="' + (r.fechaBodega ? 'Llegó el ' + esc(fFechaHora(r.fechaBodega))
+                                        : 'Marcar cuando llegue') + '">'
+          : (r.fechaBodega ? fFechaHora(r.fechaBodega) : '<span class="et ambar">pendiente</span>')) + '</td>' +
+        '<td style="text-align:center">' + (puedeBodega
+          ? '<input type="checkbox" data-ent="' + esc(r.id) + '"' +
+            (r.fechaEntregaArea ? ' checked' : '') +
+            (r.fechaBodega && (r.valeMediaId || r.fechaEntregaArea) ? '' : ' disabled') +
+            ' title="' + (r.fechaEntregaArea ? 'Entregado el ' + esc(fFechaHora(r.fechaEntregaArea))
+              : (!r.fechaBodega ? 'No se puede entregar lo que todavía no llegó'
+                : (!r.valeMediaId ? 'Falta subir el vale de retiro'
+                  : 'Marcar al entregarlo al área'))) + '">'
+          : (r.fechaEntregaArea ? fFechaHora(r.fechaEntregaArea) : '—')) + '</td>' +
+        '<td class="num">' + (r.diasEnLlegar === null ? '—' : plural(r.diasEnLlegar, 'día', 'días')) + '</td>' +
+        '<td>' + (puedeBodega ? accionesRepuesto(r) : '') + '</td></tr>').join('')
+        : '<tr><td colspan="8"><div class="vacio"><div class="titulo">Sin repuestos cargados</div></div></td></tr>'}</tbody>
     </table></div>
   </div>`;
 }
@@ -604,6 +632,12 @@ function pAccionesOT(o) {
 
 function pFichaOT(o) {
   const f = fichaEstado();
+
+  /* El ciclo del repuesto se opera desde la pestaña Repuestos, con los mismos
+     controles y el mismo enganche que Bodega. Está declarado en `bodega.js`
+     —una sola vez, para que las dos pantallas no puedan divergir— y acá se
+     engancha pasándole la orden abierta, que es a quien se le cuelga el vale. */
+  engancharRepuestos(o.id);
 
   document.querySelectorAll('[data-fichatab]').forEach((b) => b.addEventListener('click', () => {
     f.tab = b.dataset.fichatab;

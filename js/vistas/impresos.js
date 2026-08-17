@@ -533,17 +533,11 @@ function impresoPresupuesto(o, p) {
     '<td class="n tot">' + fMonto(ivaTabla) + '</td>' +
     '<td class="n tot final">' + fMonto(netoTabla + ivaTabla) + '</td></tr>';
 
-  /* El deducible va DEBAJO de la tabla, no adentro: no es un trabajo, es lo
-     que la póliza descuenta. Sin esta línea el documento mostraría el total
-     de arriba y otro distinto a pagar, sin decir por qué. Sólo aparece cuando
-     existe: en una OR particular no se dibuja. */
-  const cierreDeducible = !t.deducible ? '' : `
-    <table class="detalle" style="margin-top:2mm"><tbody>
-      <tr><td>Deducible de la póliza, a cargo del cliente contra la entrega</td>
-        <td class="n destaca" style="width:30mm">&minus; ${fMonto(t.deducible)}</td></tr>
-      <tr class="cierre-t"><td class="rot">Total a pagar</td>
-        <td class="n destaca">${fMonto(t.total)}</td></tr>
-    </tbody></table>`;
+  /* SIN el bloque del deducible (16-08-2026, Marco: «esas dos cosas no
+     debiesen estar»). El deducible sigue a la vista en la ficha del
+     siniestro, arriba del documento, junto a la compania y al liquidador.
+     La tabla queda mostrando lo que vale el trabajo, que es lo que se
+     esta cotizando. */
 
   const tablaUnica = !lineas.length ? '' : `
     <table class="detalle"><thead>
@@ -565,7 +559,7 @@ function impresoPresupuesto(o, p) {
     <div style="font-size:8px;color:#666;margin-top:1mm">La mano de obra se valoriza a
       ${fMonto(p.tempario)} la hora sobre los tiempos cargados en el sistema. Los repuestos que
       aporta la compañía se detallan y no se cobran.</div>
-    ${cierreDeducible}`;
+`;
 
   const cerroTotal = (rot, val, fuerte) =>
     '<tr' + (fuerte ? ' class="cierre-t"' : '') + '><td>' + esc(rot) + '</td>' +
@@ -632,17 +626,10 @@ function impresoPresupuesto(o, p) {
            documento. Repetirlo en una lista era hacer más largo un papel que
            se firma. */''}
     </div>
-    <div class="totales">
-      ${/* SIN caja de totales. La sumatoria vive en el pie de la tabla, como
-           en el Excel de Marco, y el deducible con su total a pagar van justo
-           debajo. Repetir el total aca era decirlo tres veces en una hoja. */''}
-      <div style="margin-top:8mm;display:flex;gap:8mm">
-        <div style="flex:1;border-top:1px solid #333;padding-top:1.5mm;text-align:center;font-size:8px">
-          Evaluador</div>
-        <div style="flex:1;border-top:1px solid #333;padding-top:1.5mm;text-align:center;font-size:8px">
-          Firma autorización</div>
-      </div>
-    </div>
+    ${/* SIN columna de totales al pie. Quedo vacia al sacar la caja, el
+         deducible y las firmas, y una caja vacia igual dibuja su marco:
+         en el papel se veia una raya suelta al lado de Observaciones. */''}
+
   </div>
 
 ` + pieImpreso();

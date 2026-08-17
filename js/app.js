@@ -321,11 +321,22 @@ function pintarLogo() {
   img.src = 'img/logo-dyp.png';
 }
 
+/* La segunda hoja del Histórico es Reportería, y desde que se abre derecho
+   desde el menú Reportes (16-08-2026) el encabezado tiene que decirlo: si al
+   apretar «Reportería» la pantalla se titulara «Histórico», el menú estaría
+   mintiendo sobre dónde dejó al usuario. Es la única sub-pantalla con nombre
+   propio en el menú, por eso está acá y no es un mecanismo general. */
+function enReporteria() {
+  return ui.vista === 'historico' && typeof historicoEstado === 'function' &&
+    historicoEstado().vista === 'reporteria';
+}
+
 function pintarShell() {
   const m = MODULOS[ui.vista] || { ruta: [], acciones: [] };
+  const ruta = enReporteria() ? m.ruta.slice(0, -1).concat('Reportería') : m.ruta;
 
   document.getElementById('ruta').innerHTML =
-    m.ruta.map((r, i) => (i ? ico('chevron') : '') + '<span>' + esc(r) + '</span>').join('');
+    ruta.map((r, i) => (i ? ico('chevron') : '') + '<span>' + esc(r) + '</span>').join('');
 
   // Las pestañas del encabezado se eliminaron: cada módulo pinta las suyas
   // dentro del contenido, donde sí cambian algo.
@@ -337,12 +348,58 @@ function pintarShell() {
       esc(accion) + '">' + ico(icono) +
       esc(accion === 'deshacer' ? rotuloDeshacer() : txt) +
       (tecla ? '<span class="tecla">' + esc(tecla) + '</span>' : '') + '</button>').join('') +
-    '<span class="der">' + ico('base') +
-    '<span style="font-size:11px;color:var(--gris)">Datos de demostración</span></span>';
+    /* El rótulo pasó a ser un botón el 16-08-2026, cuando se sacaron los menús
+       Procesos y Ayuda: las herramientas de la demostración —adelantar el
+       calendario, correr las pruebas, comprobar las cifras, la guía— viven acá
+       abajo. Es el único cartel de la pantalla que ya decía que esto es una
+       demostración, así que es donde alguien las va a buscar. */
+    '<button class="hbtn der" type="button" data-hacc="demostracion" ' +
+    'title="Las herramientas de la demostración: la guía, las pruebas y el calendario">' +
+    ico('base') + 'Datos de demostración</button>';
   h.style.display = 'flex';
 
   h.querySelectorAll('[data-hacc]').forEach((b) =>
     b.addEventListener('click', () => accionModulo(b.dataset.hacc)));
+}
+
+/* ── Las herramientas de la demostración ──────────────────────────────────
+   Lo que antes eran los menús Procesos y Ayuda. Ninguna acción se perdió: la
+   lista es la misma y cada botón llama exactamente al mismo despachador que
+   llamaba el menú. */
+const HERRAMIENTAS_DEMO = [
+  { texto: 'Qué se puede probar acá', icono: 'check', accion: 'guia',
+    pie: 'El recorrido corto: qué mostrar y en qué orden' },
+  { texto: 'Probar reglas de negocio', icono: 'check', accion: 'pruebas',
+    pie: 'Cada prueba intenta algo prohibido y falla por la regla, con el motivo' },
+  { texto: 'Comprobar cifras de la demostración', icono: 'consolidado', accion: 'cifras',
+    pie: 'Que los datos inventados sigan cuadrando con lo medido en el sistema real' },
+  { texto: 'Adelantar la fecha del sistema 7 días', icono: 'reloj', accion: 'adelantar',
+    pie: 'Lo que hace visibles los tres relojes' },
+  { texto: 'Volver la fecha a hoy', icono: 'refrescar', accion: 'fecha-hoy',
+    pie: 'Deja el calendario donde estaba' },
+  { texto: 'Acerca del sistema', icono: 'info', accion: 'acerca',
+    pie: 'Qué es esto y qué no es' }
+];
+
+function dialogoDemostracion() {
+  dialogo('Datos de demostración', '<p class="pie-nota" style="margin:0 0 10px">' +
+    'Los datos de esta pantalla son inventados y están rotulados como tales. ' +
+    'Para volver a dejarlos como venían: <strong>Archivo → Reiniciar a datos de demostración</strong>.</p>' +
+    '<div class="ir-lista">' + HERRAMIENTAS_DEMO.map((x) =>
+      '<button type="button" class="ir-item" data-demo="' + esc(x.accion) + '">' + ico(x.icono) +
+      '<span class="nom">' + esc(x.texto) +
+      '<span class="gru" style="display:block;font-weight:400">' + esc(x.pie) + '</span></span>' +
+      '</button>').join('') +
+    '</div>');
+
+  dialogo.ultimo.querySelectorAll('[data-demo]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const a = b.dataset.demo;
+      dialogo.cerrar();
+      // Las que abren su propio cuadro tienen que encontrar el anterior ya
+      // cerrado: `dialogo()` borra el velo que haya, así que el orden importa.
+      ejecutarAccion(a);
+    }));
 }
 
 /* ───────────────── Las acciones de la barra ─────────────────
@@ -366,6 +423,10 @@ function accionModulo(accion) {
     case 'refrescar':
       render();
       return avisar({ ok: true, motivo: '' }, 'Pantalla actualizada.');
+
+    // El rótulo de arriba a la derecha: lo que antes eran Procesos y Ayuda.
+    case 'demostracion':
+      return dialogoDemostracion();
 
     case 'nuevo':
       if (ui.vista === 'personal') { const b = document.getElementById('per-nuevo'); if (b) b.click(); return; }
@@ -649,8 +710,19 @@ function pintarBarraEstado(extra) {
 }
 
 /* ───────────────── Barra de menú ─────────────────
-   Los seis menús hacen algo. Antes cuatro estaban inertes "para que se viera
-   como un ERP", y eso enseña a no confiar en la pantalla. */
+   Los cuatro menús hacen algo. Antes había seis y cuatro de ellos estaban
+   inertes "para que se viera como un ERP", y eso enseña a no confiar en la
+   pantalla.
+
+   🔷 PROCESOS Y AYUDA SE SACARON (16-08-2026, Marco). Eran las dos únicas
+   entradas de la barra que hablaban de la DEMOSTRACIÓN y no del taller:
+   adelantar el calendario, correr las pruebas, comprobar las cifras, la guía.
+   En una barra que imita la del sistema real, eso se lee como si el taller
+   tuviera un menú para viajar en el tiempo.
+
+   No se borraron: las seis acciones viven ahora detrás del rótulo «Datos de
+   demostración», arriba a la derecha de cada panel — que es exactamente lo que
+   son y ya decía su nombre. Ver `dialogoDemostracion`. */
 
 const MENUS = {
   Archivo: [
@@ -669,21 +741,14 @@ const MENUS = {
     { texto: 'Taller', icono: 'taller', accion: 'ir:taller' },
     { texto: 'Configuración', icono: 'config', accion: 'ir:configuracion' }
   ],
-  Procesos: [
-    { texto: 'Probar reglas de negocio', icono: 'check', accion: 'pruebas' },
-    { texto: 'Comprobar cifras de la demostración', icono: 'consolidado', accion: 'cifras' },
-    { texto: 'Adelantar la fecha del sistema 7 días', icono: 'reloj', accion: 'adelantar' },
-    { texto: 'Volver la fecha a hoy', icono: 'refrescar', accion: 'fecha-hoy' }
-  ],
+  /* Los tres reportes, y sólo esos (16-08-2026, Marco). «Venta parada por
+     presupuestos» y «Repuestos pendientes» salieron: no eran reportes, eran
+     atajos a dos paneles operativos que ya están en la barra lateral, y con
+     otro nombre — el mismo lugar llamado de dos formas distintas. */
   Reportes: [
     { texto: 'Consolidado', icono: 'consolidado', accion: 'ir:consolidado' },
     { texto: 'Histórico', icono: 'historico', accion: 'ir:historico' },
-    { texto: 'Venta parada por presupuestos', icono: 'presupuesto', accion: 'ir:presupuesto' },
-    { texto: 'Repuestos pendientes', icono: 'repuesto', accion: 'ir:repuestos' }
-  ],
-  Ayuda: [
-    { texto: 'Acerca del sistema', icono: 'info', accion: 'acerca' },
-    { texto: 'Qué se puede probar acá', icono: 'check', accion: 'guia' }
+    { texto: 'Reportería (gráficos)', icono: 'consolidado', accion: 'reporteria' }
   ]
 };
 
@@ -731,6 +796,16 @@ function ejecutarAccion(accion) {
   if (accion === 'tema') return aplicarTema(document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro');
   if (accion === 'ir-modulo') return dialogoIrAModulo();
 
+  /* Reportería no es un módulo de la barra lateral: es la segunda hoja del
+     Histórico —la misma que en el sistema actual abre «Ver estadísticas»—, y
+     por eso se llega poniendo al Histórico en esa hoja y yendo ahí. Si algún
+     día pasa a ser un módulo propio, esto es una línea menos, no una línea
+     distinta. */
+  if (accion === 'reporteria') {
+    historicoEstado().vista = 'reporteria';
+    return ir('historico');
+  }
+
   if (accion === 'acerca') {
     return dialogo('Automotora DyP · Control de Taller', `
       <p>Esto <strong>no es el sistema</strong>: es un modelo para probar cómo debería funcionar,
@@ -755,7 +830,7 @@ function ejecutarAccion(accion) {
           programador. Es literalmente lo que se pidió al decir "escalable".</td></tr>
         <tr><td><strong>Recepción</strong></td><td>Un ingreso con <strong>dos siniestros</strong>
           genera dos OT. Y las fotos se comprimen solas: se ve el peso antes y después.</td></tr>
-        <tr><td><strong>Procesos → Adelantar la fecha</strong></td><td>Los <strong>tres
+        <tr><td><strong>Datos de demostración → Adelantar la fecha</strong></td><td>Los <strong>tres
           relojes</strong>: el de reparación se detiene cuando el auto sale y se reanuda al volver.</td></tr>
         <tr><td><strong>Ficha → Acciones</strong></td><td>Regrabar el mismo estado
           <strong>no mueve ningún contador</strong>. Es el defecto central del sistema actual.</td></tr>
@@ -766,7 +841,7 @@ function ejecutarAccion(accion) {
         <tr><td><strong>Presupuesto → una OR</strong></td><td>El <strong>tempario</strong> por las
           horas de DM, Reparar y Pintar. Una pieza puede reparar <em>y</em> pintar, y el repuesto
           que pone la compañía no se cobra. Los repuestos bajan solos a Bodega al aprobar.</td></tr>
-        <tr><td><strong>Procesos → Probar reglas</strong></td><td>Cada prueba intenta algo
+        <tr><td><strong>Datos de demostración → Probar reglas</strong></td><td>Cada prueba intenta algo
           prohibido y falla <em>por la regla</em>, con el motivo explicado. Una compara la
           aritmética contra el PDF real de la OR 23505-18401-001.</td></tr>
       </tbody></table></div>`);
@@ -1094,7 +1169,8 @@ const ESTADO_BARRA = {
 function render() {
   const m = MENU.find((x) => x.id === ui.vista);
   document.getElementById('titulo').innerHTML =
-    (m ? ico(m.icono, 'g') : '') + esc(TITULOS[ui.vista] || '');
+    (m ? ico(m.icono, 'g') : '') +
+    esc(enReporteria() ? 'Reportería' : (TITULOS[ui.vista] || ''));
   document.getElementById('bajada').textContent = '';
 
   pintarShell();
@@ -2264,11 +2340,17 @@ function modoRegistro(numero) {
     impresos.forEach(([k, rot]) => barra.push('<button class="hbtn" type="button" data-imprimir="' + k + '">' +
       ico('imprimir') + rot + '</button>'));
   }
-  barra.push('<span class="der">' + ico('base') + '<span style="font-size:11px;color:var(--gris)">Datos de demostración</span></span>');
+  // La ficha arma su propia barra: el rótulo va igual que en los paneles, y
+  // desde el 16-08-2026 también abre las herramientas de la demostración.
+  barra.push('<button class="hbtn der" type="button" data-demo-abrir="1" ' +
+    'title="Las herramientas de la demostración: la guía, las pruebas y el calendario">' +
+    ico('base') + 'Datos de demostración</button>');
   document.getElementById('herramientas').innerHTML = barra.join('');
 
   document.querySelectorAll('#herramientas [data-imprimir]').forEach((b) =>
     b.addEventListener('click', () => abrirImpreso(b.dataset.imprimir, o.id)));
+  document.querySelectorAll('#herramientas [data-demo-abrir]').forEach((b) =>
+    b.addEventListener('click', dialogoDemostracion));
 
   document.getElementById('contenido').innerHTML = vFichaOT(o);
   pFichaOT(o);

@@ -10,7 +10,8 @@
    imitación, pero dentro de un aislamiento que se descarta al terminar: no
    tocan los datos con los que está trabajando el usuario.
 
-   Se ejecutan desde la barra de menú, en Procesos → Probar reglas de negocio.
+   Se ejecutan desde el rótulo «Datos de demostración», arriba a la derecha de
+   cada panel: Probar reglas de negocio.
    ──────────────────────────────────────────────────────────────────────── */
 
 const Pruebas = (function () {

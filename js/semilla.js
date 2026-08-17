@@ -20,8 +20,8 @@
    los días calculados cuadren con lo que se midió en el sistema real.
 
    Va como `let` y no como `const` a propósito: los tres relojes solo se
-   pueden demostrar de verdad si se puede adelantar el calendario. Procesos →
-   Adelantar la fecha del sistema mueve esto, y todo lo demás se recalcula
+   pueden demostrar de verdad si se puede adelantar el calendario. «Datos de
+   demostración» → Adelantar la fecha del sistema mueve esto, y todo lo demás se recalcula
    solo, porque ningún contador guarda días: todos se derivan de las fechas.
    Es el paso 14 del guion de prueba. */
 let HOY = new Date(2026, 7, 12);
@@ -30,7 +30,7 @@ const HOY_ORIGINAL = new Date(2026, 7, 12);
 const Semilla = (function () {
 
   /* ── Cifras de control, medidas sobre el sistema actual ────────────────
-     Las comprueba Procesos → Comprobar cifras de la semilla. */
+     Las comprueba «Datos de demostración» → Comprobar cifras de la demostración. */
 
   const TOTAL_TORRE            = 102;  // reglas §C.5  — órdenes vivas
   const CON_REPUESTO_PENDIENTE = 41;   // reglas §C.6  — tarjeta 41/102

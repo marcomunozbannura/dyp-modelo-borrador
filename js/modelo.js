@@ -830,8 +830,8 @@ const Modelo = (function () {
      Lo destapó la prueba del expediente: los dos hechos que la prueba
      provocaba se le perdían entre los sembrados del mismo día.
 
-     Toma el día del calendario del sistema —que se puede adelantar desde
-     Procesos— y la hora del reloj de verdad. El correlativo `seq` sigue
+     Toma el día del calendario del sistema —que se puede adelantar desde el
+     rótulo «Datos de demostración»— y la hora del reloj de verdad. El correlativo `seq` sigue
      desempatando: dos cosas en el mismo minuto igual necesitan orden. */
   function ahora() {
     const r = new Date();

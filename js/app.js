@@ -1604,6 +1604,34 @@ function dobleClicPorFilas(selector, opciones) {
       render();
     };
 
+    /* La celda de la OT: es la que muestra el mismo número que `data-ot`. Se
+       busca por CONTENIDO y no por posición, porque las tablas no tienen la OT
+       en la misma columna y esta función además les inserta la flecha adelante.
+       Ojo: `data-ot` no siempre es el número —la torre pone el ID—, así que se
+       resuelve el número antes de comparar. */
+    const orden = Modelo.otPorId(n) || Modelo.otPorNumero(n);
+    const numero = orden ? String(orden.numeroOT) : String(n);
+    const celdaOT = [...tr.children].find((td) => {
+      const t = td.textContent.trim().replace(/\s+/g, ' ');
+      return t === numero || t === String(n);
+    }) || null;
+
+    /* 🔷 SIN DESPLEGABLE. Bodega lo pidió el 16-08-2026 y Documentos el 17:
+       son paneles donde el expandible no aporta —lo que hay que mirar está en
+       la ficha, a un doble clic— y lo único que hace es mover la tabla debajo
+       del dedo. Acá no se pinta la flecha, no se agrega su columna y el clic
+       simple no hace nada; el doble clic en la OT se mantiene, que es el gesto
+       con el que se trabaja.
+
+       Va como opción del ayudante compartido y no como un handler propio de
+       cada panel: Bodega ya tenía el suyo copiado a mano, y dos copias del
+       mismo gesto es como se termina con dos comportamientos distintos. */
+    if (op.sinDetalle) {
+      conDobleClic(tr, 'ot-' + n, () => { abrirFicha(n); return true; }, null, celdaOT);
+      tr.classList.add('solo-flecha');   // el cursor deja de ofrecer la fila como botón
+      return;
+    }
+
     /* La flecha va en su PROPIA columna, a la izquierda del número, igual que
        en la torre — que la tiene entre sus 17 columnas. Se inserta acá, junto
        con su encabezado, en vez de agregarle una columna a mano a las seis
@@ -1652,16 +1680,8 @@ function dobleClicPorFilas(selector, opciones) {
          celda el gesto se quedaba en la fila entera: seguía abriendo pestañas
          desde el nombre del cliente. Así que se busca por el NÚMERO, que es
          lo que la columna muestra. */
-      const orden = Modelo.otPorId(n) || Modelo.otPorNumero(n);
-      const numero = orden ? String(orden.numeroOT) : String(n);
-      const celdas = [...tr.children];
-      const igual = (td) => {
-        const t = td.textContent.trim().replace(/\s+/g, ' ');
-        return t === numero || t === String(n);
-      };
-      const celdaOT = celdas.find(igual);
       conDobleClic(tr, 'ot-' + n,
-        () => { abrirFicha(n); return true; }, alternar, celdaOT || null);
+        () => { abrirFicha(n); return true; }, alternar, celdaOT);
     }
 
     if (n !== abierta) return;

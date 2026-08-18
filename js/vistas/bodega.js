@@ -513,15 +513,13 @@ function pBodega() {
      llevé las dos cosas; y el genérico enganchaba la fila entera, así que un
      doble clic al elegir texto de una descripción abría una pestaña que
      nadie pidió. */
-  document.querySelectorAll('tr.fila[data-ot] td:first-child').forEach((td) => {
-    td.classList.add('abre-ot');
-    td.title = 'Doble clic abre la orden en otra pestaña';
-    td.addEventListener('dblclick', (ev) => {
-      ev.stopPropagation();
-      const fila = td.closest('[data-ot]');
-      if (fila && fila.dataset.ot) abrirFicha(fila.dataset.ot);
-    });
-  });
+  /* Esto estaba escrito acá a mano, enganchado a `td:first-child`. Desde el
+     17-08-2026 lo hace el ayudante compartido con `sinDetalle`, que además
+     encuentra la celda de la OT por su CONTENIDO y no por su posición: en esta
+     tabla la OT va primera, pero en otra no, y una copia que sólo funciona por
+     casualidad es la que después se comporta distinto. Documentos pidió lo
+     mismo y ahora las dos pantallas usan el mismo gesto. */
+  dobleClicPorFilas(null, { sinDetalle: true });
   const b = bodegaEstado();
 
   // El menú de entrada, y las pestañas de arriba una vez adentro: las dos

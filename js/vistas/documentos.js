@@ -61,11 +61,19 @@ function documentosListado() {
    taller les da. Sin esto, las fotos de la recepción quedaban invisibles acá:
    la pantalla solo miraba las cargadas como "documento", así que uno subía
    diez fotos al recibir el auto y en Documentos no aparecía ninguna. */
+/* 🔷 «documento» YA NO ESTÁ EN ESTA LISTA (17-08-2026, Marco: "si uno sube un
+   documento, el nombre del archivo también debe quedar acá; no quiero que
+   quede abajo como vista previa, sino tenerlo directamente ahí").
+
+   Los archivos que se suben pasaron a ser FILAS del expediente, arriba, con su
+   nombre, su fecha y el botón para abrirlo. Una guía o una factura no se
+   reconoce por su miniatura —son todas una hoja blanca con letras chicas—: se
+   reconoce por el nombre. Las fotos del vehículo sí siguen como miniaturas,
+   porque ahí la imagen ES el dato. */
 const MOMENTOS_MEDIA = [
   { id: 'ingreso',   rot: 'Fotografías de la recepción', pie: 'Cómo llegó el vehículo' },
   { id: 'proceso',   rot: 'Fotografías del avance',      pie: 'Por etapa, cargadas al cerrar cada una' },
-  { id: 'salida',    rot: 'Fotografías de la entrega',   pie: 'Cómo salió el vehículo' },
-  { id: 'documento', rot: 'Documentos cargados',         pie: 'Guías, facturas y órdenes de compra' }
+  { id: 'salida',    rot: 'Fotografías de la entrega',   pie: 'Cómo salió el vehículo' }
 ];
 
 function documentosDeOT(o) {
@@ -102,6 +110,16 @@ function documentosDeOT(o) {
       detalle: o.fechaEntrega ? 'Entregado' : 'la orden todavía no se entrega' }
   ];
 
+  /* Y a continuación, en la MISMA tabla, lo que se subió. Antes vivía en una
+     tabla aparte más abajo y como miniaturas: el expediente decía «esto es todo
+     lo que hay de esta orden» y la guía de despacho recién cargada no estaba en
+     él. Van al final porque llegan después de los cinco documentos que el
+     sistema emite solo. */
+  docs.forEach((m) => expediente.push({
+    rot: m.nombre, cuando: m.creado_at, hay: true, archivo: m,
+    detalle: 'Cargado a mano · ' + Media.fPeso(m.bytes)
+  }));
+
   const bloqueFotos = (m) => {
     const fotos = media.filter((x) => x.momento === m.id);
     if (!fotos.length) return '';
@@ -124,13 +142,27 @@ function documentosDeOT(o) {
       <div class="grid-envoltorio"><table class="grid">
         <thead><tr><th style="width:26%">Documento</th><th>Qué tiene</th><th>Fecha</th><th>Acción</th></tr></thead>
         <tbody>${expediente.map((e) =>
-          '<tr class="fila"><td><strong>' + esc(e.rot) + '</strong></td>' +
+          '<tr class="fila"><td><strong>' + esc(e.rot) + '</strong>' +
+            /* El lápiz del sistema actual, ahora al lado del nombre en el
+               expediente. El archivo llega como `escaneo_001.pdf` desde el
+               scanner del mesón y así nadie lo encuentra seis meses después,
+               que es cuando la compañía lo pide. El nombre es lo único que hace
+               encontrable un documento: no hay tipo ni categoría, porque el
+               taller no las usa. */
+            (e.archivo && cargaDocs ? ' <button class="enlace-volver" data-doc-nombrar="' +
+              esc(e.archivo.id) + '" title="Ponerle nombre">' + ico('editar') + '</button>' : '') +
+            '</td>' +
           '<td>' + esc(e.detalle) + '</td>' +
           '<td class="num">' + (e.cuando ? fFechaHora(e.cuando) : '—') + '</td>' +
-          '<td>' + (!e.hay ? '<span class="et gris">todavía no</span>'
-            : e.imprimir
-              ? '<button class="btn secundario" data-doc-imprimir="' + esc(e.imprimir) + '">Ver documento</button>'
-              : '<button class="btn secundario" data-doc-ir="' + esc(e.vista) + '">Ir a bodega</button>') +
+          '<td>' + (e.archivo
+            ? '<span style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<button class="btn secundario" data-doc-abrir="' + esc(e.archivo.id) + '">Ver documento</button>' +
+              (cargaDocs ? '<button class="btn secundario" data-doc-quitar="' + esc(e.archivo.id) +
+                '">Quitar</button>' : '') + '</span>'
+            : (!e.hay ? '<span class="et gris">todavía no</span>'
+              : e.imprimir
+                ? '<button class="btn secundario" data-doc-imprimir="' + esc(e.imprimir) + '">Ver documento</button>'
+                : '<button class="btn secundario" data-doc-ir="' + esc(e.vista) + '">Ir a bodega</button>')) +
           '</td></tr>').join('')}</tbody>
       </table></div>
 
@@ -143,23 +175,10 @@ function documentosDeOT(o) {
         ${zonaFotos({ id: 'docfoto', fotos: [], titulo: 'Soltar guías, facturas u órdenes de compra' })}
       </fieldset>` : ''}
 
-      ${docs.length ? `
-      <div class="grid-envoltorio" style="margin-top:11px"><table class="grid">
-        <thead><tr><th>Archivo</th><th>Fecha</th><th>Peso</th>${cargaDocs ? '<th>Acción</th>' : ''}</tr></thead>
-        <tbody>${docs.map((m) =>
-          '<tr><td>' + esc(m.nombre) +
-            /* El lápiz del sistema actual. El archivo llega como
-               `escaneo_001.pdf` desde el scanner del mesón y así nadie lo
-               encuentra seis meses después, que es cuando la compañía lo pide.
-               El nombre es lo único que hace encontrable un documento: no hay
-               tipo ni categoría, porque el taller no las usa. */
-            (cargaDocs ? ' <button class="enlace-volver" data-doc-nombrar="' + esc(m.id) +
-              '" title="Ponerle nombre">' + ico('editar') + '</button>' : '') + '</td>' +
-          '<td class="num">' + fFechaHora(m.creado_at) + '</td>' +
-          '<td class="num">' + Media.fPeso(m.bytes) + '</td>' +
-          (cargaDocs ? '<td><button class="btn secundario" data-doc-quitar="' + esc(m.id) + '">Quitar</button></td>' : '') +
-          '</tr>').join('')}
-        </tbody></table></div>` : ''}
+      ${/* Acá había una segunda tabla con los mismos archivos —nombre, fecha,
+            peso, quitar—. Con los documentos ya en el expediente de arriba era
+            la misma lista dos veces en la misma pantalla, y la de abajo no
+            dejaba abrirlos. Se sacó entera: nada se perdió, todo subió. */''}
 
       <fieldset class="bloque" style="margin-top:11px"><legend>Enviar por correo</legend>
         <div class="rejilla-campos">
@@ -176,7 +195,12 @@ function documentosDeOT(o) {
 
 function pDocumentos() {
   // Doble clic abre la orden en pestaña nueva, igual que en la torre.
-  dobleClicPorFilas();
+  /* 🔷 SIN DESPLEGABLE (17-08-2026, Marco: "documentos no debiese tener lista
+     desplegable hacia abajo"). Mismo criterio que en Bodega: lo que hay que
+     mirar de una orden está en su expediente, a un doble clic en la OT, y el
+     expandible sólo movía la tabla debajo del dedo. El doble clic se mantiene y
+     sigue saliendo únicamente desde la columna OT. */
+  dobleClicPorFilas(null, { sinDetalle: true });
   const d = documentosEstado();
 
   const q = document.getElementById('doc-q');
@@ -223,6 +247,30 @@ function pDocumentos() {
       '"Guía de despacho N° 79074 Johnson", "Vale de retiro Castillo".', actual);
     if (nuevo === null) return;
     ejecutar(() => Modelo.renombrar_media(id, nuevo), 'Documento renombrado.');
+  }));
+
+  /* Abrir el archivo cargado. Antes no se podía: la lista de abajo mostraba
+     nombre, fecha y peso, y para verlo había que buscar la miniatura. El
+     archivo vive en IndexedDB, así que se pide su URL y se muestra acá mismo
+     —no se descarga—: el expediente se mira, no se reparte. */
+  document.querySelectorAll('[data-doc-abrir]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.docAbrir;
+    const m = Modelo.mediaDe(d.otId).find((x) => x.id === id);
+    Media.url(id).then((u) => {
+      if (!u) {
+        return avisar({ ok: false, motivo: 'El archivo no está en este navegador. ' +
+          'Los documentos se guardan en el equipo donde se cargaron: si esta orden se subió ' +
+          'en el computador del mesón, hay que abrirla ahí.' });
+      }
+      dialogo(m ? m.nombre : 'Documento',
+        '<div class="pie-nota" style="margin:0 0 8px">' +
+        (m ? fFechaHora(m.creado_at) + ' · ' + Media.fPeso(m.bytes) : '') + '</div>' +
+        '<img src="' + u + '" alt="' + esc(m ? m.nombre : 'documento') +
+        '" style="max-width:100%;border:1px solid var(--borde);border-radius:3px">');
+      // Se revoca al cerrar el cuadro; si no, cada apertura filtra memoria.
+      const velo = dialogo.ultimo;
+      if (velo) velo.addEventListener('click', () => setTimeout(() => URL.revokeObjectURL(u), 500));
+    });
   }));
 
   document.querySelectorAll('[data-doc-quitar]').forEach((b) => b.addEventListener('click', () => {

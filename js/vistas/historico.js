@@ -68,6 +68,81 @@ function plataDe(o) {
   return z;
 }
 
+/* ── Por qué no encontró nada ──────────────────────────────────────────
+   🔴 EL PROBLEMA QUE ESTO RESUELVE (17-08-2026). Marco buscó la patente
+   BGBB82, le salió «Sin resultados» y concluyó, con razón desde donde estaba
+   mirando: «el Histórico está mal, no encuentra absolutamente nada».
+
+   El buscador funcionaba. La BGBB82 está EN EL TALLER, y el Histórico sólo
+   tiene las órdenes entregadas — así es el sistema actual y así se replica.
+   Pero «Sin resultados» no dice ninguna de esas dos cosas: es cierto y es
+   inútil, y ante un vacío sin explicación lo razonable es pensar que el
+   sistema está roto.
+
+   Acá se averigua POR QUÉ no hay nada y se dice, con el camino para llegar a
+   lo que la persona estaba buscando. Un vacío que se explica no es un vacío:
+   es una respuesta. */
+// aaaa-mm-dd —lo que guarda un <input type="date">— a dd-mm-aaaa.
+function fechaCorta(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : (iso || '—');
+}
+
+function sinResultados(h) {
+  const q = String(h.patente || '').trim();
+  const caja = (titulo, texto, acciones) =>
+    '<div class="vacio"><div class="titulo">' + titulo + '</div>' +
+    '<div class="texto">' + texto + '</div>' +
+    (acciones ? '<div style="margin-top:9px;display:flex;gap:6px;justify-content:center;' +
+      'flex-wrap:wrap">' + acciones + '</div>' : '') + '</div>';
+
+  if (q) {
+    /* ¿Está en el taller? Es el caso de Marco, y el más frecuente: se busca por
+       una patente que se acaba de ver en la torre. */
+    const viva = Modelo.torre().find((o) =>
+      [o.patente, o.numeroOT, (o.presupuestos[0] || {}).numeroOR]
+        .some((v) => String(v == null ? '' : v).toUpperCase().indexOf(q.toUpperCase()) >= 0));
+    if (viva) {
+      return caja('No está en el Histórico porque todavía no se entrega',
+        '<strong>' + esc(viva.patente) + '</strong> — OT ' + esc(viva.numeroOT) + ', ' +
+        esc(viva.cliente) + ' — está <strong>en el taller</strong>, en ' +
+        esc(viva.etapaNombre || 'sin etapa asignada') + '. El Histórico sólo guarda las órdenes ' +
+        '<strong>entregadas</strong>: igual que el sistema actual. Mientras el vehículo esté ' +
+        'adentro se sigue desde la Torre de control.',
+        '<button class="btn" data-h-ficha="' + esc(viva.numeroOT) + '">Abrir la OT ' +
+          esc(viva.numeroOT) + '</button>' +
+        '<button class="btn secundario" data-h-torre="1">Ir a la Torre de control</button>');
+    }
+
+    /* ¿Está entregada, pero el rango de fechas la dejó fuera? Es el otro
+       vacío que se lee como falla: el dato existe y la pantalla no lo muestra. */
+    if (h.desde || h.hasta) {
+      const sinFecha = Modelo.historico({ patente: q });
+      if (sinFecha.length) {
+        const o = sinFecha[0];
+        return caja('Sí está, pero fuera del rango de fechas',
+          '<strong>' + esc(o.patente) + '</strong> — OT ' + esc(o.numeroOT) + ' — se entregó el ' +
+          '<strong>' + fFechaHora(o.fechaEntrega) + '</strong>, y el rango que está puesto va ' +
+          // Los campos de fecha guardan aaaa-mm-dd, que es lo que el navegador
+          // entrega. En pantalla todo va dd-mm-aaaa, acá también.
+          'del ' + esc(fechaCorta(h.desde)) + ' al ' + esc(fechaCorta(h.hasta)) + '. ' +
+          'El rango filtra por <strong>fecha de entrega</strong>.',
+          '<button class="btn" data-h-sinfechas="1">Buscar sin el rango de fechas</button>');
+      }
+    }
+
+    return caja('No aparece en ninguna parte',
+      'No hay ninguna orden —entregada ni en el taller— cuya patente, OT u OR contenga ' +
+      '<strong>' + esc(q) + '</strong>. El cuadro busca por las tres, y por parte del texto: ' +
+      'con escribir <span class="cod">' + esc(q.slice(0, 3)) + '</span> basta.');
+  }
+
+  return caja('Sin resultados',
+    'Ninguna orden <strong>entregada</strong> cumple con lo que está filtrado. ' +
+    'El Histórico no muestra los vehículos que están en el taller: para esos, la Torre de control.',
+    '<button class="btn secundario" data-h-torre="1">Ir a la Torre de control</button>');
+}
+
 function vHistorico() {
   const h = historicoEstado();
   if (h.vista === 'estadisticas') return vHistoricoEstadisticas();
@@ -189,10 +264,12 @@ function vHistorico() {
           '<td>' + esc(((o.recepcion || {}).observaciones || '').slice(0, 90) ||
             '—') + '</td>' +
           '<td>' + chipsAlerta(o) + '</td></tr>';
-      }).join('') : '<tr><td colspan="19"><div class="vacio"><div class="titulo">' +
-        (hayFiltro || h.todos ? 'Sin resultados' : 'Escribe un filtro y aprieta Buscar') + '</div>' +
-        (hayFiltro || h.todos ? '' : '<div class="texto">El Histórico es un buscador, no un listado. ' +
-          'Así es el sistema actual y así se replica — y para verlo entero está <strong>Ver todos</strong>.</div>') + '</div></td></tr>'}</tbody>
+      }).join('') : '<tr><td colspan="19">' +
+        (hayFiltro || h.todos ? sinResultados(h) :
+          '<div class="vacio"><div class="titulo">Escribe un filtro y aprieta Buscar</div>' +
+          '<div class="texto">El Histórico es un buscador, no un listado. ' +
+          'Así es el sistema actual y así se replica — y para verlo entero está <strong>Ver todos</strong>.</div></div>') +
+        '</td></tr>'}</tbody>
       ${todas.length ? '<tfoot><tr><td colspan="16" style="text-align:right">Venta de las ' +
         todas.length + ' órdenes filtradas</td>' +
         '<td class="num"><strong>' + fMonto(suma.venta) + '</strong></td></tr></tfoot>' : ''}
@@ -460,6 +537,21 @@ function pHistorico() {
   if (tam) tam.addEventListener('change', () => {
     h.porPagina = Number(tam.value) || 0; h.pagina = 1; render();
   });
+
+  /* Los caminos que ofrece el mensaje cuando no hay resultados. Van acá porque
+     ese mensaje se pinta dentro de la tabla y sus botones tienen que hacer algo
+     de verdad: llevar a la orden, a la torre, o repetir la búsqueda sin el
+     rango. Un cartel que explica y deja al usuario en el mismo lugar explica a
+     medias. */
+  document.querySelectorAll('[data-h-ficha]').forEach((b) =>
+    b.addEventListener('click', () => abrirFicha(b.dataset.hFicha)));
+  document.querySelectorAll('[data-h-torre]').forEach((b) =>
+    b.addEventListener('click', () => {
+      ui.torre.busqueda = h.patente; ui.torre.situacion = 'piso'; ui.torre.pagina = 1;
+      ir('torre');
+    }));
+  document.querySelectorAll('[data-h-sinfechas]').forEach((b) =>
+    b.addEventListener('click', () => { h.desde = ''; h.hasta = ''; h.pagina = 1; render(); }));
 
   // Antes esto leía el número desde el texto de la celda. Salía del DOM y no
   // del modelo: bastaba mover una columna para romperlo. Ahora va por `data-ot`

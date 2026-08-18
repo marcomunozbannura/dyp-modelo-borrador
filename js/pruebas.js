@@ -1266,6 +1266,45 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── El buscador del Histórico encuentra por las tres ─────────────────
+         🔴 El campo dice «Patente u OT» y buscaba SÓLO la patente. Escribir el
+         número de la orden devolvía cero, y cero con el filtro puesto se lee
+         como «esa orden no existe» — que es justo lo que Marco concluyó el
+         17-08-2026: «el Histórico está mal, no encuentra absolutamente nada».
+         Se prueban las tres formas en que en el taller se nombra un trabajo. */
+      (function () {
+        const uni = Modelo.historico({ todo: true });
+        const o = uni.find((x) => x.presupuestos.length) || uni[0];
+        if (!o) {
+          push({ nombre: 'El Histórico busca por patente, por OT y por OR',
+            intento: 'Buscar una orden entregada por sus tres nombres',
+            esperado: 'La encuentra por los tres', paso: false,
+            detalle: 'No hay ninguna orden entregada con la que probar.' });
+          return;
+        }
+        const busca = (q) => Modelo.historico({ patente: String(q) })
+          .some((x) => x.numeroOT === o.numeroOT);
+        const porPatente = busca(o.patente);
+        const porOT = busca(o.numeroOT);
+        const porOR = o.presupuestos.length ? busca(o.presupuestos[0].numeroOR) : true;
+        // Y por parte del texto, que es como se busca cuando se acuerda a medias.
+        const porTrozo = busca(String(o.patente).slice(0, 3));
+        /* Ojo con la cadena: 'ZZZZ99' NO sirve, porque la prueba de la recepción
+           crea un vehículo con esa patente y este control se caía solo. */
+        const falso = Modelo.historico({ patente: 'NO-EXISTE-0000' }).length;
+
+        push({
+          nombre: 'El Histórico busca por patente, por OT y por OR',
+          intento: 'Buscar la orden ' + o.numeroOT + ' escribiendo su patente, su número de OT, ' +
+                   'su OR y las tres primeras letras de la patente',
+          esperado: 'La encuentra de las cuatro formas, y lo que no existe sigue dando cero',
+          paso: porPatente && porOT && porOR && porTrozo && falso === 0,
+          detalle: 'Patente ' + (porPatente ? 'sí' : 'NO') + ' · OT ' + (porOT ? 'sí' : 'NO') +
+                   ' · OR ' + (porOR ? 'sí' : 'NO') + ' · parte de la patente ' +
+                   (porTrozo ? 'sí' : 'NO') + ' · una patente inventada devuelve ' + falso
+        });
+      })();
+
       restaurarSesion();
       return res;
     });

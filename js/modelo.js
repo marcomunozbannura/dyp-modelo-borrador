@@ -471,7 +471,18 @@ const Modelo = (function () {
       .map(vistaOT)
       .filter(enAlcance)
       .filter((o) => {
-        if (f.patente && String(o.patente || '').toUpperCase().indexOf(String(f.patente).toUpperCase()) < 0) return false;
+        /* 🔴 EL CAMPO DICE «Patente u OT» Y BUSCABA SOLO LA PATENTE. Escribir el
+           número de la orden —que es la otra mitad de lo que el rótulo promete—
+           devolvía cero, y cero con el filtro puesto se lee como «esa orden no
+           existe». Ahora el mismo cuadro acepta las tres formas en que en el
+           taller se nombra un trabajo: la patente, el número de OT y el de la
+           OR. Marco lo vio el 17-08-2026. */
+        if (f.patente) {
+          const q = String(f.patente).trim().toUpperCase();
+          const dice = (v) => String(v == null ? '' : v).toUpperCase().indexOf(q) >= 0;
+          const enAlgunaOR = (o.presupuestos || []).some((p) => dice(p.numeroOR));
+          if (!dice(o.patente) && !dice(o.numeroOT) && !enAlgunaOR) return false;
+        }
         if (f.cliente && String(o.cliente || '').toLowerCase().indexOf(String(f.cliente).toLowerCase()) < 0) return false;
         if (f.compania_id && o.companiaId !== f.compania_id) return false;
         if (f.estado && o.estado !== f.estado) return false;

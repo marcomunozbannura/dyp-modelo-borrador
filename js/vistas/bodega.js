@@ -133,26 +133,64 @@ function bodegaChecklist() {
   // Una fila POR PRESUPUESTO, no por vehículo: una OT puede tener varias OR y
   // cada una pide sus propios repuestos.
   const filas = [];
+  /* Recotizar CONSERVA la OR: la versión nueva y la anterior llevan el mismo
+     número. En pantalla eso salían como dos filas idénticas, una con repuestos
+     y otra sin ellos, y se leía como un dato duplicado o como una
+     contradicción. No se esconde ninguna —la versión anterior sigue diciendo lo
+     que decía cuando se mandó, que es de lo que se trata versionar— pero la que
+     ya no manda queda rotulada. No es traer de vuelta el «v1/v2» que se sacó:
+     el identificador sigue siendo la OR; esto sólo responde por qué hay dos. */
+  const ultimaVersion = {};
+  encontradas.forEach((o) => o.presupuestos.forEach((p) => {
+    const k = o.id + '|' + p.numeroOR;
+    ultimaVersion[k] = Math.max(ultimaVersion[k] || 0, Number(p.version) || 1);
+  }));
+
   encontradas.forEach((o) => o.presupuestos.forEach((p) => {
     // La cuenta es la de ESE presupuesto: antes iba `o.repuestos.length` y las
     // dos versiones de una misma OT mostraban el mismo número.
     const ids = {};
     (p.lineas || []).forEach((l) => { ids[l.id] = true; });
     const suyos = o.repuestos.filter((r) => r.presupuestoLineaId && ids[r.presupuestoLineaId]);
-    filas.push({ o, p, nRep: suyos.length, nPend: suyos.filter((r) => !r.fechaBodega).length });
+    const vieja = (Number(p.version) || 1) < ultimaVersion[o.id + '|' + p.numeroOR];
+    filas.push({ o, p, suyos, vieja, nPend: suyos.filter((r) => !r.fechaBodega).length });
   }));
+
+  /* 🔷 EL TEXTO, NO LA CANTIDAD (17-08-2026, Marco: "debiese salir el detalle
+     del repuesto, el texto que se digitó").
+
+     Acá iba un «2». Un número hay que traducirlo cada vez —¿dos de qué?— y para
+     saberlo había que abrir el presupuesto. La descripción es la que se digitó
+     en la OR y es con la que se habla en el taller: nadie pide "el repuesto 2",
+     pide el paragolpes. Es la misma corrección que ya se hizo en el Consolidado
+     el 16-08-2026.
+
+     Lo que falta va en rojo, que es la pregunta que trae a alguien a esta
+     pantalla: qué estamos esperando. La cantidad sólo aparece cuando es más de
+     uno, y la fecha de llegada queda en el globo. */
+  const textoRepuestos = (suyos) => (suyos.length
+    ? suyos.map((r) => '<span' + (r.fechaBodega ? '' : ' style="color:var(--rojo)"') +
+        ' title="' + (r.fechaBodega
+          ? 'Llegó a bodega el ' + esc(fFechaHora(r.fechaBodega))
+          : 'Todavía no llega a bodega') + '">' +
+        (r.cantidad > 1 ? r.cantidad + ' × ' : '') + esc(r.descripcion) + '</span>').join(', ')
+    : '<span style="color:var(--gris-2)">Sin repuestos: es sólo mano de obra</span>');
 
   const tabla = `
     <h3 style="font-size:13px;margin:14px 0 6px">Resultados de la patente &ldquo;${esc(q)}&rdquo;</h3>
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>Patente</th><th>Presupuesto</th><th>Reparación</th>
-        <th class="num">Repuestos</th><th>Acción</th></tr></thead>
-      <tbody>${filas.map(({ o, p, nRep, nPend }) => '<tr><td class="num">' + o.numeroOT + '</td>' +
+        <th style="min-width:240px">Repuestos que pide</th><th>Acción</th></tr></thead>
+      <tbody>${filas.map(({ o, p, suyos, vieja, nPend }) => '<tr><td class="num">' + o.numeroOT + '</td>' +
         '<td><span class="patente">' + esc(o.patente) + '</span></td>' +
-        '<td class="cod">' + esc(p.numeroOR) + '</td>' +
+        '<td class="cod">' + esc(p.numeroOR) +
+          (vieja ? ' <span class="et gris" title="Esta OR se recotizó: la que manda es la de ' +
+            'abajo, con el mismo número">versión anterior</span>' : '') + '</td>' +
         '<td class="num">' + esc(p.idReparacion || '—') + '</td>' +
-        '<td class="num">' + nRep +
-          (nPend ? ' <span class="et roja" title="' + nPend + ' sin llegar">' + nPend + '</span>' : '') + '</td>' +
+        '<td>' + textoRepuestos(suyos) +
+          (nPend ? ' <span class="et roja" title="' + nPend +
+            (nPend === 1 ? ' sin llegar' : ' sin llegar') + '">' +
+            (nPend === 1 ? '1 pendiente' : nPend + ' pendientes') + '</span>' : '') + '</td>' +
         '<td><button class="btn secundario" data-bod-presu="' + esc(p.id) + '">' +
           'Ver Repuestos de Presupuesto</button></td></tr>').join('')}
       </tbody></table></div>`;

@@ -254,9 +254,37 @@ function rotuloDeshacer() {
   return q ? 'Deshacer ' + q : 'Deshacer';
 }
 
+/* ── ¿A qué módulo entra quien está mirando? ───────────────────────────
+   🔷 17-08-2026. Andrés Guzmán entregó la lista de quién usa la web hoy y a qué
+   módulo entra cada uno. Esa lista es la AUTORIDAD para entrar, y no los
+   permisos que nosotros habíamos colgado del rol: al cruzarlas, nueve de las
+   trece cuentas quedaban viendo menos de lo que ven hoy —Iván sin Presupuesto,
+   Andrés sin Consolidado, seis personas sin Histórico—. Un sistema nuevo que
+   le quita pantallas al que hoy las usa no se puede defender, y además no era
+   una decisión: era el efecto de haber inventado los roles antes de tener la
+   lista.
+
+   Entonces:
+
+     · Si la persona TIENE lista de módulos —las trece cuentas del cliente—,
+       manda la lista. Entra a lo que entra hoy.
+     · Si NO la tiene —las cuentas de puesto: desabolladura, pintura—, manda el
+       permiso del rol, que es como funcionaba antes.
+
+   Lo que el ROL sigue gobernando es lo que se puede HACER adentro: ver los
+   montos de un presupuesto, aprobarlo, cargar un repuesto. Eso su sistema no
+   lo tiene —allá el que entra a una pantalla puede todo lo que la pantalla
+   ofrece— y hay que confirmarlo cargo por cargo antes de la puesta en marcha.
+   Está anotado en la ficha de cada cuenta, en Personal. */
+function entraAlModulo(id) {
+  if (Modelo.modulosDe((Modelo.personaActual() || {}).id)) return Modelo.veModulo(id);
+  const pide = PERMISO_DE_MODULO[id];
+  return !pide || Modelo.puede(pide);
+}
+
 function pintarMenu() {
   const nav = document.getElementById('nav');
-  const visible = (m) => !PERMISO_DE_MODULO[m.id] || Modelo.puede(PERMISO_DE_MODULO[m.id]);
+  const visible = (m) => entraAlModulo(m.id);
 
   // Un grupo que se quedó sin módulos visibles tampoco se dibuja: un rótulo
   // solo, sin nada debajo, se lee como que algo se rompió.
@@ -1061,10 +1089,18 @@ function ir(vista) {
      módulo" (Ctrl+G), un botón que salta de una pantalla a otra. Si el permiso
      solo se revisara al pintar el menú, bastaba con escribir la dirección.
      Se revisa acá, que es por donde pasan todos. */
-  const pide = PERMISO_DE_MODULO[vista];
-  if (pide && !Modelo.puede(pide)) {
-    avisar({ ok: false, motivo: 'El rol ' + (Modelo.rolActual().nombre || '—') + ' no tiene acceso a «' +
-      (TITULOS[vista] || vista) + '». Se administra en Configuración → Roles y permisos.' });
+  /* El motivo distingue las dos formas de quedar afuera, porque se arreglan en
+     lugares distintos: la lista de módulos vive en la ficha de la cuenta, en
+     Personal, y el permiso del rol en Configuración. */
+  if (!entraAlModulo(vista)) {
+    const p = Modelo.personaActual();
+    const conLista = !!Modelo.modulosDe(p && p.id);
+    avisar({ ok: false, motivo: conLista
+      ? 'La cuenta de ' + [p.nombres, p.apellidos].filter(Boolean).join(' ') + ' no tiene «' +
+        (TITULOS[vista] || vista) + '» entre sus módulos. Se cambia en Personal, en la ficha de ' +
+        'la cuenta.'
+      : 'El rol ' + (Modelo.rolActual().nombre || '—') + ' no tiene acceso a «' +
+        (TITULOS[vista] || vista) + '». Se administra en Configuración → Roles y permisos.' });
     if (!MODULOS[ui.vista]) { ui.vista = 'mitrabajo'; render(); }
     return;
   }

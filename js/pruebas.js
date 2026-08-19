@@ -512,9 +512,24 @@ const Pruebas = (function () {
         // Es la que quedaría huérfano el sistema si se pudiera desactivar.
         const conAcceso = db.persona.filter((p) => p.activo && p.tipo === 'trabajador' &&
           (db.rol.find((r) => r.id === (db.persona_rol.find((y) => y.persona_id === p.id) || {}).rol_id) || {}).total);
-        const baja = conAcceso.length === 1
+
+        /* 🔴 LA PRUEBA SE DEJABA DE CORRER SOLA. Decía «NO PROBADO: hay N
+           cuentas con acceso total» y daba la regla por buena. Con las cuentas
+           de verdad del cliente —17-08-2026— pasaron a ser tres, así que la
+           regla que existe para que nadie deje al sistema sin administrador
+           dejó de probarse justo cuando aparecieron más administradores: el
+           momento en que uno se relaja.
+
+           Ahora se construye el escenario: se desactivan todas menos una —con
+           el motor, no tocando la base a mano— y se prueba sobre la última.
+           Después se reactivan, porque una prueba que deja el sistema distinto
+           de como lo encontró rompe las que vienen detrás. */
+        const otras = conAcceso.slice(1);
+        otras.forEach((p) => Modelo.dar_de_baja_persona(p.id));
+        const baja = conAcceso.length
           ? Modelo.dar_de_baja_persona(conAcceso[0].id)
-          : { ok: true, motivo: 'NO PROBADO: hay ' + conAcceso.length + ' cuentas con acceso total' };
+          : { ok: true, motivo: 'NO HAY ninguna cuenta con acceso total' };
+        otras.forEach((p) => Modelo.reactivar_persona(p.id));
 
         push({
           nombre: '🔴 Al administrador no se le puede quitar el acceso',
@@ -1302,6 +1317,64 @@ const Pruebas = (function () {
           detalle: 'Patente ' + (porPatente ? 'sí' : 'NO') + ' · OT ' + (porOT ? 'sí' : 'NO') +
                    ' · OR ' + (porOR ? 'sí' : 'NO') + ' · parte de la patente ' +
                    (porTrozo ? 'sí' : 'NO') + ' · una patente inventada devuelve ' + falso
+        });
+      })();
+
+      /* ── Cada cuenta entra exactamente a lo que dijo el cliente ───────────
+         🔴 Andrés Guzmán —jefe de recepción— entregó el 17-08-2026 la lista de
+         quién usa la web hoy y a qué módulo entra cada uno. Está copiada acá
+         TEXTUAL, y no leída de la semilla: si se leyera de la semilla, esta
+         prueba diría «la semilla es igual a sí misma» y no comprobaría nada.
+
+         Al cruzarla la primera vez, nueve de las trece cuentas veían MENOS de
+         lo que ven hoy —Iván sin Presupuesto, Andrés sin Consolidado, seis
+         personas sin Histórico—, porque los permisos del rol se habían
+         inventado antes de tener la lista. Un sistema nuevo que le quita
+         pantallas al que hoy las usa no se puede llevar a una reunión. */
+      (function () {
+        const ESPERADO = {
+          'gabriel.diaz@dyp.cl':      ['torre', 'historico', 'recepcion', 'taller', 'personal', 'presupuesto', 'documentos', 'bodega', 'consolidado', 'configuracion'],
+          'alejandra.diaz@dyp.cl':    ['torre', 'historico', 'personal', 'presupuesto', 'documentos', 'bodega'],
+          'nancy.carvajal@dyp.cl':    ['torre', 'historico', 'personal', 'presupuesto', 'documentos'],
+          'nicole.hernandez@dyp.cl':  ['torre', 'historico', 'recepcion', 'taller', 'personal', 'presupuesto', 'documentos', 'bodega'],
+          'ivan.villalobos@dyp.cl':   ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'],
+          'esteban.calvo@dyp.cl':     ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'],
+          'sheila.marin@dyp.cl':      ['torre', 'historico', 'personal', 'presupuesto', 'documentos'],
+          'sandra.hernandez@dyp.cl':  ['torre', 'historico', 'presupuesto', 'documentos'],
+          'cristian.vidal@dyp.cl':    ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'],
+          'cristopher.zuniga@dyp.cl': ['torre', 'historico', 'documentos', 'bodega'],
+          'nicolas.zuniga@dyp.cl':    ['torre', 'historico', 'documentos', 'bodega'],
+          'andres.guzman@dyp.cl':     ['torre', 'historico', 'recepcion', 'taller', 'presupuesto', 'consolidado'],
+          'recepcion@dyp.cl':         ['torre', 'historico', 'recepcion', 'taller'],
+          // La cuenta de Arttmize para la puesta en marcha: acceso total.
+          'administrador@dyp.cl':     ['torre', 'historico', 'recepcion', 'taller', 'personal', 'presupuesto', 'documentos', 'bodega', 'consolidado', 'configuracion']
+        };
+
+        const malas = [];
+        Object.keys(ESPERADO).forEach((usuario) => {
+          const p = db.persona.find((x) => x.usuario === usuario);
+          if (!p) { malas.push(usuario + ': la cuenta no existe'); return; }
+          const r = Modelo.iniciar_sesion(p.usuario, p.clave);
+          if (!r.ok) { malas.push(usuario + ': no entra — ' + r.motivo); return; }
+          const ve = Modelo.MODULOS_MENU.filter((m) => entraAlModulo(m.id)).map((m) => m.id);
+          const falta = ESPERADO[usuario].filter((x) => ve.indexOf(x) < 0);
+          const sobra = ve.filter((x) => ESPERADO[usuario].indexOf(x) < 0);
+          if (falta.length || sobra.length) {
+            malas.push(p.nombres + ' ' + (p.apellidos || '') +
+              (falta.length ? ' · le falta ' + falta.join(', ') : '') +
+              (sobra.length ? ' · le sobra ' + sobra.join(', ') : ''));
+          }
+        });
+        Modelo.cerrar_sesion();
+
+        push({
+          nombre: '🔴 Cada cuenta entra exactamente a los módulos que dijo el cliente',
+          intento: 'Entrar con las ' + Object.keys(ESPERADO).length +
+                   ' cuentas y comparar el menú contra la lista que entregó Andrés Guzmán',
+          esperado: 'Ninguna cuenta ve un módulo de más ni le falta uno',
+          paso: !malas.length,
+          detalle: malas.length ? malas.join(' · ')
+            : 'Las ' + Object.keys(ESPERADO).length + ' cuentas calzan al módulo'
         });
       })();
 

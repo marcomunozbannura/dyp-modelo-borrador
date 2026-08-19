@@ -37,7 +37,10 @@ const Semilla = (function () {
   const FUERA_DE_TALLER        = 10;   // reglas §C.6  — y son distintas de las 41
   const SIN_ETAPA              = 53;   // reglas §C.7  — "Pendiente" / "Sin Asignar"
   const TRABAJADORES           = 89;   // medido en el sistema real; la demo siembra 5
-  const EQUIPO_DEMO            = 7;    // seis del taller más el dueño, cada uno con su clave
+  /* 19 desde el 17-08-2026: los seis puestos del taller, el evaluador, y las
+     doce cuentas que entregó Andrés Guzmán —los usuarios de la web de hoy— más
+     la de Arttmize para la puesta en marcha. */
+  const EQUIPO_DEMO            = 19;
   const TOTAL_HISTORICO        = 120;  // ~3 entregas diarias (§C.21)
   const ULTIMA_OT              = 23488;// reglas §C.13 — al 12-08-2026
   // TEMPARIO_HORA ($10.000, reglas §C.15) se eliminó el 13-08-2026 junto con
@@ -584,9 +587,18 @@ const Semilla = (function () {
        desdoblarse en una por persona sin cambiar nada: el motor ya trabaja con
        cuentas individuales, y las etapas y las órdenes cuelgan de la cuenta,
        no del rol. */
+    /* Los diez módulos del menú, en el mismo orden en que se ven. Está acá y no
+       repetido cuenta por cuenta: si mañana entra un módulo nuevo, quien tiene
+       acceso total lo tiene sin que nadie se acuerde de agregarlo a mano. */
+    const MODULOS_TODOS = ['recepcion', 'torre', 'taller', 'presupuesto', 'bodega',
+      'documentos', 'historico', 'personal', 'consolidado', 'configuracion'];
+
     const EQUIPO = [
+      /* La cuenta «Recepcionista» de la lista de Andrés: es el puesto, no una
+         persona, y así la tienen ellos. */
       { nombre: 'Recepción',      rol: 'ro-1', etapas: [],
-        cargo: 'Recepción y entrega' },
+        cargo: 'Recepción y entrega',
+        modulos: ['torre', 'historico', 'recepcion', 'taller'] },
       { nombre: 'Jefe de taller', rol: 'ro-2', etapas: ['et-1', 'et-5', 'et-8', 'et-9'],
         cargo: 'Jefatura de taller', usuario: 'jefe' },
       { nombre: 'Desabolladura',  rol: 'ro-3', etapas: ['et-1', 'et-2', 'et-5'],
@@ -598,14 +610,77 @@ const Semilla = (function () {
       // El administrador también entra con usuario y clave: no hay una puerta
       // trasera sin credenciales, que es como se cuela el "entro yo nomás".
       { nombre: 'Gabriel', apellidos: 'Díaz', rol: 'ro-5', etapas: [],
-        cargo: 'Administrador', usuario: 'gabriel.diaz' },
+        cargo: 'Gerente General', usuario: 'gabriel.diaz', modulos: MODULOS_TODOS },
       /* El evaluador va AL FINAL, y no es un detalle de estilo: los ids de las
          personas se generan por posición (`pe-t-N`), así que meterlo en medio
          corría a todos los de abajo — `pe-t-6` dejaba de ser el administrador y
          media docena de pruebas se caían con "el rol Evaluador no puede hacer
          esto". Lo nuevo se agrega al final. */
       { nombre: 'Evaluador',      rol: 'ro-8', etapas: [],
-        cargo: 'Evaluación y presupuestos' }
+        cargo: 'Evaluación y presupuestos' },
+
+      /* ═══════════════════════════════════════════════════════════════════
+         🔷 LOS USUARIOS DE VERDAD (17-08-2026)
+
+         Andrés Guzmán —jefe de recepción— entregó la lista de quién usa la web
+         hoy y a qué módulo entra cada uno. Está tal cual la mandó.
+
+         Qué es de ELLOS y qué es NUESTRO, para no confundirlo en la
+         demostración:
+
+           · Los MÓDULOS de cada persona son de ellos, textuales. No se inventó
+             ninguno ni se sacó ninguno.
+           · El ROL —lo que se puede HACER dentro de cada módulo— es propuesta
+             NUESTRA. Su sistema no lo tiene: allá el que entra a una pantalla
+             puede todo lo que la pantalla ofrece. Hay que confirmarlo con
+             ellos cargo por cargo.
+           · Nombre y cargo son reales, porque son las cuentas del sistema.
+             RUT, teléfono y dirección son inventados, igual que para todos.
+
+         Los dos operarios —desabolladura y pintura— no están en la lista, y con
+         razón: hoy no usan la web. En este sistema sí tienen pantalla, así que
+         quedan SIN lista de módulos, que es lo mismo que decir "lo que su rol
+         permita". Ver `modulos` en el motor. */
+      { nombre: 'Alejandra', apellidos: 'Díaz', rol: 'ro-5', etapas: [],
+        cargo: 'Gerente de Administración y Finanzas', usuario: 'alejandra.diaz',
+        modulos: ['torre', 'historico', 'personal', 'presupuesto', 'documentos', 'bodega'] },
+      { nombre: 'Nancy', apellidos: 'Carvajal', rol: 'ro-8', etapas: [],
+        cargo: 'Administración', usuario: 'nancy.carvajal',
+        modulos: ['torre', 'historico', 'personal', 'presupuesto', 'documentos'] },
+      { nombre: 'Nicole', apellidos: 'Hernández', rol: 'ro-2', etapas: ['et-1', 'et-5', 'et-8', 'et-9'],
+        cargo: 'Jefatura', usuario: 'nicole.hernandez',
+        modulos: ['torre', 'historico', 'recepcion', 'taller', 'personal', 'presupuesto',
+                  'documentos', 'bodega'] },
+      { nombre: 'Iván', apellidos: 'Villalobos', rol: 'ro-1', etapas: [],
+        cargo: 'Recepción', usuario: 'ivan.villalobos',
+        modulos: ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'] },
+      { nombre: 'Esteban', apellidos: 'Calvo', rol: 'ro-1', etapas: [],
+        cargo: 'Recepción', usuario: 'esteban.calvo',
+        modulos: ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'] },
+      { nombre: 'Sheila', apellidos: 'Marín', rol: 'ro-8', etapas: [],
+        cargo: 'Administración', usuario: 'sheila.marin',
+        modulos: ['torre', 'historico', 'personal', 'presupuesto', 'documentos'] },
+      { nombre: 'Sandra', apellidos: 'Hernández', rol: 'ro-8', etapas: [],
+        cargo: 'Administración', usuario: 'sandra.hernandez',
+        modulos: ['torre', 'historico', 'presupuesto', 'documentos'] },
+      { nombre: 'Cristian', apellidos: 'Vidal', rol: 'ro-1', etapas: [],
+        cargo: 'Recepción', usuario: 'cristian.vidal',
+        modulos: ['torre', 'historico', 'recepcion', 'taller', 'presupuesto'] },
+      { nombre: 'Cristopher', apellidos: 'Zúñiga', rol: 'ro-4', etapas: ['et-6', 'et-8'],
+        cargo: 'Bodega', usuario: 'cristopher.zuniga',
+        modulos: ['torre', 'historico', 'documentos', 'bodega'] },
+      { nombre: 'Nicolás', apellidos: 'Zúñiga', rol: 'ro-4', etapas: ['et-6', 'et-8'],
+        cargo: 'Bodega', usuario: 'nicolas.zuniga',
+        modulos: ['torre', 'historico', 'documentos', 'bodega'] },
+      { nombre: 'Andrés', apellidos: 'Guzmán', rol: 'ro-2', etapas: ['et-1', 'et-5', 'et-8', 'et-9'],
+        cargo: 'Jefe de Recepción', usuario: 'andres.guzman',
+        modulos: ['torre', 'historico', 'recepcion', 'taller', 'presupuesto', 'consolidado'] },
+
+      /* La cuenta de Arttmize, para acompañar la puesta en marcha. Va con
+         acceso total y declarada como lo que es: no es del taller. */
+      { nombre: 'Administrador', apellidos: 'Arttmize', rol: 'ro-5', etapas: [],
+        cargo: 'Arttmize SpA · puesta en marcha', usuario: 'administrador',
+        modulos: MODULOS_TODOS }
     ];
 
     const sinTildes = (t) => String(t).toLowerCase()
@@ -625,6 +700,10 @@ const Semilla = (function () {
         correo: corto + '@dyp.cl',
         telefono: '+56 9 0000 ' + String(1001 + i).slice(-4),
         direccion: 'Dirección de ejemplo ' + (100 + i), comuna: 'Comuna de ejemplo',
+        /* A qué módulos entra. `null` no es "a ninguno": es "los que su rol
+           permita", que es como funcionaba antes de que existiera esta lista.
+           Los dos operarios quedan así a propósito. */
+        modulos: x.modulos ? x.modulos.slice() : null,
         activo: true, demo: true
       });
       x.etapas.forEach((e) => persona_etapa.push({ persona_id: id, etapa_id: e }));

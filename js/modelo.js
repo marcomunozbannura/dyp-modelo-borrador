@@ -2320,6 +2320,12 @@ const Modelo = (function () {
         // ficha de uno mismo: no hace falta y es la manera de que no se filtre
         // por descuido a una pantalla que después alguien exporta.
         usuario: p.usuario || null, claveInicial: !!p.clave_inicial,
+        /* A qué módulos entra, con el nombre con el que se llaman en pantalla.
+           `null` es "los que su rol permita" y no "ninguno": son cosas
+           distintas y la ficha las dice distinto. */
+        modulos: Array.isArray(p.modulos)
+          ? MODULOS_MENU.filter((m) => p.modulos.indexOf(m.id) >= 0).map((m) => m.nombre)
+          : null,
         activo: p.activo, etapas
       };
     }).sort((a, b) => (a.ficha || 0) - (b.ficha || 0));
@@ -2728,6 +2734,55 @@ const Modelo = (function () {
     permisosDe(rol_actual).indexOf(codigo) >= 0;
 
   const personaActual = () => (persona_actual ? db.persona.find((p) => p.id === persona_actual) : null) || null;
+
+  /* ── A QUÉ MÓDULOS ENTRA CADA PERSONA ──────────────────────────────────
+     🔷 17-08-2026. Andrés Guzmán entregó la lista de quién usa la web hoy y a
+     qué módulo entra cada uno, y no es la misma forma en que estaba modelado
+     acá: nosotros teníamos el acceso colgando del ROL, y ellos lo tienen
+     colgando de la PERSONA. Dos personas con el mismo cargo entran a cosas
+     distintas — Nancy y Sandra son las dos de administración y una ve Personal
+     y la otra no.
+
+     Así que conviven las dos cosas, y cada una responde lo suyo:
+
+       · El ROL dice qué se puede HACER: aprobar una OR, ver los montos,
+         cargar un repuesto. Eso su sistema no lo tiene y es nuestro aporte.
+       · La lista de MÓDULOS de la persona dice a qué pantalla se ENTRA. Es de
+         ellos, tal como la mandaron.
+
+     Se aplican las dos: para entrar hace falta que el rol lo permita Y que el
+     módulo esté en la lista. Sin lista —`null`— manda solo el rol, que es como
+     funcionaba antes: los operarios quedaron así.
+
+     Ojo con `total`: un rol total puede TODO, pero igual respeta la lista. No
+     es una contradicción — la garantía del rol total es sobre lo que se puede
+     hacer, no sobre lo que se quiere tener a la vista. Gabriel Díaz tiene los
+     diez módulos escritos, así que ve los diez. */
+  /* Los diez del menú, con el nombre con el que los pidió el cliente. Está acá
+     —en el motor— y no en la vista, porque la lista de cada persona se guarda
+     con estos códigos y quien la edite tiene que ofrecer exactamente éstos. */
+  const MODULOS_MENU = [
+    { id: 'torre',         nombre: 'Torre de Control' },
+    { id: 'historico',     nombre: 'Histórico' },
+    { id: 'recepcion',     nombre: 'Recepción' },
+    { id: 'taller',        nombre: 'Taller' },
+    { id: 'personal',      nombre: 'Personal' },
+    { id: 'presupuesto',   nombre: 'Presupuesto' },
+    { id: 'documentos',    nombre: 'Documentos' },
+    { id: 'bodega',        nombre: 'Bodega' },
+    { id: 'consolidado',   nombre: 'Consolidado' },
+    { id: 'configuracion', nombre: 'Configuración' }
+  ];
+
+  function modulosDe(persona_id) {
+    const p = persona_id ? db.persona.find((x) => x.id === persona_id) : null;
+    return p && Array.isArray(p.modulos) ? p.modulos.slice() : null;
+  }
+
+  const veModulo = (modulo) => {
+    const lista = modulosDe(persona_actual);
+    return !lista || lista.indexOf(modulo) >= 0;
+  };
 
   function fijar_rol_actual(rol_id) {
     if (!db.rol.some((r) => r.id === rol_id)) return { ok: false, motivo: 'Ese rol no existe.' };
@@ -3260,6 +3315,7 @@ const Modelo = (function () {
     etapas, estadosOT, companias, tiposDano, zonasDano, inventarioItems, inventarioEstados, roles,
     motivosDetencion, prerrequisitos, catalogo, CATALOGOS, parametros, permisosDe,
     rolActual, puede, fijar_rol_actual, velar,
+    modulosDe, veModulo, MODULOS_MENU,
     personaActual, fijar_persona_actual, sesionesPosibles,
     iniciar_sesion, cerrar_sesion, retomar_sesion, haySesion, cambiar_clave,
     sesionGuardada, sesionAlDia, CLAVE_SESION,

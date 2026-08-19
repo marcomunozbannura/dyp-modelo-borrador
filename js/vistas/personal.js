@@ -67,7 +67,13 @@ function personalListado() {
   </div>
 
   <div class="grid-envoltorio"><table class="grid">
+    ${/* 🔷 LA COLUMNA DE MÓDULOS (17-08-2026). Andrés Guzmán entregó la lista de
+          a qué entra cada uno, y esa lista tiene que poder revisarse de un
+          vistazo: es lo primero que va a mirar Gabriel para decir «esto está
+          bien» o «a Sandra súbela a Personal». Escondida dentro de la ficha no
+          se revisa, se descubre cuando alguien reclama que no ve una pantalla. */''}
     <thead><tr><th>N° Ficha</th><th>Rut</th><th>Cuenta</th><th>Cargo</th><th>Usuario</th>
+      <th style="min-width:220px">Módulos a los que entra</th>
       <th>Teléfono</th><th>Dirección</th><th>Comuna</th><th>Etapas</th><th></th></tr></thead>
     <tbody>${filas.map((x) =>
       '<tr class="fila"' + (x.activo ? '' : ' style="opacity:.55"') + '>' +
@@ -77,6 +83,12 @@ function personalListado() {
         (x.activo ? '' : ' <span class="et gris">baja</span>') + '</td>' +
       '<td>' + esc(x.cargo || '—') + '</td>' +
       '<td><span class="cod">' + esc(x.usuario || '—') + '</span></td>' +
+      '<td>' + (x.modulos
+        ? (x.modulos.length === Modelo.MODULOS_MENU.length
+            ? '<span class="et verde">Todos los módulos</span>'
+            : esc(x.modulos.join(' · ')))
+        : '<span style="color:var(--gris-2)" title="Es una cuenta de puesto, no de ' +
+          'la lista del cliente: entra a lo que su rol permita">Según su rol</span>') + '</td>' +
       '<td>' + esc(Modelo.velar(x.telefono, 'datos.rut_completo')) + '</td>' +
       '<td>' + esc(Modelo.velar(x.direccion, 'datos.rut_completo', 'todo')) + '</td>' +
       '<td>' + esc(x.comuna || '—') + '</td>' +

@@ -987,18 +987,13 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
 /* ───────── Configuración agrupada ─────────
    Eran doce pestañas en una fila, todas al mismo nivel: lo que se toca una vez
    al año se veía igual de importante que lo de todos los días. */
-.cfg-grupo { border-bottom: 1px solid var(--borde); }
-.cfg-grupo:last-child { border-bottom: none; }
-/* Dejó de ser un botón el 18-08-2026: los grupos ya no se pliegan, así que el
-   encabezado es un rótulo. Sin cursor de mano ni hover, que prometían un clic
-   que no existe. */
-.cfg-grupo-cab {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  color: var(--texto); font-size: 12.5px; text-align: left; padding: 7px 2px;
-}
-.cfg-grupo-cab .nom { font-weight: 700; }
-.cfg-grupo-cab .ayuda { color: var(--gris-2); font-size: 11.5px; }
-.cfg-grupo > .chips { padding: 0 0 9px 2px; }
+/* Las doce pestañas de Configuración. Van en UNA fila, como el 14-08-2026:
+   agruparlas y plegarlas hizo que el panel se viera corto. Envuelven en dos
+   líneas si no caben —a 1280 con la barra desplegada caben justo— y se apoyan
+   en el borde de la caja de abajo, que es lo que las hace leer como hojas de
+   una carpeta y no como botones sueltos. */
+.cfg-tabs { flex-wrap: wrap; border-bottom: 1px solid var(--borde); padding-bottom: 0; }
+.cfg-tabs button { white-space: nowrap; }
 
 /* ───────── La grilla del presupuesto ─────────
    La pantalla de carga se parece al documento que sale: cada monto en la

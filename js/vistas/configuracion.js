@@ -125,30 +125,23 @@ const cfgCheck = (campo, valor, id) =>
 function vConfiguracion() {
   const c = cfg();
 
-  /* 🔷 LAS DOCE HOJAS, TODAS A LA VISTA (18-08-2026, Marco: "la configuración
-     antes tenía distintas hojas para ir pinchando, ahora eso no está tan
-     claro").
+  /* 🔷 DOCE PESTAÑAS EN UNA FILA (18-08-2026, Marco: "la idea era tenerlo
+     separado como antes por etapas, que íbamos pinchando arriba Etapas,
+     Precedencia… y así todo lo configurable").
 
-     Y tenía razón. Los grupos se plegaban y sólo quedaba abierto el de la
-     sección que se estaba mirando, así que de las doce hojas se veían cuatro.
-     La idea era no abrumar —"lo que casi nunca se toca viene plegado"— pero el
-     efecto fue el contrario: el panel que sostiene la promesa de que NINGÚN
-     valor está escrito en el código parecía tener tres cosas configurables.
-     Escondido no se ve robusto: se ve corto.
+     Es como estaba el 14 de agosto, y es a lo que se vuelve. El 15 las agrupé
+     en tres bloques por frecuencia de uso —y los dos últimos plegados— para
+     que la pantalla se viera más simple. Salió al revés: agrupar y esconder
+     hizo que el panel que sostiene la promesa de que NINGÚN valor está escrito
+     en el código pareciera tener tres cosas configurables.
 
-     Ahora se ven las doce, agrupadas por para qué sirven. Los rótulos de grupo
-     son rótulos, no botones: no hay nada que plegar, así que tampoco hay nada
-     que apretar. */
-  const grupos = CONFIG_GRUPOS.map((g) => '<div class="cfg-grupo abierto">' +
-    '<div class="cfg-grupo-cab">' +
-      '<span class="nom">' + esc(g.nombre) + '</span>' +
-      '<span class="et gris">' + g.secciones.length + '</span>' +
-      '<span class="ayuda">' + esc(g.ayuda) + '</span>' +
-    '</div>' +
-    '<div class="chips">' + g.secciones.map((s) =>
-      '<button class="chip' + (c.seccion === s.id ? ' activo' : '') +
-      '" data-cfg-sec="' + s.id + '">' + esc(s.nombre) + '</button>').join('') + '</div>' +
-    '</div>').join('');
+     Doce pestañas al mismo nivel se leen de una: esto es lo que se puede
+     configurar, y es todo. Que las que se tocan una vez al año se vean igual
+     de importantes que las de todos los días resultó ser un problema menor
+     que no verlas. */
+  const pestanas = '<div class="tabs cfg-tabs">' + CONFIG_SECCIONES.map((s) =>
+    '<button class="' + (c.seccion === s.id ? 'activo' : '') +
+    '" data-cfg-sec="' + s.id + '">' + esc(s.nombre) + '</button>').join('') + '</div>';
 
   const cuerpo = {
     etapa: cfgEtapas, precedencia: cfgPrecedencias, estado: cfgEstados,
@@ -162,7 +155,7 @@ function vConfiguracion() {
         Ningún valor de ellas está escrito en el código: se agregan, se editan y se dan
         de baja desde acá, sin programador</div></div>
     </div>
-    <div class="cuerpo" style="padding-bottom:0">${grupos}</div>
+    <div class="cuerpo" style="padding-bottom:0">${pestanas}</div>
     <div class="cuerpo">${cuerpo()}</div>
   </div>`;
 }

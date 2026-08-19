@@ -587,6 +587,10 @@ const Semilla = (function () {
        desdoblarse en una por persona sin cambiar nada: el motor ya trabaja con
        cuentas individuales, y las etapas y las órdenes cuelgan de la cuenta,
        no del rol. */
+    /* La clave con la que entran TODAS las cuentas de la demostración. En un
+       solo lugar: si mañana se cambia, se cambia acá y no cuenta por cuenta. */
+    const CLAVE_DEMO = 'dyp2026';
+
     /* Los diez módulos del menú, en el mismo orden en que se ven. Está acá y no
        repetido cuenta por cuenta: si mañana entra un módulo nuevo, quien tiene
        acceso total lo tiene sin que nadie se acuerde de agregarlo a mano. */
@@ -693,8 +697,16 @@ const Semilla = (function () {
       persona.push({
         id, tipo: 'trabajador', ficha: 1001 + i, rut: rutFalso(i + 1),
         usuario: corto + '@dyp.cl',
-        // Clave inicial, declarada. Se cambia desde la ficha de la cuenta.
-        clave: corto + '2026',
+        /* 🔷 UNA SOLA CLAVE PARA TODOS (17-08-2026, Marco: "de momento todos
+           entren con la contraseña dyp2026"). Antes cada cuenta tenía la suya
+           —`nombre` + 2026— y para probar el sistema con catorce cuentas había
+           que ir a buscar catorce claves distintas.
+
+           🔴 ESTO ES DE LA DEMOSTRACIÓN Y NO PUEDE VIAJAR A LA PUESTA EN
+           MARCHA. Una clave compartida y escrita en el código no es una clave:
+           es un cartel. Queda marcada `clave_inicial`, así que el sistema pide
+           cambiarla al entrar y lo dice en la ficha de cada cuenta. */
+        clave: CLAVE_DEMO,
         clave_inicial: true,
         nombres: x.nombre, apellidos: x.apellidos || '', cargo: x.cargo,
         correo: corto + '@dyp.cl',

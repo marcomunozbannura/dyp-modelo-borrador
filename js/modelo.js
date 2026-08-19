@@ -103,7 +103,7 @@ const Modelo = (function () {
 
   function guardar() {
     try {
-      localStorage.setItem(CLAVE, JSON.stringify({ modificado, db }, aJSON));
+      localStorage.setItem(CLAVE, JSON.stringify({ modificado, sello: Semilla.SELLO, db }, aJSON));
       return true;
     } catch (e) {
       // Cuota llena o file:// sin almacenamiento: el borrador sigue andando
@@ -158,16 +158,49 @@ const Modelo = (function () {
     } catch (e) { return ['(base ilegible)']; }
   }
 
+  /* Si al arrancar hubo que tirar la base guardada, queda anotado para poder
+     DECIRLO en pantalla. Antes esto solo salía por la consola del navegador, y
+     ahí no lo lee nadie: el usuario veía datos viejos —o datos que cambiaron
+     solos— sin ninguna explicación. */
+  let resembradoPorVersion = null;
+
   function iniciar() {
     const g = cargar();
     if (!g) return sembrar();
+
+    /* 🔴 EL SELLO PRIMERO. Es la comprobación que se da cuenta SIEMPRE: una
+       huella de la forma de los datos —cuántas cuentas, con qué usuario, a qué
+       módulos entran, cuántas órdenes—. `baseVieja` sigue después porque sabe
+       explicar QUÉ falta, y eso es lo que se puede escribir en un aviso.
+
+       Sin esto, cada cambio de esquema dependía de que alguien se acordara de
+       agregarle una comprobación a mano a `baseVieja`. Con las catorce cuentas
+       del cliente nadie se acordó, y Marco pasó un día viendo siete. */
+    if (g.sello !== Semilla.SELLO) {
+      resembradoPorVersion = 'Los datos de demostración se actualizaron a la versión nueva ' +
+        'del sistema. Lo que hubiera cargado a mano en este navegador se reemplazó.';
+      console.warn('La base guardada es de otra versión de la semilla (' +
+        (g.sello || 'sin sello') + ' → ' + Semilla.SELLO + '). Se vuelve a sembrar.');
+      return sembrar();
+    }
+
     const faltan = baseVieja(g);
     if (faltan) {
+      resembradoPorVersion = 'Los datos de demostración se volvieron a cargar: los guardados en ' +
+        'este navegador eran de una versión anterior y les faltaba ' + faltan.join(', ') + '.';
       console.warn('La base guardada en este navegador es de una versión anterior ' +
         '(le faltan: ' + faltan.join(', ') + '). Se vuelve a sembrar.');
       return sembrar();
     }
     db = g.db; modificado = !!g.modificado; version++; limpiarMemo(); alinearSeqEvento();
+  }
+
+  /* Lo consulta la pantalla al arrancar, una sola vez: el aviso se muestra y
+     se olvida, para que no reaparezca en cada repintado. */
+  function porQueSeResembro() {
+    const m = resembradoPorVersion;
+    resembradoPorVersion = null;
+    return m;
   }
 
   /* Vuelve a leer lo que hay guardado, descartando la copia en memoria.
@@ -3304,7 +3337,7 @@ const Modelo = (function () {
   /* El orden importa: permiso por fuera —lo rechazado ahí no pasó y no se
      registra—, deshacer en medio, y el registro pegado a la operación. */
   return conPermiso(conDeshacer(conRegistro({
-    iniciar, reiniciar, sembrar, estaModificado, base, sandbox, version: () => version,
+    iniciar, reiniciar, sembrar, estaModificado, porQueSeResembro, base, sandbox, version: () => version,
     recargarDeDisco, CLAVE,
     deshacer, puedeDeshacer, proximoDeshacer,
     // consultas

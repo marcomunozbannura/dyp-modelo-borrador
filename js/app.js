@@ -934,7 +934,7 @@ function ejecutarAccion(accion) {
    POR QUÉ. Nunca deshabilitamos el botón: se aprieta, y si no corresponde se
    explica. */
 
-function avisar(resultado, textoOk) {
+function avisar(resultado, textoOk, opciones) {
   const caja = document.getElementById('avisos') || (function () {
     const c = document.createElement('div');
     c.id = 'avisos'; c.className = 'avisos';
@@ -950,8 +950,12 @@ function avisar(resultado, textoOk) {
   caja.appendChild(a);
   const quitar = () => a.remove();
   a.querySelector('.cerrar').addEventListener('click', quitar);
-  // Los rechazos se quedan más rato: hay que poder leerlos.
-  setTimeout(quitar, resultado.ok ? 3500 : 9000);
+  /* Los rechazos se quedan más rato: hay que poder leerlos. Y `persistente` no
+     se va solo: es para lo que hay que leer sí o sí —por ejemplo, que los datos
+     de demostración se volvieron a cargar—. Con 3,5 segundos, el que estaba
+     mirando otra cosa se lo pierde y después no entiende por qué la pantalla
+     cambió sola. Se cierra con la ×. */
+  if (!(opciones && opciones.persistente)) setTimeout(quitar, resultado.ok ? 3500 : 9000);
   return resultado.ok;
 }
 
@@ -2586,6 +2590,17 @@ const PERMISO_DE_MODULO = {
 montarTema();
 montarBarraMenu();
 montarRol();
+
+/* 🔷 SI LOS DATOS DE DEMOSTRACIÓN SE VOLVIERON A CARGAR, SE DICE (18-08-2026).
+   Antes esto sólo salía por la consola del navegador, y ahí no lo lee nadie:
+   la pantalla cambiaba sola —o peor, no cambiaba— sin ninguna explicación.
+   Marco pasó un día viendo siete cuentas cuando el sistema ya traía
+   diecinueve. El aviso va con retardo porque en este punto todavía no hay
+   dónde pintarlo. */
+setTimeout(() => {
+  const porQue = Modelo.porQueSeResembro();
+  if (porQue) avisar({ ok: true, motivo: '' }, porQue, { persistente: true });
+}, 900);
 
 /* Sin sesión no se ve nada. Se retoma la de antes —un F5 no puede echar a la
    recepcionista con el formulario a medio llenar— y si no hay, se pide entrar. */

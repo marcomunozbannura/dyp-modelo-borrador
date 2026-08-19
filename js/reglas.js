@@ -454,7 +454,10 @@ const Reglas = (function () {
     asunto_bitacora:  [['bitacora', 'asunto_id']],
     responsable_pago: [['repuesto', 'responsable_pago_id']],
     inventario_item:  [['recepcion_inventario', 'item_id']],
-    marca:            [['vehiculo', 'marca_id'], ['modelo', 'marca_id']]
+    marca:            [['vehiculo', 'marca_id'], ['modelo', 'marca_id']],
+    // El modelo faltaba: sin esto su marca de uso salía siempre en «sin uso» y
+    // se podía eliminar un modelo que tiene autos en el taller.
+    modelo:           [['vehiculo', 'modelo_id']]
   };
 
   function usosDeFila(db, tabla, fila) {
@@ -472,6 +475,14 @@ const Reglas = (function () {
     if (!db[tabla]) return no('El catálogo "' + tabla + '" no existe.');
     if (!fila.nombre || !String(fila.nombre).trim())
       return no('El nombre es obligatorio.');
+
+    /* Un modelo cuelga de una marca, siempre. Sin ella no se ofrece en ningún
+       combo de Recepción: queda cargado en la base y no existe para nadie, que
+       es peor que no haberlo creado. La pantalla manda la marca sí o sí —el
+       desplegable siempre trae una elegida—, pero la regla va en el motor, que
+       es por donde también entran las cargas masivas. */
+    if (tabla === 'modelo' && esNuevo && !fila.marca_id)
+      return no('El modelo tiene que colgar de una marca.');
     if (fila.codigo !== undefined) {
       const cod = String(fila.codigo || '').trim();
       if (!cod) return no('El código es obligatorio: es lo que amarra la llave foránea.');

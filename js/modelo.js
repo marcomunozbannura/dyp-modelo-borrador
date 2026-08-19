@@ -2608,7 +2608,18 @@ const Modelo = (function () {
     { tabla: 'color_vehiculo',   nombre: 'Colores de vehículo',    llave: true,  campos: ['nombre', 'codigo', 'orden'] },
     { tabla: 'asunto_bitacora',  nombre: 'Asuntos de bitácora',    llave: true,  campos: ['nombre', 'codigo', 'orden'] },
     { tabla: 'responsable_pago', nombre: 'Responsable de pago',    llave: true,  campos: ['nombre', 'codigo'] },
-    { tabla: 'motivo_detencion', nombre: 'Motivos de detención',   llave: true,  campos: ['nombre', 'codigo'] }
+    { tabla: 'motivo_detencion', nombre: 'Motivos de detención',   llave: true,  campos: ['nombre', 'codigo'] },
+    /* 🔷 MARCAS Y MODELOS (18-08-2026). Los teníamos sembrados y saliendo en
+       los combos de Recepción, pero sin pantalla para editarlos. Al cotejar
+       contra `cloud.webdyp.cl` resultó que ellos SÍ los administran —73 marcas
+       cargadas, con alta, modelos y baja— y es la única pantalla de su
+       Configuración con uso de verdad. Marco: «agregar en nuestro modelo».
+
+       El modelo no lleva `codigo` a propósito: en la base tampoco lo tiene, y
+       `puedeGuardarCatalogo` sólo lo exige cuando el campo viene declarado. Lo
+       que sí lleva es `marca_id`, que es lo que lo amarra a su marca. */
+    { tabla: 'marca',            nombre: 'Marcas de vehículo',     llave: true,  campos: ['nombre', 'codigo'] },
+    { tabla: 'modelo',           nombre: 'Modelos de vehículo',    llave: true,  campos: ['nombre', 'marca_id'] }
   ];
 
   const catalogo = (tabla) => (db[tabla] || []).slice()

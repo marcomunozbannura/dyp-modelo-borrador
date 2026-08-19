@@ -987,6 +987,16 @@ table.grid tr.fila-desplegable.solo-flecha td.flecha-col:hover .flecha { color: 
 /* ───────── Configuración agrupada ─────────
    Eran doce pestañas en una fila, todas al mismo nivel: lo que se toca una vez
    al año se veía igual de importante que lo de todos los días. */
+/* Las piezas pendientes en la fila del Consolidado. Van bajo la etiqueta, en
+   cuerpo chico: la etiqueta responde "¿está esperando algo?" de un vistazo y la
+   lista responde "¿qué?" sin abrir nada — que es como se lee en el sistema
+   actual. El proveedor va más apagado: es dato de apoyo, no el nombre de la
+   pieza. */
+.piezas-pend {
+  margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--gris);
+}
+.piezas-pend .prov { color: var(--gris-2); }
+
 /* Las doce pestañas de Configuración. Van en UNA fila, como el 14-08-2026:
    agruparlas y plegarlas hizo que el panel se viera corto. Envuelven en dos
    líneas si no caben —a 1280 con la barra desplegada caben justo— y se apoyan

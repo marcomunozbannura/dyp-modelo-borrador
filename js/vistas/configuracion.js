@@ -54,6 +54,8 @@ const CONFIG_GRUPOS = [
     ayuda: 'Lo que cambia cuando entra una compañía nueva o se agrega un color',
     secciones: [
       { id: 'compania',         nombre: 'Compañías' },
+      { id: 'marca',            nombre: 'Marcas' },
+      { id: 'modelo',           nombre: 'Modelos' },
       { id: 'prioridad',        nombre: 'Prioridades' },
       { id: 'color_vehiculo',   nombre: 'Colores' },
       { id: 'responsable_pago', nombre: 'Responsable de pago' }
@@ -292,7 +294,10 @@ function cfgGenerico(tabla) {
     return '<tr class="fila" data-cfg-id="' + esc(f.id) + '">' +
       '<td>' + (ed ? cfgInput('nombre', f.nombre) : '<strong>' + esc(f.nombre) + '</strong>' +
         (f.vigente === false ? ' <span class="et gris">de baja</span>' : '')) + '</td>' +
-      '<td><span class="cod">' + (ed ? cfgInput('codigo', f.codigo) : esc(f.codigo)) + '</span></td>' +
+      // El modelo no tiene código en la base: su llave es la marca a la que
+      // cuelga. Sin esto quedaba una columna vacía y todo corrido una celda.
+      (tabla === 'modelo' ? '' :
+        '<td><span class="cod">' + (ed ? cfgInput('codigo', f.codigo) : esc(f.codigo)) + '</span></td>') +
       (extra ? '<td class="num">' + (ed ? cfgInput(extra, f[extra], 'number') : fMonto(f[extra] || 0)) + '</td>' : '') +
       (tabla === 'compania' ? '<td>' + ((f.alias || []).length
         ? (f.alias || []).map((a) => '<span class="et ambar">' + esc(a) + '</span>').join(' ')
@@ -302,6 +307,13 @@ function cfgGenerico(tabla) {
         '<td style="text-align:center">' + cfgCheck('genera_alerta', f.genera_alerta, f.id) + '</td>' : '') +
       (tabla === 'motivo_detencion' ? '<td>' + esc(f.imputable_a || '—') + '</td>' : '') +
       (tabla === 'responsable_pago' ? '<td style="text-align:center">' + cfgCheck('es_taller', f.es_taller, f.id) + '</td>' : '') +
+      /* El modelo cuelga de una marca, y esa es la columna que hay que poder
+         mirar y cambiar: un modelo sin marca no se ofrece en ningún combo de
+         Recepción. Al editar se elige de la lista de marcas, no se escribe:
+         escribirla a mano es como el sistema actual terminó con cuatro
+         grafías de la misma compañía. */
+      (tabla === 'modelo' ? '<td>' + (ed ? cfgSelectMarca(f.marca_id) :
+        esc(cfgNombreMarca(f.marca_id))) + '</td>' : '') +
       '<td class="num">' + cfgBadgeUso(tabla, f) + '</td>' +
       '<td>' + cfgAcciones(tabla, f) + '</td></tr>';
   };
@@ -311,15 +323,44 @@ function cfgGenerico(tabla) {
     (tabla === 'compania' ? '<th title="Cómo estaba escrito en el sistema actual">Se unificó con</th>' : '') +
     (tabla === 'asunto_bitacora' ? '<th>Letra</th><th>Genera alerta</th>' : '') +
     (tabla === 'motivo_detencion' ? '<th>Imputable a</th>' : '') +
-    (tabla === 'responsable_pago' ? '<th>Lo paga el taller</th>' : '');
+    (tabla === 'responsable_pago' ? '<th>Lo paga el taller</th>' : '') +
+    (tabla === 'modelo' ? '<th>Marca</th>' : '');
 
   return `
   <div class="grid-envoltorio"><table class="grid">
-    <thead><tr><th>${esc(meta.nombre)}</th><th>Código</th>${cabExtra}<th>En uso</th><th style="min-width:230px">Acciones</th></tr></thead>
+    <thead><tr><th>${esc(meta.nombre)}</th>${tabla === 'modelo' ? '' : '<th>Código</th>'}${cabExtra}<th>En uso</th><th style="min-width:230px">Acciones</th></tr></thead>
     <tbody>${filas.map(fila).join('')}</tbody>
   </table></div>
-  ${cfgFormNuevo(tabla, 'Agregar', [['nombre', 'Nombre', 'text'], ['codigo', 'Código', 'text']]
-    .concat(extra ? [[extra, 'Valor hora', 'number']] : []))}`;
+  ${tabla === 'modelo'
+    ? cfgFormNuevoModelo()
+    : cfgFormNuevo(tabla, 'Agregar', [['nombre', 'Nombre', 'text'], ['codigo', 'Código', 'text']]
+        .concat(extra ? [[extra, 'Valor hora', 'number']] : []))}`;
+}
+
+/* ── Marcas y modelos ─────────────────────────────────────────────────
+   El modelo es el único catálogo que apunta a otro. Estos tres ayudantes son
+   todo lo que hace falta para eso: el nombre de su marca, el desplegable para
+   elegirla, y su propio formulario de alta —que pide marca y no código—. */
+const cfgNombreMarca = (id) =>
+  (Modelo.catalogo('marca').find((m) => m.id === id) || {}).nombre || '— sin marca —';
+
+const cfgSelectMarca = (id, campo) =>
+  '<select data-cfg-campo="' + esc(campo || 'marca_id') + '">' +
+  Modelo.catalogo('marca').map((m) =>
+    '<option value="' + esc(m.id) + '"' + (m.id === id ? ' selected' : '') + '>' +
+    esc(m.nombre) + '</option>').join('') + '</select>';
+
+function cfgFormNuevoModelo() {
+  return `
+  <div class="rejilla-campos" style="margin-top:11px">
+    <div class="campo"><label>Nombre del modelo</label>
+      <input type="text" data-cfg-nuevo="nombre"></div>
+    <div class="campo"><label>Marca</label>
+      <select data-cfg-nuevo="marca_id">${Modelo.catalogo('marca').map((m) =>
+        '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>').join('')}</select></div>
+    <div class="campo"><label>&nbsp;</label>
+      <button class="btn" data-cfg-crear="modelo">Agregar modelo</button></div>
+  </div>`;
 }
 
 function cfgFormNuevo(tabla, rotulo, campos) {

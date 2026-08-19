@@ -573,7 +573,11 @@ function vConsolidado() {
     <div class="grid-envoltorio"><table class="grid">
       <thead><tr><th>OT</th><th>OR</th><th>Patente</th><th>Siniestro</th><th>Cliente</th><th>Compañia</th>
         <th>Marca</th><th>Modelo</th><th>Fecha de Ingreso</th><th>Tipo</th><th>Días</th><th>Estado</th><th>Etapa</th>
-        <th>Venta</th><th>Rep Pend.</th><th>Rep OK.</th></tr></thead>
+        ${/* Ancho propio desde que la columna trae la lista de piezas: sin esto
+              la tabla la dejaba en 90px, el texto se partía cada dos palabras y
+              cada fila crecía a seis líneas. La tabla ya tiene su barra
+              horizontal, y el ancho igual se puede arrastrar. */''}
+        <th>Venta</th><th style="min-width:250px">Rep Pend.</th><th>Rep OK.</th></tr></thead>
       ${/* Sin el `slice(0, 60)`: el pie de abajo decía «Mostrando 60 de 102»
             mientras el total del pie de tabla sumaba las 102. Dos números
             distintos de la misma cosa en la misma pantalla. */''}
@@ -593,18 +597,33 @@ function vConsolidado() {
           '<td><span class="et ' + esc(o.estadoClase) + '">' + esc(o.estadoNombre) + '</span></td>' +
           '<td>' + esc(o.etapaNombre) + '</td>' +
           '<td class="num"><strong>' + fMonto(z.ventaTotal) + '</strong></td>' +
-          /* 🔶 TEXTO, NO CANTIDAD (16-08-2026, Marco): «debiese quedar el
-             texto de repuesto pendiente, no la cantidad ya que así lo tiene en
-             el sistema actual». Y en esta columna es lo correcto: lo que se
-             decide mirando el consolidado es SI el auto está esperando algo,
-             no cuántas piezas. Un «2» hay que traducirlo cada vez;
-             «Repuesto pendiente» se lee de una.
-             La cantidad no se pierde: va en el globo, y el desplegable de la
-             fila muestra pieza por pieza. */
-          '<td>' + (pendientes.length
+          /* 🔶 TEXTO, NO CANTIDAD (16-08-2026, Marco): «debiese quedar el texto
+             de repuesto pendiente, no la cantidad ya que así lo tiene en el
+             sistema actual». Un «2» hay que traducirlo cada vez.
+
+             🔷 Y LAS PIEZAS, EN LA MISMA FILA (18-08-2026). Al cotejar contra
+             `cloud.webdyp.cl` con la cuenta del gerente resultó que allá esta
+             columna trae la LISTA COMPLETA de repuestos, cada uno con su
+             proveedor entre paréntesis, y se lee sin abrir nada. Nosotros las
+             teníamos un nivel más abajo —en el globo y en el desplegable—, y
+             quien usa el consolidado todos los días las lee de corrido.
+
+             Marco: «déjalo como tienen ellos, pero no borres nuestro valor
+             añadido». Así que van las dos cosas: la etiqueta que se lee de una
+             ARRIBA, y debajo las piezas. El desplegable de la fila sigue
+             intacto, con su estado y sus fechas. */
+          '<td style="max-width:420px">' + (pendientes.length
             ? '<span class="et roja" title="' + pendientes.length +
               (pendientes.length === 1 ? ' pieza sin llegar' : ' piezas sin llegar') +
-              '">Repuesto pendiente</span>'
+              '">Repuesto pendiente</span>' +
+              '<div class="piezas-pend">' + pendientes.map((r) =>
+                esc(r.descripcion) +
+                /* El proveedor entre paréntesis, como allá: es lo que dice de
+                   quién hay que ir a cobrar el atraso. En minúscula porque en
+                   su sistema viene escrito de las cuatro formas. */
+                (r.responsablePago
+                  ? ' <span class="prov">(' + esc(String(r.responsablePago).toLowerCase()) + ')</span>'
+                  : '')).join(', ') + '</div>'
             : '<span style="color:var(--gris-2)">—</span>') + '</td>' +
           '<td class="num">' + llegados.length + '</td></tr>';
       }).join('')}</tbody>

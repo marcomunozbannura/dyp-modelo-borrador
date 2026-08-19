@@ -1378,6 +1378,54 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── Las hojas de Configuración pintan, y sus columnas calzan ─────────
+         🔴 POR QUÉ EXISTE (18-08-2026). Al agregar Marcas y Modelos metí la
+         condición del código en la función equivocada —en `cfgEtapas`, donde
+         la variable `tabla` ni siquiera existe—. Esa hoja habría reventado al
+         abrirla, y nada lo habría notado: las pruebas no entraban a
+         Configuración, y la comprobación de pantallas sólo pinta la sección
+         por omisión. Catorce hojas detrás de un botón cada una es exactamente
+         donde se esconde un error así.
+
+         Se comprueban las dos cosas que fallaron: que cada hoja PINTE, y que
+         sus encabezados y sus celdas sean los mismos —una columna corrida es
+         un dato leyéndose bajo el título de otro, que es peor que un error—. */
+      (function () {
+        const c = cfg();
+        const previa = c.seccion;
+        const malas = [];
+
+        CONFIG_SECCIONES.forEach((sec) => {
+          c.seccion = sec.id;
+          let html;
+          try { html = vConfiguracion(); }
+          catch (e) { malas.push(sec.nombre + ': reventó — ' + e.message); return; }
+
+          // Ojo: `<thead>` también empieza con `<th`, por eso el separador.
+          const ths = (html.match(/<th[ >]/g) || []).length;
+          const prim = html.match(/<tr class="fila[^"]*"[^>]*>([\s\S]*?)<\/tr>/);
+          const tds = prim ? (prim[1].match(/<td/g) || []).length : 0;
+
+          /* Roles y permisos queda fuera de la comparación: su tabla tiene una
+             columna por rol y una fila por permiso, así que encabezados y
+             celdas no tienen por qué coincidir. */
+          if (sec.id !== 'permisos' && tds && ths !== tds) {
+            malas.push(sec.nombre + ': ' + ths + ' encabezados y ' + tds + ' celdas');
+          }
+        });
+
+        c.seccion = previa;
+        push({
+          nombre: '🔴 Las ' + CONFIG_SECCIONES.length + ' hojas de Configuración pintan y sus columnas calzan',
+          intento: 'Pintar una por una las ' + CONFIG_SECCIONES.length +
+                   ' hojas y comparar sus encabezados contra las celdas de la primera fila',
+          esperado: 'Ninguna revienta y ninguna queda corrida',
+          paso: !malas.length,
+          detalle: malas.length ? malas.join(' · ')
+            : 'Las ' + CONFIG_SECCIONES.length + ' pintan; ninguna columna corrida'
+        });
+      })();
+
       restaurarSesion();
       return res;
     });
@@ -1410,7 +1458,11 @@ const Pruebas = (function () {
       ['Caracteres de un VIN',             VIN_LARGO,                     17],
       // El tempario se eliminó el 13-08-2026 y con él su cifra de control.
       // Queda ésta en su lugar: que no haya quedado ni un rastro de la tabla.
-      ['Catálogos configurables',          Modelo.CATALOGOS.length,       9],
+      /* 11 desde el 18-08-2026: entraron Marcas y Modelos. El cotejo contra
+         `cloud.webdyp.cl` mostró que ellos SÍ los administran —73 marcas
+         cargadas— y era la única pantalla de su Configuración con uso real,
+         mientras que acá los teníamos sembrados y sin dónde editarlos. */
+      ['Catálogos configurables',          Modelo.CATALOGOS.length,       11],
       /* 🔴 Ninguna patente repetida. La semilla las repetía —el mismo auto a
          nombre de dos personas— y no lo cachó nadie hasta que el cliente lo vio
          en pantalla. Un dato inventado puede ser cualquier cosa menos

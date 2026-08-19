@@ -38,15 +38,20 @@
    Así que no se elimina ninguno: **lo que sobraba era la pantalla, no las
    tablas**. Eran doce pestañas en una fila, todas al mismo nivel, y las que se
    tocan una vez al año se veían igual de importantes que las de todos los días.
-   Ahora van en tres grupos por frecuencia de uso, y los dos últimos arrancan
-   plegados. Se sigue pudiendo todo; se ve un tercio.
+   Ahora van en tres grupos por frecuencia de uso.
+
+   🔷 PERO NO PLEGADOS (18-08-2026). Los dos últimos grupos arrancaban cerrados
+   —"se sigue pudiendo todo; se ve un tercio"— y eso salió mal: Marco dijo que
+   la Configuración "antes tenía distintas hojas para ir pinchando, ahora eso no
+   está tan claro". El agrupado ayuda; esconder no. Los tres grupos van
+   abiertos: se ven las doce hojas y se entiende de una que el sistema se
+   configura entero desde acá.
 
    Si al mostrárselo él igual quiere sacar alguno, ahí sí se saca — pero
    sabiendo cuál y por qué, no borrando a ciegas lo que pidió poder editar. */
 const CONFIG_GRUPOS = [
   { id: 'diario', nombre: 'Del día a día',
     ayuda: 'Lo que cambia cuando entra una compañía nueva o se agrega un color',
-    abierto: true,
     secciones: [
       { id: 'compania',         nombre: 'Compañías' },
       { id: 'prioridad',        nombre: 'Prioridades' },
@@ -55,7 +60,6 @@ const CONFIG_GRUPOS = [
     ] },
   { id: 'flujo', nombre: 'El flujo del taller',
     ayuda: 'Se define una vez y casi no se vuelve a tocar. Cambiarlo mueve cómo trabaja el taller',
-    abierto: false,
     secciones: [
       { id: 'etapa',            nombre: 'Etapas' },
       { id: 'precedencia',      nombre: 'Precedencias' },
@@ -66,7 +70,6 @@ const CONFIG_GRUPOS = [
     ] },
   { id: 'sistema', nombre: 'Del sistema',
     ayuda: 'Quién puede hacer qué, y los parámetros que gobiernan los cálculos',
-    abierto: false,
     secciones: [
       { id: 'parametro',        nombre: 'Parámetros' },
       { id: 'permisos',         nombre: 'Roles y permisos' }
@@ -78,20 +81,12 @@ const CONFIG_GRUPOS = [
 const CONFIG_SECCIONES = CONFIG_GRUPOS.reduce((t, g) => t.concat(g.secciones), []);
 
 function cfg() {
-  ui.config = ui.config || {
-    seccion: 'compania', editando: null, nuevo: false,
-    // Qué grupos están abiertos. Arranca con el del día a día.
-    grupos: CONFIG_GRUPOS.reduce((m, g) => { m[g.id] = g.abierto; return m; }, {})
-  };
-  // Un borrador guardado de antes puede no traer `grupos`.
-  if (!ui.config.grupos) {
-    ui.config.grupos = CONFIG_GRUPOS.reduce((m, g) => { m[g.id] = g.abierto; return m; }, {});
-  }
+  /* Ya no se guarda qué grupos están abiertos: están abiertos todos, siempre.
+     Se plegaban hasta el 18-08-2026 y eso dejaba a la vista cuatro de las doce
+     hojas. Ver el comentario en `vConfiguracion`. */
+  ui.config = ui.config || { seccion: 'compania', editando: null, nuevo: false };
   return ui.config;
 }
-
-const grupoDeSeccion = (id) =>
-  (CONFIG_GRUPOS.find((g) => g.secciones.some((s) => s.id === id)) || {}).id;
 
 /* Marca de uso: cuántos registros dependen de esta fila. Es lo que convierte
    "eliminar" en "dar de baja" y lo que impide romper el histórico. */
@@ -130,25 +125,30 @@ const cfgCheck = (campo, valor, id) =>
 function vConfiguracion() {
   const c = cfg();
 
-  // El grupo de lo que se está mirando se abre solo: si no, la sección activa
-  // quedaría escondida detrás de un grupo plegado.
-  const activo = grupoDeSeccion(c.seccion);
+  /* 🔷 LAS DOCE HOJAS, TODAS A LA VISTA (18-08-2026, Marco: "la configuración
+     antes tenía distintas hojas para ir pinchando, ahora eso no está tan
+     claro").
 
-  const grupos = CONFIG_GRUPOS.map((g) => {
-    const abierto = c.grupos[g.id] || g.id === activo;
-    const cuantos = g.secciones.length;
-    return '<div class="cfg-grupo' + (abierto ? ' abierto' : '') + '">' +
-      '<button class="cfg-grupo-cab" data-cfg-grupo="' + esc(g.id) + '">' +
-        '<span class="flecha">' + (abierto ? '&#9662;' : '&#9656;') + '</span>' +
-        '<span class="nom">' + esc(g.nombre) + '</span>' +
-        '<span class="et gris">' + cuantos + '</span>' +
-        '<span class="ayuda">' + esc(g.ayuda) + '</span>' +
-      '</button>' +
-      (abierto ? '<div class="chips">' + g.secciones.map((s) =>
-        '<button class="chip' + (c.seccion === s.id ? ' activo' : '') +
-        '" data-cfg-sec="' + s.id + '">' + esc(s.nombre) + '</button>').join('') + '</div>' : '') +
-      '</div>';
-  }).join('');
+     Y tenía razón. Los grupos se plegaban y sólo quedaba abierto el de la
+     sección que se estaba mirando, así que de las doce hojas se veían cuatro.
+     La idea era no abrumar —"lo que casi nunca se toca viene plegado"— pero el
+     efecto fue el contrario: el panel que sostiene la promesa de que NINGÚN
+     valor está escrito en el código parecía tener tres cosas configurables.
+     Escondido no se ve robusto: se ve corto.
+
+     Ahora se ven las doce, agrupadas por para qué sirven. Los rótulos de grupo
+     son rótulos, no botones: no hay nada que plegar, así que tampoco hay nada
+     que apretar. */
+  const grupos = CONFIG_GRUPOS.map((g) => '<div class="cfg-grupo abierto">' +
+    '<div class="cfg-grupo-cab">' +
+      '<span class="nom">' + esc(g.nombre) + '</span>' +
+      '<span class="et gris">' + g.secciones.length + '</span>' +
+      '<span class="ayuda">' + esc(g.ayuda) + '</span>' +
+    '</div>' +
+    '<div class="chips">' + g.secciones.map((s) =>
+      '<button class="chip' + (c.seccion === s.id ? ' activo' : '') +
+      '" data-cfg-sec="' + s.id + '">' + esc(s.nombre) + '</button>').join('') + '</div>' +
+    '</div>').join('');
 
   const cuerpo = {
     etapa: cfgEtapas, precedencia: cfgPrecedencias, estado: cfgEstados,
@@ -158,8 +158,9 @@ function vConfiguracion() {
   return `
   <div class="panel">
     <div class="cab"><div><h2>${ico('config', 'g')}Catálogos del sistema</h2>
-      <div class="desc">Ningún valor de estas tablas está escrito en el código.
-        Lo que casi nunca se toca viene plegado</div></div>
+      <div class="desc">Las ${CONFIG_SECCIONES.length} tablas que gobiernan el sistema.
+        Ningún valor de ellas está escrito en el código: se agregan, se editan y se dan
+        de baja desde acá, sin programador</div></div>
     </div>
     <div class="cuerpo" style="padding-bottom:0">${grupos}</div>
     <div class="cuerpo">${cuerpo()}</div>
@@ -429,12 +430,6 @@ function cfgPermisos() {
 
 function pConfiguracion() {
   const c = cfg();
-
-  document.querySelectorAll('[data-cfg-grupo]').forEach((b) => b.addEventListener('click', () => {
-    const g = b.dataset.cfgGrupo;
-    c.grupos[g] = !c.grupos[g];
-    render();
-  }));
 
   document.querySelectorAll('[data-cfg-sec]').forEach((b) => b.addEventListener('click', () => {
     c.seccion = b.dataset.cfgSec; c.editando = null; render();

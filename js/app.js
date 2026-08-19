@@ -1101,7 +1101,12 @@ function ir(vista) {
         'la cuenta.'
       : 'El rol ' + (Modelo.rolActual().nombre || '—') + ' no tiene acceso a «' +
         (TITULOS[vista] || vista) + '». Se administra en Configuración → Roles y permisos.' });
-    if (!MODULOS[ui.vista]) { ui.vista = 'mitrabajo'; render(); }
+    /* Se repinta SIEMPRE, no sólo cuando hay que caer a otra pantalla. Un
+       rebote que no repinta deja el marco como estaba antes, y así la barra de
+       estado se quedó diciendo «Dueño» con Andrés Guzmán ya adentro: la
+       navegación falló, nadie volvió a dibujar, y lo viejo quedó a la vista. */
+    if (!MODULOS[ui.vista]) ui.vista = 'mitrabajo';
+    render();
     return;
   }
 

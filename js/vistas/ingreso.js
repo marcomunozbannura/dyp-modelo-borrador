@@ -200,7 +200,28 @@ function pantallaIngreso(motivo) {
 function arrancarSesion(r) {
   pintarMenu();
   montarRol();
-  ir('mitrabajo');
+
+  /* 🔴 A DÓNDE ENTRA CADA CUENTA (17-08-2026). Acá decía `ir('mitrabajo')` a
+     secas, y con las cuentas del cliente eso quedó roto: «Mi trabajo» no está
+     en la lista de módulos de ninguna de las catorce, así que la navegación
+     rebotaba y pasaban tres cosas a la vez —las tres se ven al entrar como
+     Andrés Guzmán—:
+
+       · la persona quedaba en la pantalla que hubiera pintada de antes, no en
+         la suya;
+       · le salía un aviso diciéndole que no tiene un módulo que nunca pidió;
+       · y como el rebote no repinta, la barra de estado se quedaba con lo de
+         antes de entrar: abajo decía «Dueño» mientras arriba decía «Andrés
+         Guzmán · Jefe de Recepción».
+
+     Ahora entra a SU primer módulo, en el orden en que los ve en el menú. Las
+     cuentas sin lista —los operarios, que no usan la web hoy— siguen entrando
+     a «Mi trabajo», que es su pantalla. */
+  const lista = Modelo.modulosDe((Modelo.personaActual() || {}).id);
+  const primero = lista
+    ? (MENU.find((m) => m.id && entraAlModulo(m.id)) || {}).id
+    : 'mitrabajo';
+  ir(primero || 'mitrabajo');
   const p = Modelo.personaActual();
   avisar({ ok: true, motivo: '' }, 'Entraste como ' +
     (p.cargo || Modelo.rolActual().nombre) + '.');

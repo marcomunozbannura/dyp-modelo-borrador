@@ -207,61 +207,13 @@ function svgSerie(datos, op) {
 
   const cortes = [];
   for (let v = 0; v <= esc0.tope + 0.0001; v += esc0.paso) cortes.push(v);
-  // El color de la línea sigue a la meta: donde el mes se pasa, el morado vira
-  // a vino. Un stop por punto, y dos stops pegados en el cruce para que el
-  // cambio se vea como un corte y no como un degradado sucio.
-  const sobre = (v) => !!(o.meta && v > o.meta);
-  const clsDe = (v) => sobre(v) ? 'sobre' : 'bajo';
-  const off = (i) => n === 1 ? 0 : (i / (n - 1)) * 100;
-  const stopsLinea = (() => {
-    if (!o.meta) return '<stop offset="0%" class="ini"/><stop offset="100%" class="fin"/>';
-    let s = '';
-    for (let i = 0; i < n; i++) {
-      if (i > 0 && sobre(datos[i - 1].v) !== sobre(datos[i].v)) {
-        // Cruce entre dos puntos: interpolo dónde la recta corta la meta y
-        // pongo el corte de color justo ahí.
-        const a = datos[i - 1].v, b = datos[i].v;
-        const t = (o.meta - a) / (b - a);
-        const oc = (off(i - 1) + (off(i) - off(i - 1)) * t).toFixed(2);
-        s += '<stop offset="' + oc + '%" class="' + clsDe(a) + '"/>' +
-             '<stop offset="' + oc + '%" class="' + clsDe(b) + '"/>';
-      }
-      s += '<stop offset="' + off(i).toFixed(2) + '%" class="' + clsDe(datos[i].v) + '"/>';
-    }
-    return s;
-  })();
-
-  /* ── EL RELLENO TAMBIÉN CAMBIA EN LA META ─────────────────────────────
-     Pedido de Marco el 21-08-2026: *"el fondo del gráfico, si pasa los 15
-     días, que quede rojito, no tan agresivo"*. La línea ya viraba a vino; lo
-     que faltaba era el área.
-
-     ⚠️ El degradado va en `userSpaceOnUse` y NO en el sistema por omisión.
-     Con el de omisión —`objectBoundingBox`— los porcentajes se miden sobre la
-     caja del PATH, que es sólo el área pintada y cambia de alto con los datos:
-     el corte de color quedaría en una altura distinta en cada gráfico y nunca
-     sobre la meta. En coordenadas del SVG, la fracción se calcula una vez
-     contra la misma escala del eje y cae exactamente en la línea.
-
-     Dos stops pegados en la misma fracción hacen el corte limpio; con uno solo
-     el vino se desvanecería sobre el morado y se vería como una mancha. */
-  const fMeta = o.meta
-    ? Math.min(0.999, Math.max(0.001, (y(o.meta) - techo) / (base - techo)))
-    : 0;
-  const gradArea = o.meta
-    ? ' gradientUnits="userSpaceOnUse" x1="0" y1="' + techo + '" x2="0" y2="' + base + '">' +
-      '<stop offset="0" class="areaAlta"/>' +
-      '<stop offset="' + fMeta.toFixed(4) + '" class="areaAltaFin"/>' +
-      '<stop offset="' + fMeta.toFixed(4) + '" class="areaTope"/>' +
-      '<stop offset="1" class="fondo"/>'
-    : ' x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" class="tope"/><stop offset="100%" class="fondo"/>';
 
   return '<svg class="graf serie" viewBox="0 0 ' + W + ' ' + H + '">' +
     '<defs>' +
-      '<linearGradient id="' + idA + '"' + gradArea + '</linearGradient>' +
+      '<linearGradient id="' + idA + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" class="tope"/><stop offset="100%" class="fondo"/></linearGradient>' +
       '<linearGradient id="' + idL + '" x1="0" y1="0" x2="1" y2="0">' +
-        stopsLinea + '</linearGradient>' +
+        '<stop offset="0%" class="ini"/><stop offset="100%" class="fin"/></linearGradient>' +
       '<clipPath id="' + idC + '"><rect x="' + IZQ + '" y="' + (techo - 6) +
         '" width="' + (W - DER - IZQ) + '" height="' + (base - techo + 6) + '"/></clipPath>' +
     '</defs>' +
@@ -920,8 +872,7 @@ function vReporteria() {
   <div class="panel destacado" style="margin-top:11px">
     <div class="cab"><div><h2>Días de reparación por mes</h2>
       <div class="desc">La otra vista que el sistema actual no puede tener: al entregar pierde el
-        contador. La franja verde de abajo es cumplir; todo lo que queda sobre la línea de la meta
-        va en vino</div></div></div>
+        contador. La zona verde es cumplir; el punto rojo, un mes que se pasó de la meta</div></div></div>
     <div class="cuerpo">${meses.length
       ? svgSerie(diasMes, { meta, metaRot: 'días', fmt: (v) => Math.round(v) + ' d' }) +
         repFormulas([

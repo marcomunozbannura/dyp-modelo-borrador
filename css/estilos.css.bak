@@ -45,7 +45,6 @@
   --verde: #35c98b; --verde-bg: rgba(53, 201, 139, .12); --verde-borde: rgba(53, 201, 139, .30); --verde-texto: #6fe0b0;
   --ambar: #e5a13a; --ambar-bg: rgba(229, 161, 58, .12); --ambar-borde: rgba(229, 161, 58, .30); --ambar-texto: #f0c377;
   --rojo:  #ef6b6b; --rojo-bg:  rgba(239, 107, 107, .12); --rojo-borde:  rgba(239, 107, 107, .30); --rojo-texto:  #f8a3a3;
-  --alta: #d4738f; --alta-bg: rgba(212, 115, 143, .12);   /* sobre la meta: vino suave, no rojo de alarma */
   --violeta: #a08bf5; --violeta-bg: rgba(160, 139, 245, .12); --violeta-borde: rgba(160, 139, 245, .30); --violeta-texto: #c3b4fa;
   --neutro-bg: rgba(151, 164, 179, .10); --neutro-borde: #303945;
 
@@ -91,7 +90,6 @@
   --verde: #157f4a; --verde-bg: #e9f8f0; --verde-borde: #b3e3cb; --verde-texto: #106b3e;
   --ambar: #b26a00; --ambar-bg: #fdf3e3; --ambar-borde: #f0d5a8; --ambar-texto: #8a5200;
   --rojo:  #c4362f; --rojo-bg:  #fdeceb; --rojo-borde:  #f3c2bf; --rojo-texto:  #a42a24;
-  --alta: #a84363; --alta-bg: rgba(168, 67, 99, .10);     /* sobre la meta: vino suave, no rojo de alarma */
   --violeta: #6b46c8; --violeta-bg: #f1ecfd; --violeta-borde: #d6c9f6; --violeta-texto: #573aa5;
   --neutro-bg: #eef1f5; --neutro-borde: #d3dae3;
 
@@ -828,22 +826,11 @@ svg.graf.serie linearGradient stop.tope  { stop-color: var(--acento); stop-opaci
 svg.graf.serie linearGradient stop.fondo { stop-color: var(--acento); stop-opacity: .02; }
 svg.graf.serie linearGradient stop.ini   { stop-color: var(--acento); }
 svg.graf.serie linearGradient stop.fin   { stop-color: var(--violeta); }
-/* Tramo sobre la meta: el morado vira a vino. No es el rojo de alarma: es el
-   mismo morado corrido hacia el rojo, para que el mes malo se lea sin gritar. */
-svg.graf.serie linearGradient stop.bajo  { stop-color: var(--violeta); }
-svg.graf.serie linearGradient stop.sobre { stop-color: var(--alta); }
-/* El relleno del área, partido en la meta. De arriba hacia abajo: vino sobre
-   la meta —fuerte en el techo, casi apagado al llegar a la línea— y morado
-   debajo, desvaneciéndose hacia el eje. Las opacidades son bajas a propósito:
-   el área es fondo, la que tiene que leerse es la curva. */
-svg.graf.serie linearGradient stop.areaAlta    { stop-color: var(--alta);   stop-opacity: .34; }
-svg.graf.serie linearGradient stop.areaAltaFin { stop-color: var(--alta);   stop-opacity: .10; }
-svg.graf.serie linearGradient stop.areaTope    { stop-color: var(--acento); stop-opacity: .14; }
 svg.graf .graf-linea { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 svg.graf .graf-punto { fill: var(--superficie); stroke: var(--acento); stroke-width: 2.4; }
-svg.graf .graf-punto.alerta { stroke: var(--alta); }
+svg.graf .graf-punto.alerta { stroke: var(--rojo); }
 svg.graf .graf-punto:hover { fill: var(--acento); }
-svg.graf .graf-punto.alerta:hover { fill: var(--alta); }
+svg.graf .graf-punto.alerta:hover { fill: var(--rojo); }
 
 /* ── El anillo ── */
 .anillo-caja { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }

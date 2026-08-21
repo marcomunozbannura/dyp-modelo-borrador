@@ -43,6 +43,31 @@ const Semilla = (function () {
   const EQUIPO_DEMO            = 19;
   const TOTAL_HISTORICO        = 120;  // ~3 entregas diarias (§C.21)
   const ULTIMA_OT              = 23488;// reglas §C.13 — al 12-08-2026
+
+  /* ── Cuánto pesa cada etapa dentro de una reparación ───────────────────
+     🔶 HASTA EL 19-08-2026 TODAS DURABAN DOS DÍAS EXACTOS. La fecha de cierre
+     era `ingreso + orden × 2`, idéntica para las 120 órdenes del histórico.
+     Alcanzaba para tener una fecha, pero al armar el gráfico de «dónde se van
+     los días» salieron siete barras iguales — un gráfico que se ve inventado,
+     porque lo era.
+
+     Estos pesos reparten la ventana real de cada orden. No son una medición
+     del taller: son la proporción con la que se reparte, y por eso van con
+     nombre propio acá y no escondidos en una fórmula. El día que lleguen los
+     tiempos reales de DyP, se reemplazan estos ocho números y nada más.
+
+     ⚠️ Es dato de DEMOSTRACIÓN, rotulado como tal en el panel. */
+  const PESO_ETAPA = {
+    desarme: 1, desabolladura: 2.6, preparacion: 1.4, pintura: 2.2,
+    armado: 1.5, mecanica: 1, terminacion: 0.9, calidad: 0.5
+  };
+
+  /* La versión de la FORMA de los datos. Entra al sello: cualquier cambio en
+     cómo se siembra —no en cuántas filas hay— se anota subiendo este número, y
+     los navegadores que tengan la base anterior vuelven a sembrar solos. Sin
+     esto, el reparto nuevo de las etapas no habría llegado a nadie que ya
+     tuviera el sistema abierto, que es exactamente el problema del 18-08. */
+  const FORMA_DATOS = 2;
   // TEMPARIO_HORA ($10.000, reglas §C.15) se eliminó el 13-08-2026 junto con
   // el tempario entero. La cifra queda medida en `reglas`, no en el sistema.
 
@@ -406,6 +431,48 @@ const Semilla = (function () {
       'FORD', 'PEUGEOT', 'RENAULT', 'MITSUBISHI', 'VOLKSWAGEN', 'HONDA', 'SUBARU',
       'CHERY', 'MG', 'GREAT WALL', 'JAC', 'CITROEN', 'FIAT'];
     const marca = MARCAS.map((n, i) => ({ id: 'ma-' + (i + 1), codigo: String(i), nombre: n, vigente: true }));
+
+    /* ── 🔶 EL PARQUE NO ES PAREJO ─────────────────────────────────────────
+       Hasta el 19-08-2026 la marca del vehículo salía de `marca[idx % 20]`:
+       veinte marcas repartidas en redondo, así que las 222 órdenes daban
+       exactamente once o doce autos por marca. En la Reportería eso se veía
+       como un ranking de «Modelos más siniestrados» donde los diez primeros
+       marcaban SEIS órdenes cada uno, con las diez barras del mismo largo.
+
+       Un ranking donde todos empatan no es un ranking: es un adorno. Y a la
+       vista se nota que el dato es inventado, que es justo lo que no puede
+       pasar en la pantalla que se le muestra al dueño.
+
+       Estos pesos son un reparto de mercado plausible —las japonesas y
+       coreanas de volumen arriba, las europeas y chinas abajo—, NO una
+       medición del parque chileno ni de la cartera de DyP. Es dato de
+       demostración y así está rotulado en el panel. */
+    const PESO_MARCA = { CHEVROLET: 9, HYUNDAI: 9, KIA: 8, NISSAN: 8, SUZUKI: 7, TOYOTA: 7,
+      MAZDA: 6, FORD: 5, PEUGEOT: 4, RENAULT: 4, MITSUBISHI: 3, VOLKSWAGEN: 3,
+      HONDA: 2, SUBARU: 2, CHERY: 2, MG: 2, 'GREAT WALL': 1, JAC: 1, CITROEN: 1, FIAT: 1 };
+    /* La bolsa: cada marca entra tantas veces como pesa, y se recorre en
+       redondo. Sale de una tabla y no de un sorteo para que la base sembrada
+       sea idéntica en todos los computadores — que es lo que deja comparar una
+       captura de pantalla contra otra. */
+    const bolsaCruda = [];
+    marca.forEach((m, i) => {
+      for (let k = 0; k < (PESO_MARCA[m.nombre] || 1); k++) bolsaCruda.push(i);
+    });
+    /* Se entrelaza por POSICIÓN, no por valor: ordenar por una función del
+       valor deja juntas todas las copias de la misma marca, que es lo que
+       había que evitar. Ocho Chevrolet seguidos en la torre se leen como un
+       error de carga, no como el parque de un taller. `(i × 41) mod 85` es una
+       permutación —41 y 85 no comparten divisores—, así que no se pierde ni se
+       repite ninguna. */
+    const BOLSA_MARCA = bolsaCruda
+      .map((v, i) => ({ v, orden: (i * 41) % bolsaCruda.length }))
+      .sort((a, b) => a.orden - b.orden)
+      .map((x) => x.v);
+
+    /* Dentro de cada marca tampoco es parejo: el modelo de entrada se vende
+       más que el tope de gama. Cuatro de cada diez autos son el primer modelo,
+       tres el segundo, dos el tercero y uno el cuarto. */
+    const PATRON_MODELO = [0, 1, 0, 2, 0, 1, 3, 0, 1, 2];
 
     const MODELOS = {
       CHEVROLET: ['Sail', 'Onix', 'Spark', 'Tracker'], HYUNDAI: ['Accent', 'Tucson', 'Creta', 'Grand i10'],
@@ -878,9 +945,24 @@ const Semilla = (function () {
        ningún listado ordenaba igual. */
     function nuevoCliente(i) {
       const id = 'pe-c-' + i;
+      /* 🔴 EL GENERADOR DE NOMBRES REPETÍA. `(i × 3) mod 24` sólo recorre ocho
+         de los veinticuatro nombres —3 y 24 comparten divisores—, así que la
+         pareja nombre+apellido volvía a salir cada 24 clientes: con 222
+         órdenes había NUEVE personas distintas llamadas igual.
+
+         En pantalla eso se veía en la Reportería: «Clientes con más vehículos»
+         mostraba diez clientes con cinco órdenes cada uno, las diez barras del
+         mismo largo. No era el ranking: eran homónimos sumados.
+
+         Ahora el segundo apellido lleva la tanda, así que dos clientes sólo
+         podrían llamarse igual pasando los 576 — bastante más allá de lo que
+         siembra la demostración. */
+      const n1 = (i * 5) % NOM.length;
+      const a1 = (i * 7) % APE.length;
+      const a2 = (i * 7 + 1 + Math.floor(i / APE.length)) % APE.length;
       persona.push({
         id, tipo: 'cliente', ficha: null, rut: rutFalso(2000 + i),
-        nombres: NOM[(i * 3) % NOM.length] + ' ' + APE[(i * 7) % APE.length],
+        nombres: NOM[n1] + ' ' + APE[a1] + ' ' + APE[a2],
         correo: 'cliente' + i + '@ejemplo.cl', telefono: '+56 9 1111 ' + String(1000 + i).slice(-4),
         direccion: 'Dirección de ejemplo ' + (200 + i), comuna: 'Comuna de ejemplo',
         activo: true, demo: true
@@ -888,19 +970,47 @@ const Semilla = (function () {
       return id;
     }
 
+    /* ── Las cuentas de flota ──────────────────────────────────────────────
+       Un taller no atiende a 222 personas distintas y cada una una sola vez:
+       hay arriendos, empresas y taxis que traen varios autos al año, y ésos
+       son justamente los clientes que importan en un ranking y en una
+       negociación de tarifa. Sin ellos la lista de «clientes con más
+       vehículos» es una lista de gente con un auto.
+
+       Nombres inventados y rotulados «de ejemplo», igual que el resto de la
+       demostración: acá no entra ningún dato de un cliente real de DyP. */
+    const FLOTA = ['Rent a Car de ejemplo SpA', 'Transportes de ejemplo Ltda',
+      'Flota Corporativa de ejemplo', 'Arriendos del Valle de ejemplo SpA',
+      'Servicios Generales de ejemplo Ltda', 'Logística de ejemplo SpA']
+      .map((nombre, k) => {
+        const id = 'pe-c-flota-' + (k + 1);
+        persona.push({
+          id, tipo: 'cliente', ficha: null, rut: rutFalso(7700 + k), nombres: nombre,
+          correo: 'flota' + (k + 1) + '@ejemplo.cl',
+          telefono: '+56 2 2222 ' + String(1000 + k).slice(-4),
+          direccion: 'Dirección de ejemplo ' + (700 + k), comuna: 'Comuna de ejemplo',
+          activo: true, demo: true
+        });
+        return id;
+      });
+    // El reparto entre las seis no es parejo: la primera se lleva cinco de
+    // cada catorce y la última una. Así se ven estas carteras.
+    const REPARTO_FLOTA = [0, 0, 0, 1, 1, 2, 3, 0, 1, 4, 2, 5, 0, 1];
+
     /* Crea una orden completa: vehículo, recepción, OT, estadías, etapas,
        presupuesto, repuestos, bitácora y eventos. */
     function crearOrden(idx, { viva, etapaActual, tipo, comp, fuera, conRepPend }) {
       const numero_ot = nOT++;
       const ot_id = 'ot-' + numero_ot;
       const pat = PATENTES[idx % PATENTES.length];
-      const ma = marca[idx % marca.length];
+      const ma = marca[BOLSA_MARCA[idx % BOLSA_MARCA.length]];
       const mos = modelo.filter((m) => m.marca_id === ma.id);
 
       const veh_id = 'veh-' + numero_ot;
       vehiculo.push({
         id: veh_id, patente: pat, marca_id: ma.id,
-        modelo_id: mos.length ? mos[idx % mos.length].id : null,
+        modelo_id: mos.length
+          ? mos[PATRON_MODELO[idx % PATRON_MODELO.length] % mos.length].id : null,
         anio: 2015 + (idx % 11), color_id: color_vehiculo[idx % color_vehiculo.length].id,
         /* 17 caracteres, que es lo que exige la norma y lo que exige el propio
            formulario de ingreso. Decía `VIN-DEMO-23278` —catorce— y el sistema
@@ -909,7 +1019,11 @@ const Semilla = (function () {
         vin: ('VDYPDEM' + numero_ot).padEnd(17, '0')
       });
 
-      const cli_id = nuevoCliente(idx);
+      // Una de cada seis órdenes es de una flota; el resto, de un particular
+      // distinto cada vez.
+      const cli_id = idx % 6 === 3
+        ? FLOTA[REPARTO_FLOTA[Math.floor(idx / 6) % REPARTO_FLOTA.length]]
+        : nuevoCliente(idx);
       /* Distribución sesgada: la mayoría de las órdenes vivas son recientes y
          hay una cola de casos antiguos. En el sistema real la columna `Días`
          va de 1 a 82 con promedio 18 — pero ese contador está roto y se
@@ -956,7 +1070,13 @@ const Semilla = (function () {
                               : (fuera ? 'fuera_taller' : 'recibido');
       // Con hora, igual que el ingreso: un taller entrega varios autos el mismo
       // día y el orden importa cuando hay un reclamo.
-      const fecha_entrega_real = viva ? null : diasHora(entre(1, diasIngreso - 1));
+      /* El día de la entrega se guarda también como NÚMERO —cuántos días
+         atrás—, porque lo necesita el reparto de las etapas más abajo: sin él
+         habría que deducirlo de la fecha y las dos cuentas podrían separarse.
+         El sorteo es el mismo de siempre y en el mismo orden: la base sembrada
+         no cambia en nada más que en las fechas de las etapas. */
+      const diasEntrega = viva ? null : entre(1, diasIngreso - 1);
+      const fecha_entrega_real = viva ? null : diasHora(diasEntrega);
 
       /* El deducible de la póliza. Se calcula ANTES de la orden porque el
          presupuesto lo resta del neto, y así los dos leen el mismo número. */
@@ -989,9 +1109,33 @@ const Semilla = (function () {
          Una de cada cinco órdenes vivas ya salió y volvió: eso es lo que en
          el sistema actual borraba el reloj y acá queda como dos filas con
          fecha. Con esto los tres relojes dan números distintos y se puede
-         mostrar la diferencia en pantalla. */
+         mostrar la diferencia en pantalla.
+
+         🔶 Y UNA DE CADA CUATRO ENTREGADAS TAMBIÉN (19-08-2026). Faltaban, y
+         se notó al armar la Reportería: como el histórico no tenía NI UNA
+         orden que se hubiera ido y vuelto, «días totales» y «días de
+         reparación» daban exactamente el mismo número, y el gráfico de los
+         tres relojes salía plano — la corrección central del sistema, la que
+         justifica el proyecto, quedaba invisible justo en el panel que se le
+         muestra al dueño. */
+      const volvioYSeEntrego = !viva && idx % 4 === 1 && (diasIngreso - diasEntrega) >= 14;
       const salioYVolvio = viva && !fuera && idx % 5 === 0 && diasIngreso > 30;
-      if (salioYVolvio) {
+      if (volvioYSeEntrego) {
+        /* Entró, se hizo el desarme, se lo llevó el cliente mientras llegaban
+           las piezas, volvió y se entregó. En el sistema actual esta orden
+           aparece con el contador partiendo desde que volvió: el mes que el
+           auto estuvo afuera desaparece de la estadística y el taller queda
+           mejor de lo que es. Acá quedan las dos estadías con fecha. */
+        const span = diasIngreso - diasEntrega;
+        const afuera = Math.max(3, Math.round(span * (0.20 + (idx % 5) * 0.05)));
+        const dentro1 = Math.max(2, Math.round((span - afuera) * 0.45));
+        const salida1 = diasIngreso - dentro1;
+        const regreso = salida1 - afuera;
+        ot_estadia.push({ id: 'est-' + numero_ot + '-1', ot_id, entro_at: fecha_ingreso,
+          salio_at: diasHora(salida1), motivo_salida: 'espera_repuesto' });
+        ot_estadia.push({ id: 'est-' + numero_ot + '-2', ot_id,
+          entro_at: diasHora(regreso), salio_at: fecha_entrega_real, motivo_salida: null });
+      } else if (salioYVolvio) {
         // Inspección corta, se lo lleva el cliente mientras llegan las piezas,
         // y vuelve. Totales grandes con reparación chica: es EXACTAMENTE el
         // caso que el contador del sistema actual no sabe contar.
@@ -1020,11 +1164,82 @@ const Semilla = (function () {
          el sistema actual tiene de verdad. Sin esto la nómina sale vacía. */
       if (etapaActual) {
         const hasta = etapa.find((e) => e.id === etapaActual).orden;
-        etapa.filter((e) => e.orden <= hasta && e.aplica_siempre).forEach((e) => {
+        const suyas = etapa.filter((e) => e.orden <= hasta && e.aplica_siempre);
+        const cerradas = suyas.filter((e) => e.orden < hasta);
+
+        /* ── EL REPARTO DE LA VENTANA ────────────────────────────────────
+           Las etapas ya no cierran cada dos días: se reparten el tiempo que
+           el vehículo estuvo de verdad, pesadas por `PESO_ETAPA`.
+
+           Todo se cuenta en «días atrás», que es como se guardan las fechas
+           acá: número más grande = más antiguo. La ventana va desde el día
+           siguiente al ingreso —cuando se asignan— hasta un día antes de la
+           salida. En una orden viva termina donde empieza la etapa que está
+           abierta ahora, que lleva entre uno y cinco días corriendo.
+
+           La variación sale del índice de la orden, NO de un sorteo: agregar
+           un `entre()` acá correría toda la secuencia del generador y
+           cambiaría datos que no tienen nada que ver con las etapas.
+
+           Lo que hay que conservar si esto se vuelve a tocar: los días de las
+           etapas SUMAN los días de la orden. Un gráfico donde las partes no
+           suman el total hace más daño que no tenerlo. */
+        const arranque = Math.max(1, diasIngreso - 1);
+        const fin = viva
+          ? Math.max(0, Math.min(arranque - 1, 1 + (idx % 5)))
+          : Math.max(0, Math.min(arranque - 1, diasEntrega + 1));
+        const ventana = Math.max(0.5, arranque - fin);
+        const pesos = cerradas.map((e, k) =>
+          (PESO_ETAPA[e.codigo] || 1) * (0.75 + ((idx * 7 + k * 11) % 55) / 100));
+        const sumaPesos = pesos.reduce((s, p) => s + p, 0) || 1;
+
+        /* 🔴 EL REPARTO SE HACE CON DECIMALES, NO CON DÍAS ENTEROS.
+
+           Primera versión: se redondeaba el cierre de cada etapa al día. En
+           una orden corta —una semana con siete etapas— dos etapas seguidas
+           caían el MISMO día, y como `diasHora` le pone a cada fecha una hora
+           al azar entre las 8 y las 18, la segunda quedaba a las 09:14 y la
+           primera a las 15:40: la etapa cerraba antes de asignarse. Cuarenta y
+           siete etapas quedaron así, con días negativos que se colaban al
+           promedio del gráfico sin que nada se viera roto.
+
+           La cifra de control «Etapas que se cerraron antes de asignarse» lo
+           cachó. Ahora el reparto va en decimales y la hora del día SALE del
+           decimal: dos etapas del mismo día quedan a horas distintas y en el
+           orden correcto, sin sorteo de por medio.
+
+           Cada etapa queda además con su ventana propia —`desde` es el cierre
+           de la anterior—, así el tiempo de una etapa se lee directo, restando
+           dos fechas, sin reconstruir ninguna cadena. */
+        const fechaTramo = (diasAtras) => {
+          const enteros = Math.max(0, Math.floor(diasAtras));
+          const resto = Math.min(0.999, Math.max(0, diasAtras - enteros));
+          const d = dias(enteros);
+          /* «Días atrás» corre al revés del reloj: más decimal = más antiguo
+             dentro del día, así que la hora va al revés del decimal. La jornada
+             va de 08:00 a 17:59, igual que el resto de las fechas del sistema. */
+          const minutos = Math.round((1 - resto) * 599);
+          d.setHours(8 + Math.floor(minutos / 60), minutos % 60, 0, 0);
+          return d;
+        };
+
+        const tramo = new Map();
+        let corrido = 0, previo = arranque;
+        suyas.forEach((e, k) => {
+          if (e.orden >= hasta) { tramo.set(e.id, { desde: previo, hasta: null }); return; }
+          corrido += pesos[k];
+          // Estrictamente decreciente: todos los pesos son mayores que cero.
+          const d = arranque - ventana * (corrido / sumaPesos);
+          tramo.set(e.id, { desde: previo, hasta: d });
+          previo = d;
+        });
+
+        suyas.forEach((e) => {
           const cerrada = e.orden < hasta;
           const gente = habilitados[e.id] || [];
           const resp = gente.length ? gente[(idx + e.orden) % gente.length] : null;
-          const cuando = diasHora(Math.max(1, diasIngreso - e.orden * 2));
+          const t = tramo.get(e.id);
+          const cuando = fechaTramo(cerrada ? t.hasta : fin);
           /* Una etapa CERRADA siempre tiene responsable: alguien la hizo. Una
              abierta, no necesariamente — el auto está en pintura y todavía
              nadie lo agarró. Ese es el estado que la pantalla "Mi trabajo"
@@ -1033,7 +1248,7 @@ const Semilla = (function () {
           const suelta = !cerrada && (idx + e.orden) % 3 !== 0;
           ot_etapa.push({
             id: 'oe-' + numero_ot + '-' + e.orden, ot_id, etapa_id: e.id,
-            asignada_at: diasHora(diasIngreso - 1),
+            asignada_at: fechaTramo(t.desde),
             salio_at: cerrada ? cuando : null,
             persona_id: suelta ? null : resp, observacion: ''
           });
@@ -1315,7 +1530,7 @@ const Semilla = (function () {
     const equipo = EQUIPO_SELLO.map((x) => (x.usuario || x.nombre) + '>' +
       (x.modulos ? x.modulos.join('+') : 'rol')).join(',');
     const crudo = [EQUIPO_DEMO, CATALOGO_PERMISOS.length, TOTAL_TORRE, TOTAL_HISTORICO,
-      ULTIMA_OT, INVENTARIO_ESTADOS.length, equipo].join('|');
+      ULTIMA_OT, INVENTARIO_ESTADOS.length, FORMA_DATOS, equipo].join('|');
     // Huella corta y estable. No es criptografía: es para notar un cambio.
     let h = 5381;
     for (let i = 0; i < crudo.length; i++) h = ((h * 33) ^ crudo.charCodeAt(i)) >>> 0;

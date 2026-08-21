@@ -196,6 +196,27 @@ const CSS_IMPRESO = `
      deja de cargar. Acá se escribe sin acentos graves. */
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
 
+  /* 🔴 LOS GRAFICOS DE LA REPORTERIA, EN PAPEL. En pantalla los colores salen
+     de las variables del tema, y en tema oscuro la tinta es casi blanca: sobre
+     papel blanco los numeros del eje y los valores sobre las barras salian
+     INVISIBLES. El grafico se imprimia lindo y mudo.
+
+     Se descubrio recien al rehacer el panel, porque el defecto solo aparece
+     imprimiendo desde el tema oscuro — que es el que trae el sistema por
+     omision, o sea el caso normal. */
+  .velo-impreso svg.graf .graf-valor{fill:#111 !important}
+  .velo-impreso svg.graf .graf-eje{fill:#444 !important}
+  .velo-impreso svg.graf .graf-eje-y{fill:#666 !important}
+  .velo-impreso svg.graf .graf-guia{stroke:#d8d8d8 !important}
+  .velo-impreso svg.graf .graf-punto{fill:#fff !important}
+  .velo-impreso svg.graf.anillo .anillo-total{fill:#111 !important}
+  .velo-impreso svg.graf.anillo .anillo-rot{fill:#666 !important}
+  .velo-impreso svg.graf.anillo path{stroke:#fff !important}
+  .velo-impreso svg.graf.anillo .anillo-pista{stroke:#eee !important}
+  /* El grafico no se puede partir entre dos hojas: la mitad de una serie en la
+     pagina 2 no se lee, se adivina. */
+  .velo-impreso svg.graf{page-break-inside:avoid;break-inside:avoid}
+
   /* El papel es BLANCO. Sin esto, el fondo oscuro de la aplicación se asoma
      bajo la hoja —el documento no llega hasta el borde de la página— y el PDF
      sale con una franja negra abajo. Hay que forzarlo en html y en body: el

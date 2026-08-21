@@ -1426,6 +1426,73 @@ const Pruebas = (function () {
         });
       })();
 
+      /* ── La Reportería con la pantalla vacía ──────────────────────────────
+         🔴 POR QUÉ EXISTE (19-08-2026). El panel se rehizo con nueve gráficos
+         y CADA UNO divide por algo: por el total de órdenes, por el máximo de
+         la serie, por la suma de las porciones del anillo. Con un período sin
+         entregas —una compañía nueva, un rango mal escrito, el primer día del
+         mes— todos esos divisores son cero.
+
+         Es el caso que se rompe en la reunión y no en la prueba: nadie filtra
+         por un mes vacío mientras desarrolla, y el usuario lo hace en el
+         primer minuto. Acá se filtra a propósito por un rango donde no hay
+         nada y se exige que el panel se pinte y lo DIGA, sin reventar y sin
+         inventar un cero disfrazado de dato. */
+      (function () {
+        if (typeof vReporteria !== 'function') return;
+        const previo = ui.reporteria;
+        // Un rango anterior a cualquier orden de la demostración.
+        ui.reporteria = { desde: '2001-01-01', hasta: '2001-01-31', compania_id: '',
+          filas: 'compania', columnas: '', medida: 'ordenes' };
+        let html = '', reventó = '';
+        try { html = vReporteria(); } catch (e) { reventó = e.message; }
+        ui.reporteria = previo;
+
+        const dice = html.indexOf('Sin órdenes entregadas') >= 0;
+        const sinBasura = html.indexOf('NaN') < 0 && html.indexOf('undefined') < 0;
+        push({
+          nombre: '🔴 La Reportería con un período sin entregas se pinta y lo dice',
+          intento: 'Filtrar la reportería por enero de 2001, donde no hay ninguna orden entregada',
+          esperado: 'La pantalla se pinta, explica que no hay órdenes, y no muestra NaN ni undefined',
+          paso: !reventó && dice && sinBasura,
+          detalle: reventó ? 'Reventó: ' + reventó
+            : (!dice ? 'Se pintó pero no dice que el período está vacío'
+              : (!sinBasura ? 'Se coló un NaN o un undefined en la pantalla'
+                : 'Se pinta con el vacío explicado, sin NaN ni undefined'))
+        });
+      })();
+
+      /* ── El mes en curso no entra en la comparación ───────────────────────
+         🔴 POR QUÉ EXISTE (19-08-2026). Las tarjetas de la Reportería decían
+         «−65% vs. mes anterior» en órdenes y «−100%» en cumplimiento. No había
+         pasado nada: el mes en curso llevaba doce días de treinta y uno y se
+         estaba comparando contra un mes entero.
+
+         Un indicador que grita una caída inventada quema la credibilidad del
+         panel completo. La serie de las tarjetas tiene que tener un mes MENOS
+         que la del gráfico cuando el último mes va en curso, y ésa es la
+         diferencia que se comprueba acá. */
+      (function () {
+        if (typeof repAgregados !== 'function') return;
+        const previo = ui.reporteria;
+        ui.reporteria = { desde: '', hasta: '', compania_id: '',
+          filas: 'compania', columnas: '', medida: 'ordenes' };
+        const g = repAgregados(Modelo.historico({ todo: true }), Modelo.metricas().metaDias);
+        ui.reporteria = previo;
+
+        const esperado = g.hayMesEnCurso ? g.meses.length - 1 : g.meses.length;
+        push({
+          nombre: '🔴 La Reportería no compara contra un mes a medias',
+          intento: 'Pedir la serie del mes a mes teniendo el mes en curso todavía abierto',
+          esperado: 'La serie de las tarjetas deja el mes en curso afuera; el gráfico lo conserva',
+          paso: g.serieOrdenes.length === esperado && (!g.hayMesEnCurso || !!g.notaMesEnCurso),
+          detalle: g.hayMesEnCurso
+            ? 'Meses en el gráfico: ' + g.meses.length + ' · en la comparación: ' +
+              g.serieOrdenes.length + ' · aviso en pantalla: ' + (g.notaMesEnCurso ? 'sí' : 'NO')
+            : 'No hay mes en curso en el período: la serie va completa (' + g.serieOrdenes.length + ')'
+        });
+      })();
+
       restaurarSesion();
       return res;
     });
@@ -1555,6 +1622,71 @@ const Pruebas = (function () {
           db.presupuesto_linea.forEach((l) => { proc[l.id] = l.proceso; });
           return db.repuesto.filter((r) => r.presupuesto_linea_id &&
             proc[r.presupuesto_linea_id] !== 'cambio').length;
+        })(), 0],
+
+      /* ── Las cuatro cifras de la Reportería (19-08-2026) ──────────────
+         El panel se rehizo entero y su valor está en dos gráficos que el
+         sistema del cliente no puede tener. Un gráfico equivocado es peor que
+         ninguno: se ve convincente. Estas cuatro son los guardianes. */
+
+      /* 🔴 UNA ETAPA NO PUEDE DURAR MÁS QUE EL TRABAJO ENTERO. Es la primera
+         forma en que un desglose por etapas se vuelve mentira: basta que una
+         fecha de asignación quede antes del ingreso para que la suma de las
+         partes supere el total y el gráfico muestre 80 días de etapas dentro
+         de una orden de 60. */
+      ['Órdenes donde las etapas duran más que la orden completa',
+        (function () {
+          const MS = 86400000;
+          return Modelo.historico({ todo: true }).filter((o) => {
+            const suma = (o.etapasAsignadas || [])
+              .filter((e) => e.finalizada && e.asignadaAt && e.finalizadaAt)
+              .reduce((s, e) => s + Math.max(0, (e.finalizadaAt - e.asignadaAt) / MS), 0);
+            // Un día de holgura por el redondeo de las horas.
+            return suma > o.diasTotales + 1;
+          }).length;
+        })(), 0],
+
+      /* Una etapa que cierra antes de asignarse da días negativos, y un día
+         negativo en un promedio lo arrastra sin que se note. */
+      ['Etapas que se cerraron antes de asignarse',
+        (function () {
+          return db.ot_etapa.filter((x) => x.salio_at && x.asignada_at &&
+            x.salio_at < x.asignada_at).length;
+        })(), 0],
+
+      /* 🔶 EL GRÁFICO PLANO. Hasta el 19-08-2026 la semilla cerraba cada etapa
+         exactamente dos días después de la anterior, así que «dónde se van los
+         días» salía con siete barras idénticas. Un gráfico donde todas las
+         partes miden lo mismo no responde nada, y encima se ve inventado —
+         porque lo era. Si alguien vuelve a repartir parejo, se cae acá. */
+      ['El desglose por etapas quedó plano (todas duran lo mismo)',
+        (function () {
+          const MS = 86400000, m = new Map();
+          Modelo.historico({ todo: true }).forEach((o) => {
+            (o.etapasAsignadas || []).forEach((e) => {
+              if (!e.finalizada || !e.asignadaAt || !e.finalizadaAt) return;
+              const c = m.get(e.nombre) || { n: 0, d: 0 };
+              c.n++; c.d += Math.max(0, (e.finalizadaAt - e.asignadaAt) / MS);
+              m.set(e.nombre, c);
+            });
+          });
+          const proms = [...m.values()].filter((c) => c.n).map((c) => c.d / c.n);
+          if (proms.length < 2) return 0;          // sin etapas no hay nada que aplanar
+          return (Math.max(...proms) - Math.min(...proms)) < 2 ? 1 : 0;
+        })(), 0],
+
+      /* 🔴 LAS PARTES DEL ANILLO TIENEN QUE SUMAR EL TOTAL. Un anillo cuyas
+         porciones no suman lo que dice el centro es el gráfico más mentiroso
+         que hay: el ojo confía en la forma y nadie verifica la aritmética.
+         Se compara la composición —mano de obra, repuestos, T.O.T.— contra la
+         venta del período, que es el número grande del panel. */
+      ['Pesos de diferencia entre las partes del anillo y la venta del período',
+        (function () {
+          if (typeof repAgregados !== 'function') return 0;   // panel no cargado
+          const lista = Modelo.historico({ todo: true });
+          const g = repAgregados(lista, Modelo.metricas().metaDias);
+          const partes = g.composicion.reduce((s, p) => s + p.v, 0);
+          return Math.round(Math.abs(partes - g.venta));
         })(), 0]
     ];
     return esperado.map(([nombre, real, ref]) => ({

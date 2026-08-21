@@ -980,11 +980,48 @@ svg.chispa.verde .chispa-punto { fill: var(--verde); }
 .nota-panel .dato-demo { color: var(--cinta-texto); background: var(--cinta-bg);
   border: 1px solid var(--cinta-borde); border-radius: 3px; padding: 5px 8px; }
 .vacio-chico { font-size: 11.5px; color: var(--gris-2); padding: 10px 0; }
-/* La advertencia que acompaña a un número: no es un error ni un aviso del
-   sistema, es una precisión sobre cómo hay que leer lo que está arriba. */
-.cinta-nota { margin-top: 9px; font-size: 11.5px; line-height: 1.5;
-  color: var(--cinta-texto); background: var(--cinta-bg);
-  border: 1px solid var(--cinta-borde); border-radius: 3px; padding: 6px 10px; }
+
+/* ── La fórmula debajo de cada gráfico ──
+   🔶 Reemplazó a los párrafos explicativos el 21-08-2026, a pedido de Marco:
+   *"en vez de este tipo de textos colocar el cómo se calculó / fórmula"*,
+   *"resumido, preciso"*.
+
+   Tres columnas por línea: QUÉ se calcula · la EXPRESIÓN · los NÚMEROS de este
+   período con su resultado. La tercera va en monoespaciado y alineada a la
+   derecha para que las cifras de varias líneas queden una debajo de otra —
+   así se comparan de una mirada y se pueden rehacer con una calculadora. */
+.formulas { margin-top: 11px; border-top: 1px solid var(--borde); padding-top: 7px; }
+.formulas .tit-f { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--gris-2); font-weight: 700; margin-bottom: 4px; }
+.formulas .f { display: grid; grid-template-columns: minmax(104px, 168px) 1fr auto;
+  gap: 2px 14px; padding: 3px 0; font-size: 11px; line-height: 1.45; align-items: baseline;
+  border-bottom: 1px dashed var(--borde); }
+.formulas .f:last-child { border-bottom: none; }
+.formulas .que { color: var(--texto); font-weight: 600; min-width: 0; }
+.formulas .exp { color: var(--gris); min-width: 0; }
+.formulas .num { color: var(--tinta); font-weight: 700; text-align: right; min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+/* 🔴 EN UN PANEL DE MEDIA PANTALLA LAS TRES COLUMNAS NO CABEN. A la expresión
+   le quedaban unos cuarenta píxeles y se partía en una tira vertical de una
+   palabra por línea — "se / carga / a / la / etapa" —, que es exactamente el
+   mismo defecto que ya nos había pasado con `.nota` en `display:flex`.
+
+   Se resuelve con el selector de descendencia y no con un `@media`: la
+   condición no es el ancho de la VENTANA —el panel angosto convive con uno
+   ancho en la misma pantalla de 1.400 px— sino estar dentro de una rejilla de
+   dos columnas. El rótulo se lleva una línea entera y abajo quedan la
+   expresión y las cifras, que es donde importa que sigan alineadas. */
+.rejilla-2 .formulas .f { grid-template-columns: 1fr auto; gap: 0 12px; }
+.rejilla-2 .formulas .que { grid-column: 1 / -1; }
+
+/* Ya sin espacio para dos columnas: se apila todo y las cifras se van a la
+   izquierda. Se pierde la alineación, que es mejor que perder el texto. */
+@media (max-width: 620px) {
+  .formulas .f, .rejilla-2 .formulas .f { grid-template-columns: 1fr; gap: 0; }
+  .formulas .num { text-align: left; }
+}
 
 /* El globo del dato: uno solo para todos los gráficos, flotando sobre la
    pantalla. `pointer-events:none` es obligatorio — si el globo recibe el mouse

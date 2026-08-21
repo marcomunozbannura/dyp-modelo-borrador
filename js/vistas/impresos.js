@@ -217,6 +217,16 @@ const CSS_IMPRESO = `
      pagina 2 no se lee, se adivina. */
   .velo-impreso svg.graf{page-break-inside:avoid;break-inside:avoid}
 
+  /* Las formulas del "como se calcula". Mismos colores del tema en pantalla,
+     tinta en papel. La linea punteada entre filas se aclara: en pantalla
+     separa, impresa en negro ensucia. */
+  .velo-impreso .formulas{border-top-color:#ccc !important;page-break-inside:avoid}
+  .velo-impreso .formulas .tit-f{color:#666 !important}
+  .velo-impreso .formulas .que{color:#111 !important}
+  .velo-impreso .formulas .exp{color:#444 !important}
+  .velo-impreso .formulas .num{color:#111 !important}
+  .velo-impreso .formulas .f{border-bottom-color:#ddd !important}
+
   /* El papel es BLANCO. Sin esto, el fondo oscuro de la aplicación se asoma
      bajo la hoja —el documento no llega hasta el borde de la página— y el PDF
      sale con una franja negra abajo. Hay que forzarlo en html y en body: el

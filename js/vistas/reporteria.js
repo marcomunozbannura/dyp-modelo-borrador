@@ -97,7 +97,11 @@ function repPlataCorta(n) {
   const v = Number(n) || 0;
   const signo = v < 0 ? '-' : '';
   const a = Math.abs(v);
-  if (a >= 1000000) return signo + '$' + (a / 1000000).toFixed(a >= 10000000 ? 0 : 1).replace('.', ',') + 'M';
+  /* Un decimal hasta los cien millones. Con el corte en diez, la fórmula de la
+     venta salía «$15M + $9,9M + $1,5M = $26.392.000» y ese $15M contra un
+     $14.907.000 se lee como un error de suma. La gracia de mostrar la fórmula
+     es que cuadre a ojo. */
+  if (a >= 1000000) return signo + '$' + (a / 1000000).toFixed(a >= 100000000 ? 0 : 1).replace('.', ',') + 'M';
   if (a >= 1000) return signo + '$' + Math.round(a / 1000) + 'k';
   return signo + '$' + Math.round(a);
 }
@@ -436,6 +440,31 @@ function svgChispa(vals, op) {
     '" r="2.6" class="chispa-punto"/></svg>';
 }
 
+/* ── LA FÓRMULA, NO LA EXPLICACIÓN ─────────────────────────────────────
+   Pedido de Marco el 21-08-2026, mirando la cinta que decía «el último mes va
+   en curso: lleva 12 de 31 días, su barra es más baja porque el mes no
+   terminó»: *"en vez de este tipo de textos colocar el cómo se calculó /
+   fórmula"*. Y agregó: *"resumido, preciso"*.
+
+   Tiene razón, y es más que estética. Un párrafo explicando un número PIDE que
+   le crean; una fórmula con sus números adentro SE VERIFICA con una
+   calculadora. En una reunión donde la primera pregunta es «¿de dónde sale ese
+   número?», lo segundo es lo único que sirve.
+
+   Cada fila es UNA línea: qué se calcula, la expresión, la expresión con los
+   números de este período, y el resultado. Nada de prosa — si hace falta un
+   párrafo para justificar un número, el número está mal elegido. */
+function repFormulas(filas, op) {
+  const o = op || {};
+  return '<div class="formulas' + (o.clase ? ' ' + o.clase : '') + '">' +
+    '<div class="tit-f">' + esc(o.titulo || 'Cómo se calcula') + '</div>' +
+    filas.filter(Boolean).map((f) => '<div class="f">' +
+      '<span class="que">' + esc(f.que) + '</span>' +
+      '<span class="exp">' + esc(f.exp) + '</span>' +
+      '<span class="num">' + esc(f.num) + '</span>' +
+      '</div>').join('') + '</div>';
+}
+
 /* La flecha del delta. Dibujada, no un emoji: el sistema entero está sin
    emoji y además un carácter de emoji se imprime distinto en cada
    computador. */
@@ -554,9 +583,7 @@ function repAgregados(lista, meta) {
   // Cuántos días lleva el mes en curso, para poder decirlo sin estimar nada.
   const diasDelMes = new Date(HOY.getFullYear(), HOY.getMonth() + 1, 0).getDate();
   const notaMesEnCurso = hayMesEnCurso
-    ? 'El último mes (' + repMesCorto(mesEnCurso) + ') va en curso: lleva ' + HOY.getDate() +
-      ' de ' + diasDelMes + ' días. Su barra es más baja porque el mes no terminó, no porque ' +
-      'el taller haya bajado.'
+    ? repMesCorto(mesEnCurso) + ' en curso: ' + HOY.getDate() + '/' + diasDelMes + ' d'
     : '';
 
   const top = (dim, n) => {
@@ -684,14 +711,20 @@ function repAgregados(lista, meta) {
   const venta = lista.reduce((s, o) => s + plataDe(o).ventaTotal, 0);
   const dentro = lista.filter((o) => o.diasReparacion <= meta).length;
 
+  /* Los sumatorios CRUDOS. Van al resultado porque la pantalla los muestra
+     dentro de la fórmula —«6.120 ÷ 120 = 51 d»— y ese numerador tiene que ser
+     el mismo que se dividió, no uno recalculado en otro lado. */
+  const sumaDias = lista.reduce((s, o) => s + o.diasReparacion, 0);
+  const sumaTotales = lista.reduce((s, o) => s + o.diasTotales, 0);
+
   return {
     dimDe, meses, top, ventaPorCompania, porEtapa, composicion, relojes, distribucion, compromiso,
     venta, dentro, delta, hayMesEnCurso, notaMesEnCurso, mesesCerrados: cerrados.length,
+    mesEnCursoCorto: repMesCorto(mesEnCurso), diaDelMes: HOY.getDate(), diasDelMes,
+    sumaDias, sumaTotales, sumaFuera: sumaTotales - sumaDias, n: lista.length,
     ticket: lista.length ? venta / lista.length : 0,
-    promReparacion: lista.length
-      ? lista.reduce((s, o) => s + o.diasReparacion, 0) / lista.length : 0,
-    promTotales: lista.length
-      ? lista.reduce((s, o) => s + o.diasTotales, 0) / lista.length : 0,
+    promReparacion: lista.length ? sumaDias / lista.length : 0,
+    promTotales: lista.length ? sumaTotales / lista.length : 0,
     // Las series del mes a mes, listas para la chispa de cada tarjeta.
     serieOrdenes: serie((c) => c.n),
     serieVenta: serie((c) => c.venta),
@@ -784,9 +817,23 @@ function vReporteria() {
           : 'sin mes anterior con que comparar'
       }))).join('')}
   </div>
-  ${g.hayMesEnCurso ? '<div class="cinta-nota">' + esc(g.notaMesEnCurso) +
-    ' Las tarjetas de arriba comparan sólo meses cerrados, para no leer un mes a medias como una caída.' +
-    '</div>' : ''}
+  ${repFormulas([
+    { que: 'Órdenes entregadas', exp: 'órdenes con estado final y fecha de entrega en el período',
+      num: '= ' + repMiles(lista.length) },
+    { que: 'Venta', exp: 'mano de obra + repuestos + T.O.T., sin las OR anuladas',
+      num: composicion.map((p) => repPlataCorta(p.v)).join(' + ') + ' = ' + fMonto(venta) },
+    { que: 'Ticket promedio', exp: 'venta ÷ órdenes',
+      num: repPlataCorta(venta) + ' ÷ ' + repMiles(lista.length) + ' = ' + fMonto(ticket) },
+    { que: 'Reparación promedio', exp: 'Σ días de reparación ÷ órdenes',
+      num: repMiles(g.sumaDias) + ' ÷ ' + repMiles(lista.length) + ' = ' +
+        Math.round(g.promReparacion) + ' d' },
+    { que: 'Dentro de la meta', exp: 'órdenes con reparación ≤ ' + meta + ' d ÷ órdenes',
+      num: repMiles(dentro) + ' ÷ ' + repMiles(lista.length) + ' = ' + pct(dentro, lista.length) + '%' },
+    { que: 'Variación', exp: '(último mes cerrado − el anterior) ÷ el anterior',
+      num: g.hayMesEnCurso
+        ? 'sobre ' + g.mesesCerrados + ' de ' + meses.length + ' meses · ' + g.notaMesEnCurso
+        : 'sobre los ' + meses.length + ' meses del período' }
+  ])}
 
   <div class="panel destacado" style="margin-top:11px">
     <div class="cab"><div><h2>${ico('reloj', 'g')}Dónde se van los días</h2>
@@ -802,21 +849,21 @@ function vReporteria() {
           '<div>' + svgBarrasH(porEtapa.filas.map((f) => ({ k: f.k, v: f.v,
             rot: (Math.round(f.v * 10) / 10).toString().replace('.', ',') + ' días', color: f.color })),
             { destacar: false }) + '</div>' +
-          '<div class="nota-panel">' +
-            '<p><strong>Cómo se cuenta.</strong> Cada etapa guarda cuándo se asignó y cuándo se cerró. ' +
-            'El tiempo de la etapa es la resta de esas dos fechas — no una estimación. Es tiempo ' +
-            'de calendario: si el auto se fue a la casa del cliente esperando una pieza, esos días ' +
-            'quedan cargados a la etapa que estaba abierta. Eso es a propósito — la pregunta que ' +
-            'este gráfico responde es dónde se pasó el tiempo, no dónde se trabajó.</p>' +
-            '<p>Entran las ' + repMiles(porEtapa.cubiertas) + ' etapas <strong>cerradas</strong> de las ' +
-            'órdenes del período. ' + (porEtapa.abiertas
-              ? repMiles(porEtapa.abiertas) + ' quedaron fuera por no tener fecha de cierre: una etapa ' +
-                'sin cerrar todavía no tiene un tiempo, y contarla como si hubiera terminado hoy metería ' +
-                'en el promedio un número que mañana es otro.'
-              : 'No quedó ninguna afuera.') + '</p>' +
-            '<p class="dato-demo">Dato de demostración: los tiempos por etapa salen de la base sembrada. ' +
-            'Con la base real de DyP este mismo gráfico se calcula igual, sin tocar una línea.</p>' +
-          '</div>' +
+          '<div>' + repFormulas([
+            { que: 'Días de una etapa', exp: 'cierre − asignación, en calendario', num: '' },
+            peor ? { que: 'Promedio · ' + peor.k, exp: 'Σ días ÷ etapas cerradas',
+              num: repMiles(Math.round(peor.dias)) + ' ÷ ' + repMiles(peor.n) + ' = ' +
+                (Math.round(peor.v * 10) / 10).toString().replace('.', ',') + ' d' } : null,
+            { que: 'Etapas consideradas', exp: porEtapa.abiertas
+                ? 'cerradas ÷ asignadas · las abiertas no tienen tiempo todavía'
+                : 'cerradas ÷ asignadas',
+              num: repMiles(porEtapa.cubiertas) + ' ÷ ' +
+                repMiles(porEtapa.cubiertas + porEtapa.abiertas) },
+            { que: 'Auto donde el cliente', exp: 'se carga a la etapa que estaba abierta',
+              num: '' }
+          ]) +
+          '<div class="nota-panel"><p class="dato-demo">Dato de demostración: los tiempos por etapa ' +
+          'salen de la base sembrada. Con la base real de DyP se calcula igual.</p></div></div>' +
         '</div>'
         : vacio('Ninguna orden del período tiene etapas cerradas')}
     </div>
@@ -828,7 +875,15 @@ function vReporteria() {
         contador. La zona verde es cumplir; el punto rojo, un mes que se pasó de la meta</div></div></div>
     <div class="cuerpo">${meses.length
       ? svgSerie(diasMes, { meta, metaRot: 'días', fmt: (v) => Math.round(v) + ' d' }) +
-        (g.hayMesEnCurso ? '<div class="cinta-nota">' + esc(g.notaMesEnCurso) + '</div>' : '')
+        repFormulas([
+          { que: 'Punto del mes', exp: 'Σ días de reparación ÷ entregas de ese mes',
+            num: (() => { const u = diasMes[diasMes.length - 1];
+              return u ? u.etiqueta + ' = ' + u.v + ' d' : ''; })() },
+          { que: 'Meta', exp: 'parámetro del sistema (Configuración → Parámetros)',
+            num: meta + ' días' },
+          g.hayMesEnCurso ? { que: 'Último punto', exp: 'mes incompleto',
+            num: g.notaMesEnCurso } : null
+        ])
       : vacio('Sin entregas en el período')}</div>
   </div>
 
@@ -837,7 +892,11 @@ function vReporteria() {
       <div class="cab"><div><h2>Entregas por mes</h2>
         <div class="desc">Cuántos vehículos salieron cada mes</div></div></div>
       <div class="cuerpo">${meses.length ? svgBarras(entregasMes, { compacto: true }) +
-        (g.hayMesEnCurso ? '<div class="cinta-nota">' + esc(g.notaMesEnCurso) + '</div>' : '')
+        repFormulas([
+          { que: 'Barra del mes', exp: 'órdenes con fecha de entrega en ese mes',
+            num: '= ' + repMiles(lista.length) + ' en total' },
+          g.hayMesEnCurso ? { que: 'Última barra', exp: 'mes incompleto', num: g.notaMesEnCurso } : null
+        ])
         : vacio('Sin entregas')}</div>
     </div>
     <div class="panel">
@@ -845,7 +904,11 @@ function vReporteria() {
         <div class="desc">Lo facturado en las órdenes que se cerraron ese mes</div></div></div>
       <div class="cuerpo">${meses.length
         ? svgSerie(ventaMes, { compacto: true, fmt: (v) => repPlataCorta(v) }) +
-          (g.hayMesEnCurso ? '<div class="cinta-nota">' + esc(g.notaMesEnCurso) + '</div>' : '')
+          repFormulas([
+            { que: 'Punto del mes', exp: 'Σ venta de las órdenes entregadas ese mes',
+              num: '= ' + fMonto(venta) + ' en total' },
+            g.hayMesEnCurso ? { que: 'Último punto', exp: 'mes incompleto', num: g.notaMesEnCurso } : null
+          ])
         : vacio('Sin entregas')}</div>
     </div>
   </div>
@@ -855,7 +918,17 @@ function vReporteria() {
       <div class="cab"><div><h2>De dónde sale la venta</h2>
         <div class="desc">Las tres columnas del presupuesto. Suman el total exacto</div></div></div>
       <div class="cuerpo">${svgAnillo(composicion,
-        { fmt: (v) => fMonto(v), centro: repPlataCorta(venta), centroRot: 'venta del período' })}</div>
+        { fmt: (v) => fMonto(v), centro: repPlataCorta(venta), centroRot: 'venta del período' })}
+        ${repFormulas([
+          { que: 'Mano de obra', exp: 'Σ horas × tempario',
+            num: '= ' + fMonto(composicion[0].v) },
+          { que: 'Repuestos', exp: 'sólo los que pone el taller',
+            num: '= ' + fMonto(composicion[1].v) },
+          { que: 'T.O.T.', exp: 'trabajos externos',
+            num: '= ' + fMonto(composicion[2].v) },
+          { que: 'Venta', exp: 'las tres columnas, sin las OR anuladas',
+            num: composicion.map((p) => repPlataCorta(p.v)).join(' + ') + ' = ' + fMonto(venta) }
+        ])}</div>
     </div>
     <div class="panel">
       <div class="cab"><div><h2>${ico('reloj', 'g')}Los tres relojes</h2>
@@ -871,15 +944,28 @@ function vReporteria() {
           <div class="campo"><label>Fuera de taller</label>
             <div class="lectura">${Math.round(g.promTotales - g.promReparacion)} días</div></div>
         </div>
-        ${relojes.conSalida ? '<div class="nota-panel"><p><strong>' +
-          repMiles(relojes.conSalida) + ' de las ' + repMiles(lista.length) + ' órdenes' +
-          '</strong> se fueron y volvieron. En ésas el vehículo estuvo ' +
-          Math.round(relojes.fueraDeEsas) + ' días con el cliente y ' +
-          Math.round(relojes.totalDeEsas) + ' días en total. <strong>El sistema actual reinicia el ' +
-          'contador al regrabar el estado</strong>, así que esos ' + Math.round(relojes.fueraDeEsas) +
-          ' días se le pierden: el taller aparece más rápido de lo que es.</p></div>'
-          : '<div class="nota-panel"><p>Ninguna orden del período salió del taller y volvió. ' +
-            'Con estas órdenes los dos relojes dan lo mismo, que es lo correcto.</p></div>'}
+        ${repFormulas([
+          { que: 'Días totales', exp: 'entrega − ingreso',
+            num: repMiles(g.sumaTotales) + ' ÷ ' + repMiles(lista.length) + ' = ' +
+              Math.round(g.promTotales) + ' d' },
+          { que: 'De reparación', exp: 'Σ (salida − entrada) de cada estadía',
+            num: repMiles(g.sumaDias) + ' ÷ ' + repMiles(lista.length) + ' = ' +
+              Math.round(g.promReparacion) + ' d' },
+          { que: 'Fuera de taller', exp: 'totales − reparación',
+            num: Math.round(g.promTotales) + ' − ' + Math.round(g.promReparacion) + ' = ' +
+              Math.round(g.promTotales - g.promReparacion) + ' d' },
+          relojes.conSalida
+            ? { que: 'Se fueron y volvieron', exp: 'órdenes con más de una estadía',
+                num: repMiles(relojes.conSalida) + ' de ' + repMiles(lista.length) + ' · ' +
+                  Math.round(relojes.fueraDeEsas) + ' d afuera de ' +
+                  Math.round(relojes.totalDeEsas) + ' d totales' }
+            : { que: 'Se fueron y volvieron', exp: 'órdenes con más de una estadía',
+                num: 'ninguna · los dos relojes dan lo mismo' },
+          relojes.conSalida
+            ? { que: 'Lo que pierde su sistema', exp: 'reinicia el contador al regrabar el estado',
+                num: Math.round(relojes.fueraDeEsas) + ' d por orden' }
+            : null
+        ])}
       </div>
     </div>
   </div>
@@ -890,7 +976,15 @@ function vReporteria() {
         <div class="desc">El promedio esconde la forma: no es lo mismo un taller parejo que uno
           que entrega la mitad rápido y la otra mitad muy lento</div></div></div>
       <div class="cuerpo">${svgBarras(distribucion.cajas,
-        { compacto: true, marcaX: distribucion.marcaX, marcaRot: 'meta ' + meta + ' d' })}</div>
+        { compacto: true, marcaX: distribucion.marcaX, marcaRot: 'meta ' + meta + ' d' })}
+        ${repFormulas([
+          { que: 'Cada barra', exp: 'órdenes cuya reparación cae en el tramo', num: '' },
+          { que: 'Barra azul', exp: 'tramo dentro de la meta de ' + meta + ' d',
+            num: repMiles(dentro) + ' ÷ ' + repMiles(lista.length) + ' = ' +
+              pct(dentro, lista.length) + '%' },
+          { que: 'Promedio', exp: 'la cola larga lo arrastra sobre el tramo más alto',
+            num: Math.round(g.promReparacion) + ' d' }
+        ])}</div>
     </div>
     <div class="panel">
       <div class="cab"><div><h2>La fecha que se le prometió al cliente</h2>
@@ -912,9 +1006,18 @@ function vReporteria() {
                 '<div class="lectura">' + repMiles(compromiso.sin) + ' de ' +
                 repMiles(lista.length) + '</div></div>' +
             '</div>' +
-            '<div class="nota-panel"><p>El porcentaje se calcula <strong>sólo sobre las ' +
-            repMiles(compromiso.con) + ' órdenes que tienen la fecha escrita</strong>. Un cumplimiento ' +
-            'calculado sobre una base a medias no es un cumplimiento.</p></div>'}
+            repFormulas([
+              { que: 'A tiempo', exp: 'fecha de entrega ≤ fecha de compromiso',
+                num: '= ' + repMiles(compromiso.aTiempo) },
+              { que: 'Cumplimiento', exp: 'a tiempo ÷ órdenes CON compromiso escrito',
+                num: repMiles(compromiso.aTiempo) + ' ÷ ' + repMiles(compromiso.con) + ' = ' +
+                  compromiso.pct + '%' },
+              { que: 'Base del cálculo', exp: 'las que no tienen fecha escrita quedan fuera',
+                num: repMiles(compromiso.con) + ' de ' + repMiles(lista.length) +
+                  (compromiso.sin ? ' · ' + repMiles(compromiso.sin) + ' sin compromiso' : '') },
+              { que: 'Atraso promedio', exp: 'Σ (entrega − compromiso) ÷ órdenes atrasadas',
+                num: '= ' + compromiso.atrasoProm + ' d' }
+            ])}
       </div>
     </div>
   </div>
@@ -1125,9 +1228,14 @@ function impresoReporteria() {
        vez de traer una librería que pinta sobre un lienzo de píxeles. */''}
   <h2>Dónde se van los días</h2>
   ${porEtapa.filas.length
-    ? '<p>El promedio de ' + Math.round(g.promReparacion) + ' días de reparación, abierto etapa ' +
-      'por etapa. Se cuentan las ' + repMiles(porEtapa.cubiertas) + ' etapas cerradas del período: ' +
-      'el tiempo de cada una es la resta entre su fecha de asignación y su fecha de cierre.</p>' +
+    ? repFormulas([
+        { que: 'Días de una etapa', exp: 'fecha de cierre - fecha de asignación',
+          num: 'calendario, no horas trabajadas' },
+        { que: 'Promedio de la etapa', exp: 'suma de días / etapas cerradas', num: 'ver la tabla' },
+        { que: 'Etapas consideradas', exp: 'cerradas / asignadas',
+          num: repMiles(porEtapa.cubiertas) + ' / ' +
+            repMiles(porEtapa.cubiertas + porEtapa.abiertas) }
+      ]) +
       tabla(['Etapa', 'Días promedio', 'Etapas cerradas'], porEtapa.filas
         .map((f) => '<tr><td>' + esc(f.k) + '</td><td class="n">' +
           (Math.round(f.v * 10) / 10).toString().replace('.', ',') + '</td><td class="n">' +
@@ -1143,17 +1251,36 @@ function impresoReporteria() {
     ['De reparación (el vehículo en el taller)', Math.round(g.promReparacion)],
     ['Fuera de taller (con el cliente)', Math.round(g.promTotales - g.promReparacion)]
   ].map((f) => '<tr><td>' + esc(f[0]) + '</td><td class="n">' + f[1] + ' días</td></tr>').join(''))}
-  ${g.relojes.conSalida
-    ? '<p>' + g.relojes.conSalida + ' de las ' + lista.length + ' órdenes salieron del taller y ' +
-      'volvieron. En ésas el vehículo estuvo ' + Math.round(g.relojes.fueraDeEsas) + ' días con el ' +
-      'cliente y ' + Math.round(g.relojes.totalDeEsas) + ' días en total. El sistema actual reinicia ' +
-      'el contador al regrabar el estado, así que esos días no aparecen en ninguna estadística.</p>'
-    : '<p>Ninguna orden del período salió del taller y volvió.</p>'}
+  ${repFormulas([
+    { que: 'Días totales', exp: 'entrega - ingreso',
+      num: repMiles(g.sumaTotales) + ' / ' + repMiles(lista.length) + ' = ' +
+        Math.round(g.promTotales) + ' d' },
+    { que: 'De reparación', exp: 'suma de (salida - entrada) de cada estadía',
+      num: repMiles(g.sumaDias) + ' / ' + repMiles(lista.length) + ' = ' +
+        Math.round(g.promReparacion) + ' d' },
+    { que: 'Fuera de taller', exp: 'totales - reparación',
+      num: Math.round(g.promTotales) + ' - ' + Math.round(g.promReparacion) + ' = ' +
+        Math.round(g.promTotales - g.promReparacion) + ' d' },
+    { que: 'Se fueron y volvieron', exp: 'órdenes con más de una estadía',
+      num: g.relojes.conSalida
+        ? repMiles(g.relojes.conSalida) + ' de ' + repMiles(lista.length) + ' · ' +
+          Math.round(g.relojes.fueraDeEsas) + ' d afuera de ' +
+          Math.round(g.relojes.totalDeEsas) + ' d totales'
+        : 'ninguna · los dos relojes dan lo mismo' },
+    g.relojes.conSalida
+      ? { que: 'Lo que pierde su sistema', exp: 'el contador se reinicia al regrabar el estado',
+          num: Math.round(g.relojes.fueraDeEsas) + ' d por orden' }
+      : null
+  ])}
 
   <h2>Días de reparación por mes</h2>
   ${meses.length ? svgSerie(diasMes, { meta, metaRot: 'días', fmt: (v) => Math.round(v) + ' d' })
     : '<p>Sin entregas en el período.</p>'}
-  ${g.hayMesEnCurso ? '<p>' + esc(g.notaMesEnCurso) + '</p>' : ''}
+  ${repFormulas([
+    { que: 'Punto del mes', exp: 'suma de días de reparación / entregas de ese mes',
+      num: 'meta ' + meta + ' días' },
+    g.hayMesEnCurso ? { que: 'Último punto', exp: 'mes incompleto', num: g.notaMesEnCurso } : null
+  ])}
 
   <h2>Entregas por mes</h2>
   ${meses.length ? svgBarras(entregasMes) : '<p>Sin entregas en el período.</p>'}

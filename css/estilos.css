@@ -1184,10 +1184,194 @@ svg.chispa.verde .chispa-punto { fill: var(--verde); }
 .barra-fondo { background: var(--neutro-bg); border: 1px solid var(--neutro-borde); border-radius: 2px; height: 8px; overflow: hidden; min-width: 60px; }
 .barra-relleno { height: 100%; background: var(--acento); }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   CELULAR Y TABLET
+   ═══════════════════════════════════════════════════════════════════════
+   🔴 LO QUE ESTABA ROTO (21-08-2026). Acá había cuatro líneas: la barra
+   lateral se escondía con `display:none` bajo los 860 px y no la reemplazaba
+   nada. En un celular —y en una tablet vertical, que son 768— el sistema
+   quedaba con UN módulo, el que se abría al entrar, y no había forma de
+   cambiarse. No era un problema de que se viera apretado: no se podía usar.
+
+   Tres anchos, y cada uno responde a un aparato de verdad:
+     · hasta 1100 px  tablet acostada — cabe todo, sólo se junta el aire
+     · hasta  860 px  tablet parada y celular — la barra pasa a cajón
+     · hasta  560 px  celular — una columna, y el pulgar manda
+
+   El botón de módulos y el velo viven en `index.html` y se manejan en
+   `montarCajonModulos()`. Acá va sólo lo visual. */
+
+/* ── El botón de módulos ── */
+.btn-nav {
+  display: none; flex: 0 0 auto; width: 38px; height: 34px; margin-right: 4px;
+  align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: var(--menu-texto); cursor: pointer; padding: 0;
+}
+.btn-nav:hover { background: rgba(255, 255, 255, .10); color: #fff; }
+.btn-nav:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+/* Las tres rayas, dibujadas con bordes: no hace falta un icono ni una fuente
+   para tres líneas, y así siguen el color del texto de la barra. */
+.btn-nav .rayas,
+.btn-nav .rayas::before,
+.btn-nav .rayas::after {
+  display: block; width: 17px; height: 2px; border-radius: 2px;
+  background: currentColor; content: '';
+}
+.btn-nav .rayas { position: relative; }
+.btn-nav .rayas::before { position: absolute; top: -5px; }
+.btn-nav .rayas::after { position: absolute; top: 5px; }
+/* Abierto, las rayas se cruzan: el mismo botón cierra. */
+body.nav-abierta .btn-nav .rayas { background: transparent; }
+body.nav-abierta .btn-nav .rayas::before { top: 0; transform: rotate(45deg); }
+body.nav-abierta .btn-nav .rayas::after { top: 0; transform: rotate(-45deg); }
+
+.velo-nav {
+  position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .5);
+}
+.velo-nav[hidden] { display: none; }
+/* El rótulo corto de un botón sólo aparece en pantalla chica. */
+.barra-menu .der .corto { display: none; }
+/* Con el cajón abierto el fondo no se desplaza: en un teléfono, arrastrar
+   sobre el velo movía la tabla de atrás y parecía que algo se había roto. */
+body.sin-desplazar { overflow: hidden; }
+
+/* ───────── Tablet acostada y monitores angostos ───────── */
+@media (max-width: 1100px) {
+  /* La barra parte en iconos: en 1024 px la tabla de la torre necesita cada
+     píxel, y los diez módulos siguen alcanzables de un toque. */
+  .cab-modulo { padding-top: 8px; padding-bottom: 8px; }
+  .herramientas { overflow-x: auto; }
+}
+
+/* ───────── Tablet parada y celular ───────── */
 @media (max-width: 860px) {
-  .sidebar { display: none; }
-  .contenido { padding-left: 10px; padding-right: 10px; }
+  .btn-nav { display: flex; }
   .barra-menu .mnu { display: none; }
+  /* Los tres botones de la derecha se quedan: se ACORTAN. Ninguno se apaga
+     -la regla de la casa-. Con el texto largo, a 768 px envolvian en dos
+     lineas cada uno y estiraban la barra de 48 a 70 px. */
+  .barra-menu .der .largo { display: none; }
+  .barra-menu .der .corto { display: inline; }
+  .barra-menu .der button { white-space: nowrap; }
+
+  /* La barra lateral SE CORRE, no desaparece. Es la misma lista, el mismo
+     HTML y el mismo JavaScript: un segundo menú sólo para el teléfono se
+     habría desincronizado del de escritorio en la primera semana. */
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 70;
+    width: 264px; flex-basis: 264px; max-width: 82vw;
+    transform: translateX(-102%); transition: transform .18s ease;
+    box-shadow: 4px 0 22px rgba(0, 0, 0, .38);
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  body.nav-abierta .sidebar { transform: translateX(0); }
+  /* Plegar y arrastrar son gestos de escritorio: en un cajón no significan
+     nada y el tirador de 6 px es imposible de agarrar con el dedo. */
+  .sidebar .plegar, .sidebar .tirador { display: none; }
+  /* El cajón ignora el ancho guardado y el modo iconos del escritorio. */
+  body.lateral-plegado .sidebar .tit,
+  body.lateral-plegado .nav .grupo,
+  body.lateral-plegado .nav a .rot,
+  body.lateral-plegado .nav a .cuenta { display: revert; }
+  /* 🔴 EL ALTO DE LOS MÓDULOS VA ACÁ Y NO SÓLO EN `pointer: coarse`. Con la
+     regla del puntero grueso los enlaces del cajón quedaban en 28 px cada vez
+     que el navegador se declaraba de puntero fino — una tablet con teclado, un
+     navegador que responde mal a la consulta, el escritorio angostado para
+     probar—. Veintiocho píxeles es media yema de dedo: se toca el módulo de
+     al lado. Si el cajón existe es porque la pantalla es chica, y en una
+     pantalla chica el destinatario es el dedo. */
+  .nav a { padding-top: 10px; padding-bottom: 10px; min-height: 40px; }
+  body.lateral-plegado .nav a { justify-content: flex-start; padding: 10px 12px; min-height: 40px; }
+
+  .contenido { padding-left: 10px; padding-right: 10px; }
+  /* Los paneles de dos columnas pasan a una: 430 px de mínimo no caben. */
+  .rejilla-2 { grid-template-columns: 1fr; }
+  .ficha-rejilla { grid-template-columns: 1fr; }
+  /* La fila de botones de cada módulo se desliza en su propia caja en vez de
+     empujar la página a lo ancho. */
+  .herramientas { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .herramientas > * { flex: 0 0 auto; }
+}
+
+/* ───────── Celular ───────── */
+@media (max-width: 560px) {
+  /* La barra de arriba se queda con lo imprescindible: el botón de módulos,
+     el logo y quién está adentro. Los botones de sesión bajan al pie del
+     cajón, donde hay sitio para tocarlos. */
+  .barra-menu { padding: 0 6px; gap: 0; height: 52px; flex-basis: 52px; }
+  .barra-menu .prod { padding-right: 8px; margin-right: 4px; border-right: none; font-size: 0; }
+  .barra-menu .prod img.logo { height: 30px; padding: 2px 5px; }
+  .barra-menu .der { gap: 6px; }
+  /* El cargo y el nombre completo no caben; queda el icono, que basta para
+     saber que hay una sesión abierta. Quién es se lee en la barra de estado. */
+  /* 🔴 `> span`, HIJO DIRECTO. Con `.usr span` a secas se apagaba también el
+     rótulo corto de «Clave» y «Salir»: los dos botones viven DENTRO de `#usr`
+     —los escribe `montarRol()` en el mismo `innerHTML`— y quedaban como dos
+     cajas grises sin una palabra adentro. Lo que sobra en un celular es el
+     nombre y el cargo, no los botones. */
+  .barra-menu .der .usr > span { display: none; }
+  .barra-menu .der button { padding: 5px 7px; font-size: 11px; }
+
+  .contenido { padding: 8px 8px 16px; }
+  .cab-modulo h1 { font-size: 17px; }
+  .cab-modulo .ruta { display: none; }
+
+  /* Todo formulario a una columna. Con dos, cada casilla queda de 150 px y no
+     se puede escribir una patente sin equivocarse. */
+  .rejilla-campos { grid-template-columns: 1fr; }
+
+  /* 🔴 16 px en TODA casilla de texto. Bajo ese tamaño, Safari en iPhone hace
+     zoom solo al tocarla y deja la pantalla corrida a la derecha, sin volver.
+     Es el defecto que hace que una aplicación se sienta rota en un teléfono, y
+     no se ve en ningún emulador de escritorio.
+
+     ⚠️ Y con el alto, no solo. Al subir la letra sin subir la caja, el texto de
+     los desplegables quedó cortado por abajo: se leía «Todas las compañí» con
+     la panza de la «ñ» comida. El alto va acá y no en `pointer: coarse`,
+     porque la causa es la letra grande, no el dedo. */
+  input, select, textarea { font-size: 16px; min-height: 40px; }
+
+  /* La barra de estado se queda con dos celdas: el resto se repite arriba. */
+  .barra-estado { padding: 0 8px; }
+  .barra-estado .celda { padding: 0 7px; }
+  .barra-estado .celda:not(:first-child):not(.der) { display: none; }
+
+  /* Los indicadores y las tarjetas, uno por fila. */
+  .tira-kpi { grid-template-columns: 1fr; }
+  .indicadores { flex-direction: column; }
+  .ind { border-right: none; border-bottom: 1px solid var(--borde); }
+  .ind:last-child { border-bottom: none; }
+
+  /* El anillo centrado sobre su leyenda. */
+  .anillo-caja { justify-content: center; }
+}
+
+/* El aviso de que la tabla sigue hacia el lado. Lo pone `mejorarTablas()` sólo
+   cuando el contenido de verdad no cabe, así que en el escritorio no aparece
+   aunque la regla exista. */
+.pista-desliza {
+  display: none; font-size: 11px; color: var(--gris-2);
+  padding: 5px 2px 0; letter-spacing: .2px;
+}
+.pista-desliza::before { content: '\2194\00a0'; color: var(--acento-texto); font-weight: 700; }
+@media (max-width: 860px) { .pista-desliza { display: block; } }
+
+/* ───────── Dedo, no mouse ─────────
+   No es cosa del ancho: una tablet de 1024 px se toca igual que un teléfono.
+   `pointer: coarse` pregunta por el aparato, que es lo correcto.
+   40 px de alto es el mínimo con el que un botón se acierta a la primera. */
+@media (pointer: coarse) {
+  .btn, button.btn, .herramientas button, .tabs button {
+    min-height: 40px; padding-top: 8px; padding-bottom: 8px;
+  }
+  input, select, textarea { min-height: 40px; }
+  .nav a { padding-top: 10px; padding-bottom: 10px; }
+  table.grid td, table.grid th { padding-top: 8px; padding-bottom: 8px; }
+  /* El tirador de la barra lateral no se agarra con el dedo y sólo estorba. */
+  .sidebar .tirador { display: none; }
+  /* Que la tabla se deslice con inercia, como el resto del teléfono. */
+  .grid-envoltorio { -webkit-overflow-scrolling: touch; }
 }
 
 

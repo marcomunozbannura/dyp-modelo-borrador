@@ -799,6 +799,18 @@ function vReporteria() {
     porEtapa, composicion, relojes, distribucion, compromiso, ticket, delta } = g;
   const d = repDinamica(lista);
   const hay = lista.length > 0;
+
+  /* 🔴 EN UN CELULAR HASTA EL GRÁFICO ANCHO ES ANGOSTO. El `viewBox` de 1.200
+     unidades metido en los 374 px útiles de un teléfono encoge la tipografía a
+     un tercio: los valores sobre los puntos quedan en tres píxeles y el eje no
+     se lee. Es el mismo defecto que ya se había corregido en los paneles de
+     dos columnas, sólo que en pantalla chica alcanza también al de una.
+
+     Se decide al pintar y con el ancho de VERDAD de la ventana. Si alguien
+     gira el teléfono, el gráfico conserva la proporción hasta el próximo
+     repintado — preferible a forzar un `render()` en el giro, que en mitad de
+     un formulario borraría lo que la persona lleva escrito. */
+  const chico = typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth <= 860;
   const selDim = (id, valorActual, conVacio) => '<select id="' + id + '">' +
     (conVacio ? '<option value="">Sin abrir</option>' : '') +
     REP_DIMENSIONES.map((x) => '<option value="' + x.id + '"' +
@@ -923,7 +935,7 @@ function vReporteria() {
         contador. La franja verde de abajo es cumplir; todo lo que queda sobre la línea de la meta
         va en vino</div></div></div>
     <div class="cuerpo">${meses.length
-      ? svgSerie(diasMes, { meta, metaRot: 'días', fmt: (v) => Math.round(v) + ' d' }) +
+      ? svgSerie(diasMes, { compacto: chico, meta, metaRot: 'días', fmt: (v) => Math.round(v) + ' d' }) +
         repFormulas([
           { que: 'Punto del mes', exp: 'Σ días de reparación ÷ entregas de ese mes',
             num: (() => { const u = diasMes[diasMes.length - 1];

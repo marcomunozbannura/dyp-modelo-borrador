@@ -1826,6 +1826,34 @@ function mejorarTablas() {
        orden que quedó, no las del orden con el que vinieron. */
     if (!paginaSola(tabla)) paginarTabla(tabla, cuerpo, llave);
   });
+
+  avisarQueHayMasColumnas();
+}
+
+/* ── «Hay más columnas a la derecha» ───────────────────────────────────
+   🔴 EL PROBLEMA QUE ESTO RESUELVE (21-08-2026). La torre tiene diecisiete
+   columnas y en un celular entran cuatro. La tabla se desliza —siempre se
+   deslizó—, pero nada lo decía: el borde derecho corta limpio, sin sombra ni
+   media columna asomada, y se lee como que la tabla TERMINA ahí.
+
+   Eso no se ve como un problema de diseño, se ve como un dato que falta. La
+   frase que llega después es «el sistema no muestra la compañía», y uno se
+   pone a buscar un error que no existe.
+
+   El aviso se calcula midiendo, no adivinando: sólo aparece si el contenido de
+   verdad no cabe. En el escritorio, donde cabe, no aparece nunca. */
+function avisarQueHayMasColumnas() {
+  document.querySelectorAll('#contenido .grid-envoltorio').forEach((env) => {
+    const previo = env.nextElementSibling;
+    if (previo && previo.classList && previo.classList.contains('pista-desliza')) previo.remove();
+    // 4 px de margen: un par de píxeles de diferencia son redondeo del
+    // navegador, no una columna escondida.
+    if (env.scrollWidth <= env.clientWidth + 4) return;
+    const pista = document.createElement('div');
+    pista.className = 'pista-desliza';
+    pista.textContent = 'Desliza la tabla para ver las demás columnas';
+    env.insertAdjacentElement('afterend', pista);
+  });
 }
 
 /* ── Ordenar ─────────────────────────────────────────────────────────── */
@@ -2430,7 +2458,12 @@ function modoRegistro(numero) {
 function aplicarTema(tema) {
   document.documentElement.dataset.tema = tema;
   const b = document.getElementById('btn-tema');
-  if (b) b.textContent = tema === 'oscuro' ? 'Tema oscuro' : 'Tema claro';
+  /* Dos rótulos, uno largo y uno corto, y el CSS elige cuál se ve. En un
+     celular «Tema oscuro» + «Cambiar mi clave» + «Cerrar sesión» no caben en
+     la barra, y esconder un botón no es una opción: la regla de la casa es que
+     ninguno se apaga. Se acorta. */
+  if (b) b.innerHTML = '<span class="largo">' + (tema === 'oscuro' ? 'Tema oscuro' : 'Tema claro') +
+    '</span><span class="corto">' + (tema === 'oscuro' ? 'Oscuro' : 'Claro') + '</span>';
   try { localStorage.setItem('dyp-tema', tema); } catch (e) { /* file:// sin almacenamiento */ }
   // Las marcas de daño se dibujan por JS: hay que repintarlas al cambiar de tema.
   if (ui.vista === 'recepcion') pintarDanos();
@@ -2476,8 +2509,10 @@ function montarRol() {
   cont.innerHTML = ico('usuario') +
     '<span style="font-size:11px"><strong>' + esc((yo.nombres + ' ' + (yo.apellidos || '')).trim()) + '</strong>' +
     '<span style="color:var(--gris)"> · ' + esc(yo.cargo || Modelo.rolActual().nombre) + '</span></span>' +
-    '<button type="button" id="btn-clave" style="margin-left:8px">Cambiar mi clave</button>' +
-    '<button type="button" id="btn-salir" style="margin-left:6px">Cerrar sesión</button>';
+    '<button type="button" id="btn-clave" style="margin-left:8px">' +
+      '<span class="largo">Cambiar mi clave</span><span class="corto">Clave</span></button>' +
+    '<button type="button" id="btn-salir" style="margin-left:6px">' +
+      '<span class="largo">Cerrar sesión</span><span class="corto">Salir</span></button>';
 
   document.getElementById('btn-clave').addEventListener('click', dialogoMiClave);
 
@@ -2895,3 +2930,57 @@ function montarLateral() {
 }
 
 montarLateral();
+
+/* ── EL CAJÓN DE MÓDULOS EN PANTALLA CHICA ─────────────────────────────
+   🔴 EL PROBLEMA QUE ESTO RESUELVE (21-08-2026). El CSS escondía la barra
+   lateral bajo los 860 px con un `display:none` y nada la reemplazaba. En un
+   celular —y en una tablet vertical, que son 768— el sistema quedaba con UN
+   módulo: el que se abría al entrar, y de ahí no se salía. No es que se viera
+   mal: no se podía usar.
+
+   Ahora la misma barra, sin duplicar nada, se corre a un cajón. Tres formas de
+   cerrarlo, que es lo mínimo para que nadie quede atrapado: tocar un módulo,
+   tocar el velo de al lado, o Escape.
+
+   ⚠️ Lo que se cierra es una CLASE en el `body`, no un estilo escrito a mano.
+   Escrito a mano hay que acordarse de deshacerlo en cada camino de salida —y
+   siempre queda uno afuera—; con la clase, el CSS decide y los tres caminos
+   hacen exactamente lo mismo. */
+function montarCajonModulos() {
+  const boton = document.getElementById('btn-nav');
+  const velo = document.getElementById('velo-nav');
+  const nav = document.getElementById('nav');
+  if (!boton || !velo) return;
+
+  const abierto = () => document.body.classList.contains('nav-abierta');
+  const poner = (v) => {
+    document.body.classList.toggle('nav-abierta', v);
+    velo.hidden = !v;
+    boton.setAttribute('aria-expanded', v ? 'true' : 'false');
+    boton.setAttribute('aria-label', v ? 'Cerrar el menú de módulos' : 'Abrir el menú de módulos');
+    /* Con el cajón abierto, el fondo NO se desplaza: en un teléfono, arrastrar
+       sobre el velo movía la tabla de atrás y daba la sensación de que la
+       aplicación se había roto. */
+    document.body.classList.toggle('sin-desplazar', v);
+  };
+
+  boton.addEventListener('click', () => poner(!abierto()));
+  velo.addEventListener('click', () => poner(false));
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && abierto()) { poner(false); boton.focus(); }
+  });
+  // Elegir un módulo cierra el cajón. Va por delegación: la lista se repinta
+  // en cada render y un oyente por enlace se perdería en el primer repintado.
+  if (nav) nav.addEventListener('click', (ev) => {
+    if (ev.target.closest && ev.target.closest('a')) poner(false);
+  });
+  /* Al pasar a una pantalla ancha el cajón deja de existir. Si quedara la
+     clase puesta, el `body` seguiría sin poder desplazarse en el escritorio y
+     nadie ataría ese síntoma con haber girado el teléfono. */
+  const ancha = window.matchMedia('(min-width: 861px)');
+  const alGirar = (e) => { if (e.matches) poner(false); };
+  if (ancha.addEventListener) ancha.addEventListener('change', alGirar);
+  else if (ancha.addListener) ancha.addListener(alGirar);   // navegadores viejos
+}
+
+montarCajonModulos();
